@@ -1,0 +1,85 @@
+---
+interface Props {
+  terminalId: string;
+  title?: string;
+  showClear?: boolean;
+  maxHeight?: string;
+}
+
+const { 
+  terminalId, 
+  title = '调试终端',
+  showClear = true,
+  maxHeight = '8rem'
+} = Astro.props;
+---
+
+<div class="terminal-container">
+  <div class="terminal-header">
+    <div class="flex items-center space-x-2">
+      <span class="material-symbols-outlined text-gray-400 text-lg">
+        terminal
+      </span>
+      <span class="text-gray-300 font-medium text-sm">{title}</span>
+    </div>
+    
+    {showClear && (
+      <button 
+        class="material-button material-button-secondary text-xs py-1 px-2"
+        data-action="clear-log"
+        data-terminal={terminalId}
+      >
+        <span class="material-symbols-outlined text-base mr-1">
+          clear_all
+        </span>
+        清除
+      </button>
+    )}
+  </div>
+  
+  <div 
+    class="terminal-content scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+    data-terminal={terminalId}
+    style={`max-height: ${maxHeight}`}
+  >
+    <div class="log-line text-blue-400">
+      <span class="text-gray-500">[System]</span>
+      {title} - 等待操作...
+    </div>
+  </div>
+</div>
+
+<style>
+  .log-line {
+    @apply mb-1 whitespace-pre-wrap break-words;
+  }
+  
+  .log-line.info {
+    @apply text-blue-400;
+  }
+  
+  .log-line.success {
+    @apply text-green-400;
+  }
+  
+  .log-line.warning {
+    @apply text-yellow-400;
+  }
+  
+  .log-line.error {
+    @apply text-red-400;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thumb-gray-600::-webkit-scrollbar-thumb {
+    background-color: rgb(75 85 99);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-track-gray-800::-webkit-scrollbar-track {
+    background-color: rgb(31 41 55);
+  }
+</style>

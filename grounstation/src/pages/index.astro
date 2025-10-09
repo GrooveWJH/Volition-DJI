@@ -1,0 +1,166 @@
+---
+import StreamingCard from '../protocols/video-stream/StreamingCard.astro';
+import '../styles/global.css';
+---
+
+<html lang="zh" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>协议对接测试系统</title>
+  </head>
+  
+  <body class="min-h-full bg-gray-50 font-sans antialiased">
+    <div class="min-h-screen">
+      <!-- Header -->
+      <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div class="text-center space-y-2">
+            <div class="flex items-center justify-center space-x-3">
+              <span class="material-symbols-outlined text-green-600 text-3xl">
+                sensors
+              </span>
+              <h1 class="text-3xl font-bold text-gray-900">协议对接测试系统</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="space-y-8">
+          
+          <!-- RTMP Video Streaming System -->
+          <section>
+            <StreamingCard
+              playerId="main-video-stream"
+              title="推流服务"
+              description="实时视频推送与播放"
+              rtmpUrl="rtmp://192.168.31.14:1935/live/cam"
+              host="192.168.31.14"
+            />
+          </section>
+
+          <!-- Disabled Modules -->
+          <section class="bg-white rounded-lg shadow-material border border-gray-200">
+            <div 
+              class="px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+              onclick="toggleDisabledModules()"
+              id="disabledModulesHeader"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="material-symbols-outlined text-gray-400">
+                    extension_off
+                  </span>
+                  <h3 class="text-lg font-medium text-gray-900">其他协议模块</h3>
+                  <span class="status-indicator bg-yellow-100 text-yellow-800">
+                    <span class="material-symbols-outlined text-sm mr-1">
+                      pause_circle
+                    </span>
+                    暂时禁用
+                  </span>
+                </div>
+                <span class="material-symbols-outlined text-gray-400 transition-transform duration-200" id="toggleIcon">
+                  expand_more
+                </span>
+              </div>
+            </div>
+            
+            <div 
+              class="px-6 pb-6 hidden transition-all duration-200"
+              id="disabledModulesContent"
+            >
+              <div class="pt-4 space-y-4">
+                <p class="text-sm text-gray-600 mb-4">
+                  以下协议模块已暂时禁用，当前专注于视频流媒体功能开发。
+                </p>
+                
+                <div class="grid gap-4 md:grid-cols-3">
+                  <!-- Disabled Module Cards -->
+                  <div class="bg-gray-50 rounded-lg p-4 opacity-60">
+                    <div class="flex items-start space-x-3">
+                      <span class="material-symbols-outlined text-gray-400 mt-1">
+                        visibility
+                      </span>
+                      <div class="flex-1">
+                        <h4 class="font-medium text-gray-900 text-sm">态势感知信息</h4>
+                        <p class="text-xs text-gray-600 mt-1">
+                          无人机目标识别对象信息发送
+                        </p>
+                        <code class="text-xs text-gray-500 mt-2 block">
+                          /jk-ivas/non/controller/postTarPos
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="bg-gray-50 rounded-lg p-4 opacity-60">
+                    <div class="flex items-start space-x-3">
+                      <span class="material-symbols-outlined text-gray-400 mt-1">
+                        flight
+                      </span>
+                      <div class="flex-1">
+                        <h4 class="font-medium text-gray-900 text-sm">无人机状态信息</h4>
+                        <p class="text-xs text-gray-600 mt-1">
+                          多无人机状态信息处理
+                        </p>
+                        <code class="text-xs text-gray-500 mt-2 block">
+                          /jk-ivas/third/controller/reportUserData
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="bg-gray-50 rounded-lg p-4 opacity-60">
+                    <div class="flex items-start space-x-3">
+                      <span class="material-symbols-outlined text-gray-400 mt-1">
+                        settings_remote
+                      </span>
+                      <div class="flex-1">
+                        <h4 class="font-medium text-gray-900 text-sm">无人机控制指令</h4>
+                        <p class="text-xs text-gray-600 mt-1">
+                          头显服务器控制指令
+                        </p>
+                        <code class="text-xs text-gray-500 mt-2 block">
+                          /dev-api/jk-uav/third/controller/uav/droneCtrl
+                        </code>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="/src/scripts/main.js"></script>
+    
+    <script>
+      // Toggle disabled modules
+      function toggleDisabledModules() {
+        const content = document.getElementById('disabledModulesContent');
+        const header = document.getElementById('disabledModulesHeader');
+        const icon = document.getElementById('toggleIcon');
+        
+        if (content.classList.contains('hidden')) {
+          content.classList.remove('hidden');
+          header.classList.add('bg-gray-50');
+          icon.style.transform = 'rotate(180deg)';
+        } else {
+          content.classList.add('hidden');
+          header.classList.remove('bg-gray-50');
+          icon.style.transform = 'rotate(0deg)';
+        }
+      }
+      
+      // Make function globally available
+      window.toggleDisabledModules = toggleDisabledModules;
+    </script>
+  </body>
+</html>

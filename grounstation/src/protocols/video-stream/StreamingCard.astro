@@ -1,0 +1,217 @@
+---
+interface Props {
+  playerId: string;
+  title?: string;
+  description?: string;
+  rtmpUrl?: string;
+  host?: string;
+}
+
+const {
+  playerId,
+  title = "推流服务",
+  description = "实时视频流推送与播放",
+  rtmpUrl = "rtmp://192.168.31.14:1935/live/cam",
+  host = "192.168.31.14",
+} = Astro.props;
+
+const hostInputId = `host-${playerId}`;
+const rtmpInputId = `rtmp-${playerId}`;
+---
+
+<div class="material-card p-6 space-y-6">
+  <!-- Header -->
+  <div class="flex items-start justify-between">
+    <div class="space-y-2">
+      <div class="flex items-center space-x-3">
+        <span class="material-symbols-outlined text-green-600 text-2xl">
+          videocam
+        </span>
+        <h3 class="text-xl font-semibold text-gray-900">{title}</h3>
+        <div class="status-indicator status-success">
+          <span class="material-symbols-outlined text-sm mr-1">
+            radio_button_checked
+          </span>
+          推流服务
+        </div>
+      </div>
+      <p class="text-gray-600 text-sm max-w-md">{description}</p>
+    </div>
+
+    <!-- Connection Status -->
+    <div class="status-indicator status-info" data-status={playerId}>
+      <span class="material-symbols-outlined text-sm mr-1"> pending </span>
+      待连接
+    </div>
+  </div>
+
+  <!-- MediaMTX Configuration -->
+  <div class="bg-gray-50 rounded-lg p-4">
+    <div class="flex items-center space-x-2 mb-2">
+      <span class="material-symbols-outlined text-blue-600 text-lg">
+        router
+      </span>
+      <span class="font-medium text-sm text-gray-900">MediaMTX 服务器</span>
+    </div>
+
+    <div class="flex items-center space-x-2">
+      <span class="text-xs text-gray-600">IP地址:</span>
+      <input
+        type="text"
+        class="bg-white border border-gray-300 rounded px-3 py-1 text-sm font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        value={host}
+        data-input="host"
+        data-player-id={playerId}
+        placeholder="192.168.31.14"
+        style="width: 140px"
+        onchange={`updateHostConfig('${playerId}', this.value)`}
+      />
+    </div>
+  </div>
+
+  <!-- Video Player Container -->
+  <div
+    class="bg-black rounded-lg flex items-center justify-center relative overflow-hidden"
+    style="aspect-ratio: 16/9; min-height: 240px;"
+    data-player-id={playerId}
+  >
+    <div class="video-placeholder text-center text-gray-400">
+      <div class="space-y-4">
+        <span class="material-symbols-outlined text-6xl"> play_circle </span>
+        <div class="space-y-2">
+          <p class="text-lg font-medium">推流预览</p>
+          <p class="text-sm opacity-75">配置RTMP地址后点击开始推流</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="space-y-4">
+    <!-- RTMP URL Input -->
+    <div class="space-y-2">
+      <label class="block text-sm font-medium text-gray-700">
+        <span
+          class="material-symbols-outlined text-base mr-1 align-text-bottom"
+        >
+          link
+        </span>
+        RTMP 推流地址
+      </label>
+      <input
+        type="text"
+        class="material-input"
+        value={rtmpUrl}
+        data-input="rtmp-url"
+        data-player-id={playerId}
+        placeholder="rtmp://192.168.31.14:1935/live/cam"
+      />
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <button
+          class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-md transition-all duration-200 flex items-center"
+          onclick={`toggleVideoStream('${playerId}')`}
+          data-action="toggle-stream"
+          data-player-id={playerId}
+        >
+          <span class="material-symbols-outlined mr-2 text-xl">
+            play_arrow
+          </span>
+          开始推流
+        </button>
+      </div>
+
+      <!-- Stream Status -->
+      <div class="text-xs text-gray-500 text-right">
+        <div class="mb-1">推流状态监控</div>
+        <div class="status-indicator status-info" data-status={playerId}>
+          <span class="material-symbols-outlined text-sm mr-1"> pending </span>
+          待连接
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal -->
+  <div class="terminal-container">
+    <div class="terminal-header">
+      <div class="flex items-center space-x-2">
+        <span class="material-symbols-outlined text-gray-400 text-lg">
+          terminal
+        </span>
+        <span class="text-gray-300 font-medium text-sm">推流日志</span>
+      </div>
+
+      <button
+        class="material-button material-button-secondary text-xs py-1 px-2"
+        onclick={`clearVideoStreamLog('${playerId}')`}
+        data-action="clear-log"
+        data-terminal={playerId}
+      >
+        <span class="material-symbols-outlined text-base mr-1">
+          clear_all
+        </span>
+        清除
+      </button>
+    </div>
+
+    <div
+      class="terminal-content scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+      data-terminal={playerId}
+      style="max-height: 6rem"
+    >
+      <div class="log-line text-blue-400">
+        <span class="text-gray-500">[System]</span>
+        RTMP推流系统就绪，等待指令...
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .video-placeholder {
+    transition: all 0.3s ease;
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .log-line {
+    @apply mb-1 whitespace-pre-wrap break-words;
+  }
+
+  .log-line.info {
+    @apply text-blue-400;
+  }
+
+  .log-line.success {
+    @apply text-green-400;
+  }
+
+  .log-line.warning {
+    @apply text-yellow-400;
+  }
+
+  .log-line.error {
+    @apply text-red-400;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thumb-gray-600::-webkit-scrollbar-thumb {
+    background-color: rgb(75 85 99);
+    border-radius: 3px;
+  }
+
+  .scrollbar-track-gray-800::-webkit-scrollbar-track {
+    background-color: rgb(31 41 55);
+  }
+</style>
