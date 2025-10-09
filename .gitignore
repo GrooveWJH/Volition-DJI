@@ -1,0 +1,51 @@
+# pnpm / Node.js
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+.npmrc
+*.tsbuildinfo
+
+# Astro build output
+dist/
+.astro/
+
+# ROS (catkin/colcon)
+build/
+devel/
+install/
+log/
+logs/
+ros_ws/
+.bag
+*.bag
+*.bag.active
+
+# C++ / CMake
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+*.cmake
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+*.lib
+*.exp
+*.pdb
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
