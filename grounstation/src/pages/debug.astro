@@ -1,0 +1,453 @@
+---
+import { CONFIG } from '../shared/config/app-config.js';
+
+const defaultHost = CONFIG.rtmp.defaultHost;
+const defaultStreamPath = `${CONFIG.rtmp.defaultApp}/${CONFIG.rtmp.defaultStream}`;
+const webrtcPort = CONFIG.webrtc.defaultPort;
+const connectionTimeout = CONFIG.connection.timeoutMs;
+const apiEndpoints = CONFIG.connection.testEndpoints;
+const defaultRtmpPort = CONFIG.rtmp.defaultPort;
+---
+
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebRTC视频播放调试页面</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background: #f5f5f5;
+      }
+
+      .debug-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .video-container {
+        width: 100%;
+        height: 400px;
+        background: #000;
+        border-radius: 8px;
+        margin: 20px 0;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ccc;
+        font-size: 18px;
+      }
+
+      video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 8px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        margin: 20px 0;
+      }
+
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .play-btn {
+        background: #4caf50;
+        color: white;
+      }
+
+      .stop-btn {
+        background: #f44336;
+        color: white;
+      }
+
+      .debug-btn {
+        background: #2196f3;
+        color: white;
+      }
+
+      .logs {
+        background: #1e1e1e;
+        color: #fff;
+        padding: 15px;
+        border-radius: 5px;
+        height: 300px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .log-success {
+        color: #4caf50;
+      }
+
+      .log-error {
+        color: #f44336;
+      }
+
+      .log-warning {
+        color: #ff9800;
+      }
+
+      .log-info {
+        color: #2196f3;
+      }
+
+      .config {
+        margin: 20px 0;
+      }
+
+      .config input {
+        width: 300px;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin: 0 10px;
+      }
+
+      h1 {
+        color: #333;
+      }
+
+      h2 {
+        color: #666;
+        margin-top: 30px;
+      }
+
+      .status {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        margin-left: 10px;
+      }
+
+      .status-idle {
+        background: #eee;
+        color: #666;
+      }
+
+      .status-connecting {
+        background: #fff3cd;
+        color: #856404;
+      }
+
+      .status-connected {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .status-failed {
+        background: #f8d7da;
+        color: #721c24;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="debug-container">
+      <h1>🔍 WebRTC视频播放调试工具</h1>
+
+      <div class="config">
+        <label>MediaMTX主机:</label>
+        <input type="text" id="host" value={defaultHost} placeholder={defaultHost} />
+
+        <label>流路径:</label>
+        <input type="text" id="streamPath" value={defaultStreamPath} placeholder={defaultStreamPath} />
+
+        <span class="status status-idle" id="connection-status">待连接</span>
+      </div>
+
+      <div class="controls">
+        <button class="play-btn" onclick="startPlay()">▶️ 开始播放</button>
+        <button class="stop-btn" onclick="stopPlay()">⏹️ 停止播放</button>
+        <button class="debug-btn" onclick="debugVideo()">🔍 调试信息</button>
+        <button class="debug-btn" onclick="testConnection()">🔗 测试连接</button>
+        <button class="debug-btn" onclick="clearLogs()">🧹 清除日志</button>
+      </div>
+
+      <div class="video-container" id="video-container"> 🎥 点击开始播放以显示视频流 </div>
+
+      <h2>📋 实时日志</h2>
+      <div class="logs" id="logs"></div>
+    </div>
+
+    <script type="module" is:inline>
+      const APP_DEFAULTS = JSON.parse(
+        decodeURIComponent("{encodeURIComponent(JSON.stringify(defaultConfig))}")
+      );
+
+      let pc = null;
+      let videoElement = null;
+      let isPlaying = false;
+
+      function log(message, type = 'info') {
+        const logs = document.getElementById('logs');
+        const time = new Date().toLocaleTimeString();
+        const logLine = document.createElement('div');
+        logLine.className = `log-${type}`;
+        logLine.textContent = `[${time}] ${message}`;
+        logs.appendChild(logLine);
+        logs.scrollTop = logs.scrollHeight;
+        console.log(`[${type.toUpperCase()}] ${message}`);
+      }
+
+      function clearLogs() {
+        document.getElementById('logs').innerHTML = '';
+      }
+
+      function updateStatus(status, text) {
+        const statusEl = document.getElementById('connection-status');
+        statusEl.className = `status status-${status}`;
+        statusEl.textContent = text;
+      }
+
+      async function testConnection() {
+        const host = document.getElementById('host').value || APP_DEFAULTS.host;
+        log(`测试MediaMTX连接: ${host}`);
+
+        const testUrls = [
+          `http://${host}:${APP_DEFAULTS.webrtcPort}/`,
+          ...APP_DEFAULTS.apiEndpoints.map((endpoint) => `http://${host}${endpoint}`)
+        ];
+
+        for (const url of testUrls) {
+          try {
+            await fetch(url, {
+              method: 'GET',
+              mode: 'no-cors',
+              signal: AbortSignal.timeout(APP_DEFAULTS.timeoutMs)
+            });
+            log(`✅ ${url} 可访问`, 'success');
+            return;
+          } catch (error) {
+            log(`❌ ${url} 不可访问: ${error.message}`, 'warning');
+          }
+        }
+
+        log('所有测试端点均不可访问', 'error');
+      }
+
+      async function startPlay() {
+        if (isPlaying) {
+          log('已经在播放中', 'warning');
+          return;
+        }
+
+        const host = document.getElementById('host').value || APP_DEFAULTS.host;
+        const streamPath = document.getElementById('streamPath').value || APP_DEFAULTS.streamPath;
+        const rtmpUrl = `rtmp://${host}:${APP_DEFAULTS.rtmpPort}/${streamPath}`;
+        const whepUrl = `http://${host}:${APP_DEFAULTS.webrtcPort}/${streamPath}/whep`;
+
+        log(`🚀 开始播放: ${rtmpUrl}`);
+        log(`WHEP端点: ${whepUrl}`);
+
+        updateStatus('connecting', '连接中...');
+
+        try {
+          createVideoElement();
+          await createWebRTCConnection(whepUrl);
+
+          log('✅ 播放启动完成', 'success');
+        } catch (error) {
+          log(`❌ 播放失败: ${error.message}`, 'error');
+          updateStatus('failed', '连接失败');
+        }
+      }
+
+      function createVideoElement() {
+        const container = document.getElementById('video-container');
+        container.innerHTML = '';
+
+        videoElement = document.createElement('video');
+        videoElement.controls = true;
+        videoElement.autoplay = true;
+        videoElement.muted = true;
+        videoElement.playsInline = true;
+
+        videoElement.addEventListener('loadedmetadata', () => {
+          log(`📐 视频尺寸: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'info');
+        });
+
+        videoElement.addEventListener('playing', () => {
+          log('▶️ 视频开始播放', 'success');
+          isPlaying = true;
+          updateStatus('connected', '播放中');
+        });
+
+        videoElement.addEventListener('pause', () => {
+          log('⏸️ 视频已暂停', 'info');
+        });
+
+        videoElement.addEventListener('error', (e) => {
+          log(`❌ 视频错误: ${e.message || '未知错误'}`, 'error');
+          log(`错误代码: ${videoElement.error?.code || 'N/A'}`, 'error');
+        });
+
+        container.appendChild(videoElement);
+        log('✅ Video元素创建完成', 'success');
+      }
+
+      async function createWebRTCConnection(whepUrl) {
+        pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        pc.ontrack = (event) => {
+          log('🎬 接收到WebRTC流', 'success');
+          log(`流数量: ${event.streams.length}`, 'info');
+
+          const stream = event.streams[0];
+          log(`轨道数量: ${stream.getTracks().length}`, 'info');
+
+          stream.getTracks().forEach((track, index) => {
+            log(`轨道 ${index}: ${track.kind} - ${track.readyState}`, 'info');
+          });
+
+          videoElement.srcObject = stream;
+
+          videoElement
+            .play()
+            .then(() => {
+              log('✅ 视频播放成功', 'success');
+            })
+            .catch((error) => {
+              log(`❌ 视频播放失败: ${error.message}`, 'error');
+            });
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          log(`🔗 ICE连接状态: ${pc.iceConnectionState}`, 'info');
+
+          switch (pc.iceConnectionState) {
+            case 'connected':
+              updateStatus('connected', '已连接');
+              break;
+            case 'failed':
+              updateStatus('failed', '连接失败');
+              log('❌ WebRTC连接失败', 'error');
+              break;
+            case 'disconnected':
+              updateStatus('idle', '已断开');
+              break;
+          }
+        };
+
+        pc.onicegatheringstatechange = () => {
+          log(`🧊 ICE收集状态: ${pc.iceGatheringState}`, 'info');
+        };
+
+        const offer = await pc.createOffer({
+          offerToReceiveVideo: true,
+          offerToReceiveAudio: true
+        });
+
+        await pc.setLocalDescription(offer);
+        log('📤 本地SDP已设置', 'info');
+
+        const response = await fetch(whepUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/sdp' },
+          body: offer.sdp
+        });
+
+        if (!response.ok) {
+          throw new Error(`WHEP请求失败: ${response.status} ${response.statusText}`);
+        }
+
+        const answerSdp = await response.text();
+        await pc.setRemoteDescription({
+          type: 'answer',
+          sdp: answerSdp
+        });
+
+        log('📥 远程SDP已设置', 'success');
+        log('🤝 WebRTC握手完成', 'success');
+      }
+
+      function stopPlay() {
+        if (pc) {
+          pc.close();
+          pc = null;
+          log('🔌 WebRTC连接已关闭', 'info');
+        }
+
+        if (videoElement) {
+          videoElement.pause();
+          videoElement.srcObject = null;
+          videoElement = null;
+          log('⏹️ 视频播放已停止', 'info');
+        }
+
+        const container = document.getElementById('video-container');
+        container.innerHTML = '🎥 点击开始播放以显示视频流';
+
+        isPlaying = false;
+        updateStatus('idle', '待连接');
+
+        log('✅ 停止完成', 'success');
+      }
+
+      function debugVideo() {
+        log('=== 🔍 调试信息 ===', 'info');
+
+        if (videoElement) {
+          log(`Video元素存在: ${videoElement ? '是' : '否'}`, 'info');
+          log(`srcObject设置: ${videoElement.srcObject ? '是' : '否'}`, 'info');
+          log(`readyState: ${videoElement.readyState}`, 'info');
+          log(`paused: ${videoElement.paused}`, 'info');
+          log(`currentTime: ${videoElement.currentTime}`, 'info');
+          log(`duration: ${videoElement.duration}`, 'info');
+          log(`videoWidth: ${videoElement.videoWidth}`, 'info');
+          log(`videoHeight: ${videoElement.videoHeight}`, 'info');
+          log(`volume: ${videoElement.volume}`, 'info');
+          log(`muted: ${videoElement.muted}`, 'info');
+
+          if (videoElement.srcObject) {
+            const stream = videoElement.srcObject;
+            log(`Stream active: ${stream.active}`, 'info');
+            log(`Stream id: ${stream.id}`, 'info');
+
+            stream.getTracks().forEach((track, index) => {
+              log(
+                `Track ${index}: ${track.kind}, enabled: ${track.enabled}, muted: ${track.muted}, readyState: ${track.readyState}`,
+                'info'
+              );
+            });
+          }
+        } else {
+          log('Video元素不存在', 'warning');
+        }
+
+        if (pc) {
+          log(`WebRTC连接状态: ${pc.connectionState}`, 'info');
+          log(`ICE连接状态: ${pc.iceConnectionState}`, 'info');
+          log(`ICE收集状态: ${pc.iceGatheringState}`, 'info');
+          log(`信令状态: ${pc.signalingState}`, 'info');
+        } else {
+          log('RTCPeerConnection不存在', 'warning');
+        }
+      }
+
+      window.startPlay = startPlay;
+      window.stopPlay = stopPlay;
+      window.debugVideo = debugVideo;
+      window.testConnection = testConnection;
+      window.clearLogs = clearLogs;
+    </script>
+  </body>
+</html>

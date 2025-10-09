@@ -1,4 +1,6 @@
 ---
+import { CONFIG } from '../../shared/config/app-config.js';
+
 interface Props {
   playerId: string;
   title?: string;
@@ -7,16 +9,17 @@ interface Props {
   host?: string;
 }
 
+const defaultRtmpUrl = CONFIG.rtmp.getDefaultUrl();
+const defaultHost = CONFIG.rtmp.defaultHost;
+
 const {
   playerId,
   title = "推流服务",
   description = "实时视频流推送与播放",
-  rtmpUrl = "rtmp://192.168.31.14:1935/live/cam",
-  host = "192.168.31.14",
+  rtmpUrl = defaultRtmpUrl,
+  host = defaultHost,
 } = Astro.props;
 
-const hostInputId = `host-${playerId}`;
-const rtmpInputId = `rtmp-${playerId}`;
 ---
 
 <div class="material-card p-6 space-y-6">
@@ -62,7 +65,7 @@ const rtmpInputId = `rtmp-${playerId}`;
         value={host}
         data-input="host"
         data-player-id={playerId}
-        placeholder="192.168.31.14"
+        placeholder={defaultHost}
         style="width: 140px"
         onchange={`updateHostConfig('${playerId}', this.value)`}
       />
@@ -104,7 +107,7 @@ const rtmpInputId = `rtmp-${playerId}`;
         value={rtmpUrl}
         data-input="rtmp-url"
         data-player-id={playerId}
-        placeholder="rtmp://192.168.31.14:1935/live/cam"
+        placeholder={defaultRtmpUrl}
       />
     </div>
 

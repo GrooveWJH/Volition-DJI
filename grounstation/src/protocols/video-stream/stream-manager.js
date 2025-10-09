@@ -1,6 +1,7 @@
 // 视频流协议管理器 - 基于WebRTC的低延迟视频流播放管理
 import { SimpleVideoPlayer } from './webrtc-player.js';
 import { TerminalLogger } from '../../shared/core/terminal.js';
+import { CONFIG } from '../../shared/config/app-config.js';
 
 export class VideoStreamManager {
   constructor() {
@@ -107,12 +108,12 @@ export class VideoStreamManager {
 
     try {
       const host = player.extractHost(rtmpUrl);
-      const testUrl = `http://${host}:8889/`;
+      const testUrl = `http://${host}:${CONFIG.webrtc.defaultPort}/`;
       
-      const response = await fetch(testUrl, { 
+      await fetch(testUrl, { 
         method: 'GET', 
         mode: 'no-cors',
-        signal: AbortSignal.timeout(3000)
+        signal: AbortSignal.timeout(CONFIG.connection.timeoutMs)
       });
       
       logger.log('连接测试成功: MediaMTX服务可达', 'success');

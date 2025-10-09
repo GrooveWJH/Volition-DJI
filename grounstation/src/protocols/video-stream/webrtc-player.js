@@ -1,4 +1,6 @@
 // WebRTC视频播放器 - 基于WHEP协议的低延迟视频流播放
+import { CONFIG } from '../../shared/config/app-config.js';
+
 export class SimpleVideoPlayer {
   constructor(container, logger, playerId) {
     this.container = container;
@@ -22,7 +24,7 @@ export class SimpleVideoPlayer {
     
     const host = this.extractHost(rtmpUrl);
     const streamPath = this.extractStreamPath(rtmpUrl);
-    const whepUrl = `http://${host}:8889/${streamPath}/whep`;
+    const whepUrl = CONFIG.webrtc.buildUrl(host, streamPath);
     
     this.logger.log(`开始播放: ${rtmpUrl}`, 'info');
     this.logger.log(`WHEP端点: ${whepUrl}`, 'info');
@@ -194,7 +196,7 @@ export class SimpleVideoPlayer {
       const url = new URL(rtmpUrl.replace('rtmp://', 'http://'));
       return url.hostname;
     } catch {
-      return '192.168.31.14';
+      return CONFIG.rtmp.defaultHost;
     }
   }
   
@@ -203,7 +205,7 @@ export class SimpleVideoPlayer {
       const url = new URL(rtmpUrl.replace('rtmp://', 'http://'));
       return url.pathname.substring(1); // 移除开头的 '/'
     } catch {
-      return 'live/cam';
+      return `${CONFIG.rtmp.defaultApp}/${CONFIG.rtmp.defaultStream}`;
     }
   }
 }

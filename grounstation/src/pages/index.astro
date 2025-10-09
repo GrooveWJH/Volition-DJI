@@ -1,6 +1,10 @@
 ---
 import StreamingCard from '../protocols/video-stream/StreamingCard.astro';
+import { CONFIG } from '../shared/config/app-config.js';
 import '../styles/global.css';
+
+const defaultRtmpUrl = CONFIG.rtmp.getDefaultUrl();
+const defaultHost = CONFIG.rtmp.defaultHost;
 ---
 
 <html lang="zh" class="h-full">
@@ -37,8 +41,8 @@ import '../styles/global.css';
               playerId="main-video-stream"
               title="推流服务"
               description="实时视频推送与播放"
-              rtmpUrl="rtmp://192.168.31.14:1935/live/cam"
-              host="192.168.31.14"
+              rtmpUrl={defaultRtmpUrl}
+              host={defaultHost}
             />
           </section>
 
@@ -139,14 +143,19 @@ import '../styles/global.css';
     </div>
 
     <!-- Scripts -->
-    <script type="module" src="/src/scripts/main.js"></script>
+    <script type="module" src="/src/scripts/main.js" is:inline></script>
     
-    <script>
+    <script is:inline>
       // Toggle disabled modules
       function toggleDisabledModules() {
         const content = document.getElementById('disabledModulesContent');
         const header = document.getElementById('disabledModulesHeader');
         const icon = document.getElementById('toggleIcon');
+
+        if (!content || !header || !icon) {
+          console.warn('Disabled modules toggle elements missing');
+          return;
+        }
         
         if (content.classList.contains('hidden')) {
           content.classList.remove('hidden');
@@ -160,7 +169,7 @@ import '../styles/global.css';
       }
       
       // Make function globally available
-      window.toggleDisabledModules = toggleDisabledModules;
+      window['toggleDisabledModules'] = toggleDisabledModules;
     </script>
   </body>
 </html>
