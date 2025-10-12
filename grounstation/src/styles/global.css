@@ -31,6 +31,10 @@
 
 /* Custom Components */
 @layer components {
+  .shadow-material {
+    box-shadow: var(--md-elevation-2);
+  }
+  
   .material-card {
     @apply bg-white rounded-lg shadow-material border border-gray-100;
   }

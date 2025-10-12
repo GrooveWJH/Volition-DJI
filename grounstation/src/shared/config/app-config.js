@@ -1,90 +1,32 @@
 /**
- * 协议测试系统配置文件
- * 集中管理所有默认设置、端口、IP地址等配置项
+ * 主配置文件
+ * 集成所有模块配置并提供统一接口
  */
 
+import { MQTT_CONFIG, DRC_CONFIG, getMqttEnvironmentOverrides } from './mqtt-config.js';
+import { RTMP_CONFIG, WEBRTC_CONFIG, CONNECTION_CONFIG, STREAM_QUALITY_CONFIG, getVideoEnvironmentOverrides } from './video-config.js';
+
+/**
+ * 应用程序主配置对象
+ */
 export const CONFIG = {
   // RTMP服务器配置
-  rtmp: {
-    // 默认服务器地址 - MediaMTX运行在macOS上
-    defaultHost: '192.168.31.14',
-    defaultPort: 1935,
-    defaultApp: 'live',
-    defaultStream: 'cam',
-    
-    // 构建完整RTMP URL
-    getDefaultUrl() {
-      return `rtmp://${this.defaultHost}:${this.defaultPort}/${this.defaultApp}/${this.defaultStream}`;
-    },
-    
-    // 解析RTMP URL
-    parseUrl(rtmpUrl) {
-      try {
-        const url = new URL(rtmpUrl.replace('rtmp://', 'http://'));
-        const pathParts = url.pathname.split('/').filter(p => p);
-        return {
-          host: url.hostname,
-          port: url.port || '1935',
-          app: pathParts[0] || 'live',
-          stream: pathParts[1] || 'cam',
-          streamPath: pathParts.join('/')
-        };
-      } catch (error) {
-        throw new Error(`无效的RTMP URL: ${rtmpUrl}`);
-      }
-    }
-  },
+  rtmp: RTMP_CONFIG,
+  
+  // MQTT配置 
+  mqtt: MQTT_CONFIG,
+  
+  // DRC配置
+  drc: DRC_CONFIG,
   
   // WebRTC配置
-  webrtc: {
-    // MediaMTX WebRTC端口
-    defaultPort: 8889,
-    
-    // STUN服务器配置
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ],
-    
-    // 低延迟优化配置
-    rtcConfiguration: {
-      bundlePolicy: 'max-bundle',
-      rtcpMuxPolicy: 'require'
-    },
-    
-    // WHEP协议路径
-    whepPath: '/whep',
-    
-    // 构建WebRTC URL
-    buildUrl(host, streamPath) {
-      return `http://${host}:${this.defaultPort}/${streamPath}${this.whepPath}`;
-    }
-  },
+  webrtc: WEBRTC_CONFIG,
   
   // 连接测试配置
-  connection: {
-    // 测试超时时间(毫秒)
-    timeoutMs: 3000,
-    
-    // MediaMTX API测试端点
-    testEndpoints: [
-      '/api/v1/config',     // MediaMTX API v1
-      '/api/v2/config',     // MediaMTX API v2
-      '/api/v3/config'      // MediaMTX API v3
-    ],
-    
-    // 构建测试URL列表
-    buildTestUrls(host) {
-      const baseUrl = `http://${host}`;
-      return [
-        // API端点测试
-        ...this.testEndpoints.map(endpoint => `${baseUrl}${endpoint}`),
-        // 其他服务端口测试
-        `${baseUrl}:${CONFIG.webrtc.defaultPort}/`,  // WebRTC端口
-        `${baseUrl}/`  // 基本HTTP测试
-      ];
-    }
-  },
+  connection: CONNECTION_CONFIG,
+  
+  // 流媒体质量配置
+  streamQuality: STREAM_QUALITY_CONFIG,
   
   // 终端日志配置
   terminal: {
@@ -140,7 +82,9 @@ export const CONFIG = {
     
     // 活跃的协议
     active: [
-      '视频媒体推流'
+      '视频媒体推流',
+      'MQTT控制系统',
+      'DRC远程控制'
     ]
   },
   
@@ -157,7 +101,10 @@ export const CONFIG = {
   }
 };
 
-// 配置验证函数
+/**
+ * 配置验证函数
+ * @returns {Object} 验证结果
+ */
 export function validateConfig() {
   const errors = [];
   
@@ -186,41 +133,55 @@ export function validateConfig() {
   };
 }
 
-// 环境配置覆盖
+/**
+ * 环境配置覆盖
+ */
 export function loadEnvironmentConfig() {
-  // 从URL参数读取配置覆盖
-  const params = new URLSearchParams(window.location.search);
+  // 获取各模块的环境变量覆盖
+  const mqttOverrides = getMqttEnvironmentOverrides();
+  const videoOverrides = getVideoEnvironmentOverrides();
   
-  if (params.has('rtmp_host')) {
-    CONFIG.rtmp.defaultHost = params.get('rtmp_host');
+  // 应用MQTT配置覆盖
+  if (Object.keys(mqttOverrides).length > 0) {
+    mergeConfig(CONFIG.mqtt, mqttOverrides);
   }
   
-  if (params.has('rtmp_port')) {
-    CONFIG.rtmp.defaultPort = parseInt(params.get('rtmp_port'), 10);
+  // 应用视频配置覆盖
+  if (Object.keys(videoOverrides).length > 0) {
+    if (videoOverrides.rtmp) mergeConfig(CONFIG.rtmp, videoOverrides.rtmp);
+    if (videoOverrides.webrtc) mergeConfig(CONFIG.webrtc, videoOverrides.webrtc);
+    if (videoOverrides.quality) mergeConfig(CONFIG.streamQuality, videoOverrides.quality);
   }
   
-  if (params.has('webrtc_port')) {
-    CONFIG.webrtc.defaultPort = parseInt(params.get('webrtc_port'), 10);
-  }
-  
-  if (params.has('debug')) {
-    CONFIG.debug.verbose = params.get('debug') === 'true';
+  // 通用环境变量覆盖
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    
+    if (params.has('debug')) {
+      CONFIG.debug.verbose = params.get('debug') === 'true';
+    }
   }
   
   // 从localStorage读取用户自定义配置
   try {
-    const userConfig = localStorage.getItem('protocol_test_config');
-    if (userConfig) {
-      const parsed = JSON.parse(userConfig);
-      // 深度合并配置
-      mergeConfig(CONFIG, parsed);
+    if (typeof localStorage !== 'undefined') {
+      const userConfig = localStorage.getItem('protocol_test_config');
+      if (userConfig) {
+        const parsed = JSON.parse(userConfig);
+        // 深度合并配置
+        mergeConfig(CONFIG, parsed);
+      }
     }
   } catch (error) {
     console.warn('无法加载用户配置:', error);
   }
 }
 
-// 深度合并配置对象
+/**
+ * 深度合并配置对象
+ * @param {Object} target - 目标对象
+ * @param {Object} source - 源对象
+ */
 function mergeConfig(target, source) {
   for (const key in source) {
     if (source.hasOwnProperty(key)) {
@@ -234,22 +195,64 @@ function mergeConfig(target, source) {
   }
 }
 
-// 保存用户配置到localStorage
+/**
+ * 保存用户配置到localStorage
+ * @param {Object} configOverrides - 配置覆盖对象
+ * @returns {boolean} 是否保存成功
+ */
 export function saveUserConfig(configOverrides) {
   try {
-    localStorage.setItem('protocol_test_config', JSON.stringify(configOverrides));
-    return true;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('protocol_test_config', JSON.stringify(configOverrides));
+      return true;
+    }
+    return false;
   } catch (error) {
     console.error('无法保存用户配置:', error);
     return false;
   }
 }
 
-// 重置配置到默认值
+/**
+ * 重置配置到默认值
+ */
 export function resetConfig() {
-  localStorage.removeItem('protocol_test_config');
-  window.location.reload();
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('protocol_test_config');
+  }
+  if (typeof window !== 'undefined') {
+    window.location.reload();
+  }
 }
 
-// 导出配置供其他模块使用
+/**
+ * 获取配置摘要信息
+ * @returns {Object} 配置摘要
+ */
+export function getConfigSummary() {
+  return {
+    rtmp: {
+      url: CONFIG.rtmp.getDefaultUrl(),
+      host: CONFIG.rtmp.defaultHost,
+      port: CONFIG.rtmp.defaultPort
+    },
+    mqtt: {
+      url: CONFIG.mqtt.buildConnectionUrl(),
+      host: CONFIG.mqtt.defaultHost,
+      port: CONFIG.mqtt.defaultPort,
+      gateway: CONFIG.mqtt.defaultGatewaySN
+    },
+    webrtc: {
+      port: CONFIG.webrtc.defaultPort,
+      iceServers: CONFIG.webrtc.iceServers.length
+    },
+    drc: {
+      serialNumber: CONFIG.drc.defaultSerialNumber,
+      timeout: CONFIG.drc.timeoutSeconds,
+      retries: CONFIG.drc.maxRetries
+    }
+  };
+}
+
+// 导出默认配置
 export default CONFIG;

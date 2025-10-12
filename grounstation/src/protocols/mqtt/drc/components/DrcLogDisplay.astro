@@ -1,0 +1,26 @@
+---
+// DRC日志显示组件
+---
+
+<!-- 操作日志 -->
+<div class="bg-gray-50 rounded-lg p-4">
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center space-x-2">
+      <span class="material-symbols-outlined text-gray-600 text-lg">terminal</span>
+      <span class="font-medium text-sm text-gray-900">操作日志</span>
+    </div>
+    <button 
+      id="clear-drc-logs-btn" 
+      class="text-xs text-gray-500 hover:text-gray-700 underline"
+    >
+      清空日志
+    </button>
+  </div>
+  
+  <div 
+    id="drc-logs" 
+    class="bg-gray-900 text-green-400 p-3 rounded text-xs font-mono h-32 overflow-y-auto"
+  >
+    <div class="text-gray-500">[系统] DRC控制卡片已初始化</div>
+  </div>
+</div>

@@ -1,5 +1,7 @@
 ---
 import StreamingCard from '../protocols/video-stream/StreamingCard.astro';
+import MqttLoginCard from '../protocols/mqtt/login/MqttLoginCard.astro';
+import DrcControlCard from '../protocols/mqtt/drc/DrcControlCard.astro';
 import { CONFIG } from '../shared/config/app-config.js';
 import '../styles/global.css';
 
@@ -12,131 +14,137 @@ const defaultHost = CONFIG.rtmp.defaultHost;
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>协议对接测试系统</title>
+    <title>无人机地面站控制台</title>
   </head>
   
   <body class="min-h-full bg-gray-50 font-sans antialiased">
     <div class="min-h-screen">
       <!-- Header -->
       <header class="bg-white shadow-sm border-b border-gray-200">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div class="text-center space-y-2">
-            <div class="flex items-center justify-center space-x-3">
-              <span class="material-symbols-outlined text-green-600 text-3xl">
-                sensors
-              </span>
-              <h1 class="text-3xl font-bold text-gray-900">协议对接测试系统</h1>
+        <div class="w-full px-6 py-4">
+          <div class="flex items-center justify-between">
+            <div class="text-center flex-1">
+              <div class="flex items-center justify-center space-x-3">
+                <span class="material-symbols-outlined text-blue-600 text-3xl">dashboard</span>
+                <h1 class="text-3xl font-bold text-gray-900">无人机地面站控制台</h1>
+              </div>
+              <p class="text-gray-600">协议对接测试与MQTT控制系统</p>
+            </div>
+            
+            <!-- 配置管理按钮 -->
+            <div class="flex items-center space-x-2">
+              <button
+                onclick="showConfigMenu()"
+                class="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg transition-colors flex items-center"
+                title="配置管理"
+              >
+                <span class="material-symbols-outlined text-lg mr-1">settings</span>
+                配置
+              </button>
             </div>
           </div>
         </div>
       </header>
 
       <!-- Main Content -->
-      <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="space-y-8">
+      <main class="w-full px-6 py-6">
+        <!-- Grid Layout: 2 columns -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
-          <!-- RTMP Video Streaming System -->
-          <section>
+          <!-- Left Column -->
+          <div class="space-y-6">
+            <!-- RTMP Video Streaming System -->
             <StreamingCard
               playerId="main-video-stream"
-              title="推流服务"
+              title="视频推流服务"
               description="实时视频推送与播放"
               rtmpUrl={defaultRtmpUrl}
               host={defaultHost}
+              collapsed={false}
             />
-          </section>
+          </div>
 
-          <!-- Disabled Modules -->
-          <section class="bg-white rounded-lg shadow-material border border-gray-200">
-            <div 
-              class="px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-              onclick="toggleDisabledModules()"
-              id="disabledModulesHeader"
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                  <span class="material-symbols-outlined text-gray-400">
-                    extension_off
-                  </span>
-                  <h3 class="text-lg font-medium text-gray-900">其他协议模块</h3>
-                  <span class="status-indicator bg-yellow-100 text-yellow-800">
-                    <span class="material-symbols-outlined text-sm mr-1">
-                      pause_circle
-                    </span>
-                    暂时禁用
+          <!-- Right Column -->
+          <div class="space-y-6">
+            <!-- MQTT Login Server -->
+            <MqttLoginCard collapsed={false} />
+
+            <!-- DRC Remote Control -->
+            <DrcControlCard collapsed={false} />
+
+            <!-- Disabled Modules -->
+            <div class="material-card">
+              <div 
+                class="px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                onclick="toggleDisabledModules()"
+                id="disabledModulesHeader"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-3">
+                    <span class="material-symbols-outlined text-gray-400 text-2xl">extension_off</span>
+                    <div>
+                      <h3 class="text-lg font-semibold text-gray-900">其他协议模块</h3>
+                      <p class="text-sm text-gray-600 mt-1">暂时禁用的协议模块</p>
+                    </div>
+                    <div class="status-indicator status-warning">
+                      <span class="material-symbols-outlined text-sm mr-1">pause_circle</span>
+                      暂时禁用
+                    </div>
+                  </div>
+                  <span class="material-symbols-outlined text-gray-400 transition-transform duration-200" id="toggleIcon">
+                    expand_more
                   </span>
                 </div>
-                <span class="material-symbols-outlined text-gray-400 transition-transform duration-200" id="toggleIcon">
-                  expand_more
-                </span>
               </div>
-            </div>
-            
-            <div 
-              class="px-6 pb-6 hidden transition-all duration-200"
-              id="disabledModulesContent"
-            >
-              <div class="pt-4 space-y-4">
-                <p class="text-sm text-gray-600 mb-4">
-                  以下协议模块已暂时禁用，当前专注于视频流媒体功能开发。
-                </p>
-                
-                <div class="grid gap-4 md:grid-cols-3">
-                  <!-- Disabled Module Cards -->
-                  <div class="bg-gray-50 rounded-lg p-4 opacity-60">
-                    <div class="flex items-start space-x-3">
-                      <span class="material-symbols-outlined text-gray-400 mt-1">
-                        visibility
-                      </span>
-                      <div class="flex-1">
-                        <h4 class="font-medium text-gray-900 text-sm">态势感知信息</h4>
-                        <p class="text-xs text-gray-600 mt-1">
-                          无人机目标识别对象信息发送
-                        </p>
-                        <code class="text-xs text-gray-500 mt-2 block">
-                          /jk-ivas/non/controller/postTarPos
-                        </code>
+              
+              <div 
+                class="px-6 pb-6 hidden transition-all duration-200"
+                id="disabledModulesContent"
+              >
+                <div class="pt-4 space-y-4">
+                  <p class="text-sm text-gray-600 mb-4">
+                    以下协议模块已暂时禁用，当前专注于视频流媒体功能开发。
+                  </p>
+                  
+                  <div class="grid gap-4">
+                    <!-- Disabled Module Cards -->
+                    <div class="bg-gray-50 rounded-lg p-4 opacity-60">
+                      <div class="flex items-start space-x-3">
+                        <span class="material-symbols-outlined text-gray-400 mt-1">visibility</span>
+                        <div class="flex-1">
+                          <h4 class="font-medium text-gray-900 text-sm">态势感知信息</h4>
+                          <p class="text-xs text-gray-600 mt-1">无人机目标识别对象信息发送</p>
+                          <code class="text-xs text-gray-500 mt-2 block">/jk-ivas/non/controller/postTarPos</code>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div class="bg-gray-50 rounded-lg p-4 opacity-60">
-                    <div class="flex items-start space-x-3">
-                      <span class="material-symbols-outlined text-gray-400 mt-1">
-                        flight
-                      </span>
-                      <div class="flex-1">
-                        <h4 class="font-medium text-gray-900 text-sm">无人机状态信息</h4>
-                        <p class="text-xs text-gray-600 mt-1">
-                          多无人机状态信息处理
-                        </p>
-                        <code class="text-xs text-gray-500 mt-2 block">
-                          /jk-ivas/third/controller/reportUserData
-                        </code>
+                    
+                    <div class="bg-gray-50 rounded-lg p-4 opacity-60">
+                      <div class="flex items-start space-x-3">
+                        <span class="material-symbols-outlined text-gray-400 mt-1">flight</span>
+                        <div class="flex-1">
+                          <h4 class="font-medium text-gray-900 text-sm">无人机状态信息</h4>
+                          <p class="text-xs text-gray-600 mt-1">多无人机状态信息处理</p>
+                          <code class="text-xs text-gray-500 mt-2 block">/jk-ivas/third/controller/reportUserData</code>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div class="bg-gray-50 rounded-lg p-4 opacity-60">
-                    <div class="flex items-start space-x-3">
-                      <span class="material-symbols-outlined text-gray-400 mt-1">
-                        settings_remote
-                      </span>
-                      <div class="flex-1">
-                        <h4 class="font-medium text-gray-900 text-sm">无人机控制指令</h4>
-                        <p class="text-xs text-gray-600 mt-1">
-                          头显服务器控制指令
-                        </p>
-                        <code class="text-xs text-gray-500 mt-2 block">
-                          /dev-api/jk-uav/third/controller/uav/droneCtrl
-                        </code>
+                    
+                    <div class="bg-gray-50 rounded-lg p-4 opacity-60">
+                      <div class="flex items-start space-x-3">
+                        <span class="material-symbols-outlined text-gray-400 mt-1">settings_remote</span>
+                        <div class="flex-1">
+                          <h4 class="font-medium text-gray-900 text-sm">无人机控制指令</h4>
+                          <p class="text-xs text-gray-600 mt-1">头显服务器控制指令</p>
+                          <code class="text-xs text-gray-500 mt-2 block">/dev-api/jk-uav/third/controller/uav/droneCtrl</code>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </section>
+          </div>
 
         </div>
       </main>
@@ -144,32 +152,7 @@ const defaultHost = CONFIG.rtmp.defaultHost;
 
     <!-- Scripts -->
     <script type="module" src="/src/scripts/main.js" is:inline></script>
-    
-    <script is:inline>
-      // Toggle disabled modules
-      function toggleDisabledModules() {
-        const content = document.getElementById('disabledModulesContent');
-        const header = document.getElementById('disabledModulesHeader');
-        const icon = document.getElementById('toggleIcon');
-
-        if (!content || !header || !icon) {
-          console.warn('Disabled modules toggle elements missing');
-          return;
-        }
-        
-        if (content.classList.contains('hidden')) {
-          content.classList.remove('hidden');
-          header.classList.add('bg-gray-50');
-          icon.style.transform = 'rotate(180deg)';
-        } else {
-          content.classList.add('hidden');
-          header.classList.remove('bg-gray-50');
-          icon.style.transform = 'rotate(0deg)';
-        }
-      }
-      
-      // Make function globally available
-      window['toggleDisabledModules'] = toggleDisabledModules;
-    </script>
+    <script type="module" src="/src/shared/core/storage.js" is:inline></script>
+    <script type="module" src="/src/scripts/page-manager.js" is:inline></script>
   </body>
 </html>

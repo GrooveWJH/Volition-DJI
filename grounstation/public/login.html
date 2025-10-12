@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <title>登录页面</title>
+    <title>DJI 遥控器登录页面</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       .button-row {
@@ -33,12 +33,16 @@
     <div id="connection-info"></div>
     <ul id="logs"></ul>
     <script>
+      // DJI配置参数 - 这些将由后端动态替换
       const APP_ID = 171440;
       const LICENSE = "krC5HsEFLzVC8xkKM38JCcSxNEQvsQ/7IoiHEJRaulGiPQildia+n/+bF+SO21pk1JTS8CfaNS+fn8qt+17i3Y7uoqtBOOsdtLUQhqPMb0DVea0dmZ7oZhdP2CuQrQSn1bobS3pQ+MW2eEOq0XCcCkpo+HxAC1r5/33yEDxc6NE=";
       const APP_KEY = "b57ab1ee70f0a78e1797c592742e7d4";
-      const MQTT_HOST = "tcp://hostnamehere:1883";
-      const MQTT_USERNAME = "userloginhere";
-      const MQTT_PASSWORD = "userpasswordhere";
+      
+      // MQTT配置参数 - 这些将由后端服务根据配置动态替换
+      const MQTT_HOST = "tcp://{{MQTT_HOST}}:{{MQTT_PORT}}";
+      const MQTT_USERNAME = "{{MQTT_USERNAME}}";
+      const MQTT_PASSWORD = "{{MQTT_PASSWORD}}";
+      
       var fieldList = document.getElementById("logs");
       var connectionInfo = document.getElementById("connection-info");
       connectionInfo.textContent =
@@ -48,14 +52,17 @@
         MQTT_USERNAME +
         " ｜ Password: " +
         MQTT_PASSWORD;
+        
       var log = function (msg) {
         var li = document.createElement("li");
         li.innerText = msg;
         fieldList.appendChild(li);
       };
+      
       var reg_calback = function () {
         log("回调触发🎉 参数：" + Array.from(arguments));
       };
+      
       var loginButton = document.getElementById("login-button");
       loginButton.addEventListener("click", function () {
         log("开始验证平台许可证...");
@@ -76,12 +83,12 @@
         log(
           "加载组件 thing：" +
             window.djiBridge.platformLoadComponent("thing", register_params) +
-            "\n当前状态ℹ️：" +
+            "\\n当前状态ℹ️：" +
             window.djiBridge.thingGetConnectState()
         );
         log(
           "开始连接 thingconn：" +
-            window.djiBridge.thingConnect("userloginhere", "userpasswordhere", "reg_calback")
+            window.djiBridge.thingConnect(MQTT_USERNAME, MQTT_PASSWORD, "reg_calback")
         );
 
         log("Thing 连接状态：" + window.djiBridge.thingGetConnectState());
@@ -101,7 +108,7 @@
           log(
             "组件加载状态：" +
               window.djiBridge.platformIsComponentLoaded("thing") +
-              "\nthing 状态：" +
+              "\\nthing 状态：" +
               window.djiBridge.thingGetConnectState()
           );
         });

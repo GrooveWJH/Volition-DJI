@@ -1,0 +1,21 @@
+---
+const { defaultHost, defaultStreamPath } = Astro.props;
+---
+
+<div class="config">
+  <label>MediaMTX主机:</label>
+  <input type="text" id="host" value={defaultHost} placeholder={defaultHost} />
+
+  <label>流路径:</label>
+  <input type="text" id="streamPath" value={defaultStreamPath} placeholder={defaultStreamPath} />
+
+  <span class="status status-idle" id="connection-status">待连接</span>
+</div>
+
+<div class="controls">
+  <button class="play-btn" onclick="startPlay()">▶️ 开始播放</button>
+  <button class="stop-btn" onclick="stopPlay()">⏹️ 停止播放</button>
+  <button class="debug-btn" onclick="debugVideo()">🔍 调试信息</button>
+  <button class="debug-btn" onclick="testConnection()">🔗 测试连接</button>
+  <button class="debug-btn" onclick="clearLogs()">🧹 清除日志</button>
+</div>
