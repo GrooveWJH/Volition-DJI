@@ -1,0 +1,36 @@
+export function buildTopics(deviceSn, gatewaySn) {
+  return {
+    rcTopics: [
+      { topic: `thing/product/${gatewaySn}/services`, direction: "cloud-to-device" },
+      { topic: `thing/product/${gatewaySn}/osd`, direction: "device-to-cloud" },
+      { topic: `thing/product/${gatewaySn}/state`, direction: "device-to-cloud" },
+      { topic: `thing/product/${gatewaySn}/services_reply`, direction: "device-to-cloud" },
+      { topic: `thing/product/${gatewaySn}/events`, direction: "device-to-cloud" },
+      { topic: `thing/product/${gatewaySn}/events_reply`, direction: "cloud-to-device" },
+      { topic: `thing/product/${gatewaySn}/requests`, direction: "device-to-cloud" },
+      { topic: `thing/product/${gatewaySn}/requests_reply`, direction: "cloud-to-device" },
+      { topic: `sys/product/${gatewaySn}/status`, direction: "device-to-cloud" },
+      { topic: `sys/product/${gatewaySn}/status_reply`, direction: "cloud-to-device" },
+      { topic: `thing/product/${gatewaySn}/property/set`, direction: "cloud-to-device" },
+      { topic: `thing/product/${gatewaySn}/property/set_reply`, direction: "device-to-cloud" },
+      { topic: `thing/product/${gatewaySn}/drc/up`, direction: "device-to-cloud" },
+      { topic: `thing/product/${gatewaySn}/drc/down`, direction: "cloud-to-device" },
+    ],
+    droneTopics: [
+      { topic: `thing/product/${deviceSn}/osd`, direction: "device-to-cloud" },
+      { topic: `thing/product/${deviceSn}/state`, direction: "device-to-cloud" },
+      { topic: `thing/product/${deviceSn}/services`, direction: "cloud-to-device" },
+      { topic: `thing/product/${deviceSn}/services_reply`, direction: "device-to-cloud" },
+      { topic: `thing/product/${deviceSn}/events`, direction: "device-to-cloud" },
+      { topic: `thing/product/${deviceSn}/events_reply`, direction: "cloud-to-device" },
+      { topic: `thing/product/${deviceSn}/requests`, direction: "device-to-cloud" },
+      { topic: `thing/product/${deviceSn}/requests_reply`, direction: "cloud-to-device" },
+      { topic: `sys/product/${deviceSn}/status`, direction: "device-to-cloud" },
+      { topic: `sys/product/${deviceSn}/status_reply`, direction: "cloud-to-device" },
+      { topic: `thing/product/${deviceSn}/property/set`, direction: "cloud-to-device" },
+      { topic: `thing/product/${deviceSn}/property/set_reply`, direction: "device-to-cloud" },
+      { topic: `thing/product/${deviceSn}/drc/up`, direction: "device-to-cloud" },
+      { topic: `thing/product/${deviceSn}/drc/down`, direction: "cloud-to-device" },
+    ],
+  };
+}

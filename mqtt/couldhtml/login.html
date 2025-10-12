@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>登录页面</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      .button-row {
+        display: flex;
+        justify-content: space-between;
+      }
+
+      button {
+        flex: 1;
+        margin: 0 5px;
+      }
+      #connection-info {
+        margin: 12px 0;
+        padding: 10px;
+        border: 1px solid #f39c12;
+        background: #fff8dc;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>DJI 云 API 测试</h1>
+
+    <div class="button-row">
+      <button id="login-button">登录</button>
+      <button id="logout-button">注销</button>
+      <button id="raport-button">状态报告</button>
+    </div>
+    <div id="connection-info"></div>
+    <ul id="logs"></ul>
+    <script>
+      const APP_ID = 171440;
+      const LICENSE = "krC5HsEFLzVC8xkKM38JCcSxNEQvsQ/7IoiHEJRaulGiPQildia+n/+bF+SO21pk1JTS8CfaNS+fn8qt+17i3Y7uoqtBOOsdtLUQhqPMb0DVea0dmZ7oZhdP2CuQrQSn1bobS3pQ+MW2eEOq0XCcCkpo+HxAC1r5/33yEDxc6NE=";
+      const APP_KEY = "b57ab1ee70f0a78e1797c592742e7d4";
+      const MQTT_HOST = "tcp://hostnamehere:1883";
+      const MQTT_USERNAME = "userloginhere";
+      const MQTT_PASSWORD = "userpasswordhere";
+      var fieldList = document.getElementById("logs");
+      var connectionInfo = document.getElementById("connection-info");
+      connectionInfo.textContent =
+        "当前 MQTT 配置 -> Host: " +
+        MQTT_HOST +
+        " ｜ Username: " +
+        MQTT_USERNAME +
+        " ｜ Password: " +
+        MQTT_PASSWORD;
+      var log = function (msg) {
+        var li = document.createElement("li");
+        li.innerText = msg;
+        fieldList.appendChild(li);
+      };
+      var reg_calback = function () {
+        log("回调触发🎉 参数：" + Array.from(arguments));
+      };
+      var loginButton = document.getElementById("login-button");
+      loginButton.addEventListener("click", function () {
+        log("开始验证平台许可证...");
+        var token = window.djiBridge.platformVerifyLicense(
+          APP_ID,
+          APP_KEY,
+          LICENSE
+        );
+        log("平台验证状态：" + window.djiBridge.platformIsVerified());
+
+        var register_params = JSON.stringify({
+          host: MQTT_HOST, // MQTT 地址，例如：tcp://xx.xx.xx.xx:xxx
+          connectCallback: "reg_calback", // 用于接收连接状态回调的 JS 接口
+          username: MQTT_USERNAME,
+          password: MQTT_PASSWORD,
+        });
+        
+        log(
+          "加载组件 thing：" +
+            window.djiBridge.platformLoadComponent("thing", register_params) +
+            "\n当前状态ℹ️：" +
+            window.djiBridge.thingGetConnectState()
+        );
+        log(
+          "开始连接 thingconn：" +
+            window.djiBridge.thingConnect("userloginhere", "userpasswordhere", "reg_calback")
+        );
+
+        log("Thing 连接状态：" + window.djiBridge.thingGetConnectState());
+        // 在此处填写登录信息、密码、网关等。
+      });
+
+      var logoutButton = document.getElementById("logout-button");
+      logoutButton.addEventListener("click", function () {
+        log(
+          "卸载组件：" + window.djiBridge.platformUnloadComponent("thing")
+        );
+      });
+
+      document
+        .getElementById("raport-button")
+        .addEventListener("click", function () {
+          log(
+            "组件加载状态：" +
+              window.djiBridge.platformIsComponentLoaded("thing") +
+              "\nthing 状态：" +
+              window.djiBridge.thingGetConnectState()
+          );
+        });
+
+      log("页面初始化完成，平台验证状态：" + window.djiBridge.platformIsVerified());
+    </script>
+  </body>
+</html>

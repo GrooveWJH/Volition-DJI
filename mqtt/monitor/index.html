@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DJI 云平台消息监控</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24..48,400,0,0"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/base.css" />
+    <link rel="stylesheet" href="styles/topics.css" />
+    <link rel="stylesheet" href="styles/methods.css" />
+    <link rel="stylesheet" href="styles/method-detail.css" />
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script type="module" src="js/main.js"></script>
+  </head>
+  <body>
+    <h1>DJI 云平台消息监控</h1>
+    <div class="card">
+      <div class="form-grid">
+        <div>
+          <label for="host">WebSocket 地址（例如 192.168.31.241）</label>
+          <input id="host" value="192.168.31.240" />
+        </div>
+        <div>
+          <label for="port">WebSocket 端口</label>
+          <input id="port" type="number" value="8083" />
+        </div>
+        <div>
+          <label for="username">用户名（可选）</label>
+          <input id="username" value="admin" />
+        </div>
+        <div>
+          <label for="password">密码（可选）</label>
+          <input id="password" value="302811055wjhhz" />
+        </div>
+        <div>
+          <label for="device-sn">无人机 SN</label>
+          <input id="device-sn" value="1581F7FVC257X00D6KZ2" />
+        </div>
+        <div>
+          <label for="gateway-sn">遥控器 SN</label>
+          <input id="gateway-sn" value="9N9CN8400164WH" />
+        </div>
+        <div>
+          <label for="use-tls">启用 WSS</label>
+          <select id="use-tls">
+            <option value="false">否</option>
+            <option value="true">是</option>
+          </select>
+        </div>
+        <div>
+          <label for="client-id">Client ID（可选）</label>
+          <input id="client-id" placeholder="不填则自动生成" />
+        </div>
+      </div>
+      <div class="actions">
+        <button id="connect">连接并订阅</button>
+        <button id="disconnect" disabled>断开连接</button>
+      </div>
+      <div id="status">状态：未连接</div>
+      <div class="toggle-tip">点击列表行可展开/折叠原始消息</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>遥控器主题</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 240px;">主题</th>
+              <th style="width: 200px;">方向</th>
+              <th style="width: 140px;">最新时间</th>
+            </tr>
+          </thead>
+          <tbody id="rc-topics"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>无人机主题</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 240px;">主题</th>
+              <th style="width: 200px;">方向</th>
+              <th style="width: 140px;">最新时间</th>
+            </tr>
+          </thead>
+          <tbody id="drone-topics"></tbody>
+        </table>
+      </div>
+    </div>
+  </body>
+</html>

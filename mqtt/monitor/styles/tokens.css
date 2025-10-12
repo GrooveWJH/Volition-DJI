@@ -1,0 +1,81 @@
+:root {
+  color-scheme: light;
+  font-family: "Roboto", "Noto Sans SC", sans-serif;
+
+  /* Typography scale */
+  --md-typescale-display-large: 3.5625rem;
+  --md-typescale-display-medium: 2.8125rem;
+  --md-typescale-display-small: 2.25rem;
+  --md-typescale-headline-large: 2rem;
+  --md-typescale-headline-medium: 1.75rem;
+  --md-typescale-headline-small: 1.5rem;
+  --md-typescale-title-large: 1.375rem;
+  --md-typescale-title-medium: 1.125rem;
+  --md-typescale-title-small: 1rem;
+  --md-typescale-body-large: 1rem;
+  --md-typescale-body-medium: 0.9375rem;
+  --md-typescale-body-small: 0.875rem;
+  --md-typescale-label-large: 0.925rem;
+  --md-typescale-label-medium: 0.85rem;
+  --md-typescale-label-small: 0.75rem;
+  --md-font-weight-regular: 400;
+  --md-font-weight-medium: 500;
+  --md-font-weight-semibold: 600;
+
+  /* Color system */
+  --md-color-primary: #3354ff;
+  --md-color-on-primary: #ffffff;
+  --md-color-primary-container: #dbe1ff;
+  --md-color-on-primary-container: #00135d;
+  --md-color-secondary: #5a5f72;
+  --md-color-on-secondary: #ffffff;
+  --md-color-secondary-container: #dfe3f9;
+  --md-color-on-secondary-container: #161b2c;
+  --md-color-tertiary: #7b5260;
+  --md-color-on-tertiary: #ffffff;
+  --md-color-tertiary-container: #ffd9e3;
+  --md-color-on-tertiary-container: #30111c;
+  --md-color-error: #ba1a1a;
+  --md-color-on-error: #ffffff;
+  --md-color-error-container: #ffdad6;
+  --md-color-on-error-container: #410002;
+  --md-color-outline: #777680;
+  --md-color-outline-variant: #c7c6d0;
+  --md-color-background: #fdfbff;
+  --md-color-on-background: #1a1b21;
+  --md-color-surface: #fdfbff;
+  --md-color-surface-variant: #e2e0eb;
+  --md-color-on-surface: #1a1b21;
+  --md-color-on-surface-variant: #45464f;
+  --md-color-surface-container-lowest: #ffffff;
+  --md-color-surface-container-low: #f5f4fb;
+  --md-color-surface-container: #efedf4;
+  --md-color-surface-container-high: #e9e7ef;
+  --md-color-surface-container-highest: #e3e1ea;
+
+  /* Elevation & states */
+  --md-shadow-level1: 0 2px 8px rgba(17, 24, 39, 0.08);
+  --md-shadow-level2: 0 6px 18px rgba(17, 24, 39, 0.1);
+  --md-ink-hover: rgba(51, 84, 255, 0.08);
+  --md-ink-focus: rgba(51, 84, 255, 0.12);
+  --md-ink-pressed: rgba(51, 84, 255, 0.14);
+
+  /* Spacing */
+  --md-spacing-xs: 0.5rem;
+  --md-spacing-sm: 0.75rem;
+  --md-spacing-md: 1rem;
+  --md-spacing-lg: 1.5rem;
+  --md-spacing-xl: 2rem;
+
+  /* Aliases for existing code */
+  --surface: var(--md-color-surface);
+  --surface-card: var(--md-color-surface-container);
+  --outline: var(--md-color-outline);
+  --primary: var(--md-color-primary);
+  --primary-dark: #2c45d8;
+  --on-primary: var(--md-color-on-primary);
+  --error: var(--md-color-error);
+  --success: #1e8e3e;
+  --text-primary: var(--md-color-on-surface);
+  --text-secondary: var(--md-color-on-surface-variant);
+}

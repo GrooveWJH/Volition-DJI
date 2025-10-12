@@ -1,0 +1,4 @@
+FastAPI
+paho-mqtt >= 2
+python-dotenv
+Flask
