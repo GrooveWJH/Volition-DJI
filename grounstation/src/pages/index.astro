@@ -1,6 +1,6 @@
 ---
 import StreamingCard from '../protocols/video-stream/StreamingCard.astro';
-import MqttLoginCard from '../protocols/mqtt/login/MqttLoginCard.astro';
+import RcLoginCard from '../cards/drone/RcLoginCard/RcLoginCard.astro';
 import DrcControlCard from '../protocols/mqtt/drc/DrcControlCard.astro';
 import { CONFIG } from '../shared/config/app-config.js';
 import '../styles/global.css';
@@ -66,8 +66,8 @@ const defaultHost = CONFIG.rtmp.defaultHost;
 
           <!-- Right Column -->
           <div class="space-y-6">
-            <!-- MQTT Login Server -->
-            <MqttLoginCard collapsed={false} />
+            <!-- RC Login Server -->
+            <RcLoginCard collapsed={false} />
 
             <!-- DRC Remote Control -->
             <DrcControlCard collapsed={false} />

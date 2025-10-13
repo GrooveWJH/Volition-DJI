@@ -4,7 +4,7 @@
  */
 
 import { DrcTimeouts } from '../workflow/drc-enums.js';
-import { globalEventManager } from '../../../shared/utils/event-manager.js';
+import { globalEventManager } from '@/shared/utils/event-manager.js';
 
 export class DrcAuthManager {
   constructor() {

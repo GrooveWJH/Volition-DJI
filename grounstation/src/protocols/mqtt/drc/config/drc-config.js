@@ -3,8 +3,8 @@
  * 处理DRC相关配置的验证和管理
  */
 
-import { quickValidate } from '../../shared/utils/validation.js';
-import { globalEventManager } from '../../shared/utils/event-manager.js';
+import { quickValidate } from '@/shared/utils/validation.js';
+import { globalEventManager } from '@/shared/utils/event-manager.js';
 
 export class DrcConfigManager {
   constructor() {

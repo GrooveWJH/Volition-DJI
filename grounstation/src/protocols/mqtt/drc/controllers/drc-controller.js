@@ -7,7 +7,7 @@ import { DrcWorkflowSteps, DrcStatus } from '../workflow/drc-enums.js';
 import { drcConfigManager } from '../config/drc-config.js';
 import { drcAuthManager } from '../auth/drc-auth.js';
 import { drcStatusManager } from '../status/drc-status.js';
-import { globalEventManager } from '../../../shared/utils/event-manager.js';
+import { globalEventManager } from '@/shared/utils/event-manager.js';
 
 /**
  * DRC控制器类
@@ -34,7 +34,7 @@ export class DrcController {
    * 设置事件监听器
    */
   setupEventListeners() {
-    globalEventManager.on('config:drc-updated', (newConfig) => {
+    globalEventManager.on('drc:config-updated', (newConfig) => {
       this.configManager.updateConfig(newConfig);
     });
 

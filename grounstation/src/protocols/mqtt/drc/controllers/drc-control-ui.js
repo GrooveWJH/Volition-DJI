@@ -5,8 +5,8 @@
 
 import { defaultDrcController } from './drc-controller.js';
 import { DrcWorkflowManager, createStepProgressHTML } from '../workflow/drc-workflow.js';
-import { globalEventManager } from '../../../../shared/utils/event-manager.js';
-import { globalStorage } from '../../../../shared/core/storage.js';
+import { globalEventManager } from '@/shared/utils/event-manager.js';
+import { globalStorage } from '@/shared/core/storage.js';
 
 export class DrcControlCardUI {
   constructor() {
@@ -78,7 +78,7 @@ export class DrcControlCardUI {
     const inputs = [this.elements.serialInput, this.elements.timeoutInput, this.elements.retriesInput];
     inputs.forEach(input => {
       if (input && input.dataset.storageKey) {
-        const stored = globalStorage.getValue(input.dataset.storageKey);
+        const stored = globalStorage.getValue(globalStorage.getStorageKey(input.dataset.storageKey));
         if (stored) input.value = stored;
       }
     });
@@ -96,9 +96,9 @@ export class DrcControlCardUI {
     const config = this.getConfigFromInputs();
     this.controller.updateConfig(config);
     
-    globalStorage.saveValue('drc-device-serial', config.serialNumber);
-    globalStorage.saveValue('drc-timeout', config.timeoutMs / 1000);
-    globalStorage.saveValue('drc-retries', config.retryCount);
+    globalStorage.saveValue(globalStorage.getStorageKey('drc-device-serial'), config.serialNumber);
+    globalStorage.saveValue(globalStorage.getStorageKey('drc-timeout'), config.timeoutMs / 1000);
+    globalStorage.saveValue(globalStorage.getStorageKey('drc-retries'), config.retryCount);
   }
 
   async startDrcFlow() {
