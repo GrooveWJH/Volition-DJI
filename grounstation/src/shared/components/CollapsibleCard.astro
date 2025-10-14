@@ -67,13 +67,11 @@ const statusClasses = {
   </div>
   
   <!-- Collapsible Content -->
-  <div 
-    class={`px-6 pb-6 transition-all duration-200 ${collapsed ? 'hidden' : ''}`}
+  <div
+    class={`px-6 pb-6 pt-4 transition-all duration-200 ${collapsed ? 'hidden' : ''}`}
     id={`${id}-content`}
   >
-    <div class="pt-4">
-      <slot />
-    </div>
+    <slot />
   </div>
 </div>
 

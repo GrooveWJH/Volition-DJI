@@ -1,0 +1,397 @@
+---
+// 设备切换器
+---
+
+<link rel="stylesheet" href="/node_modules/tippy.js/dist/tippy.css">
+
+<div id="device-switcher" class="device-switcher device-switcher-container">
+  <div id="device-list" class="device-list"></div>
+  <button id="refresh-btn" class="device-refresh-btn" title="刷新">
+    <span class="material-symbols-outlined">refresh</span>
+  </button>
+  <button id="settings-btn" class="device-settings-btn" title="设置">
+    <span class="material-symbols-outlined">settings</span>
+  </button>
+</div>
+
+<!-- 设置面板 -->
+<div id="settings-panel" class="settings-panel hidden">
+  <div class="settings-card-wide">
+    <div class="settings-header">
+      <h3>系统配置</h3>
+      <button id="close-settings" class="close-btn">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <div class="settings-body">
+      <!-- 两列布局 -->
+      <div class="grid grid-cols-2 gap-6">
+        <!-- 左列：EMQX 配置 -->
+        <div class="config-column">
+          <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-lg">dns</span>
+            EMQX 服务器配置
+          </h4>
+          <div class="space-y-3">
+            <div class="form-group">
+              <label>服务器地址</label>
+              <input type="text" id="input-host" placeholder="192.168.31.116" />
+            </div>
+            <div class="form-group">
+              <label>端口</label>
+              <input type="text" id="input-port" placeholder="18083" />
+            </div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="text" id="input-key" placeholder="API Key" />
+            </div>
+            <div class="form-group">
+              <label>Secret Key</label>
+              <input type="password" id="input-secret" placeholder="Secret Key" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 右列：视频推流配置 -->
+        <div class="config-column">
+          <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-lg">videocam</span>
+            视频推流配置
+          </h4>
+          <div class="space-y-3">
+            <div class="form-group">
+              <label>MediaMTX 服务器地址</label>
+              <input type="text" id="input-video-host" placeholder="192.168.31.14" />
+            </div>
+            <div class="form-group">
+              <label>RTMP 推流地址</label>
+              <input type="text" id="input-rtmp-url" placeholder="rtmp://192.168.31.14:1935/live/cam" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部按钮 -->
+      <div class="settings-footer">
+        <button id="save-btn" class="btn-primary">保存全部</button>
+        <button id="test-btn" class="btn-secondary">测试 EMQX</button>
+      </div>
+      <div id="status-msg" class="connection-status hidden"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 别名编辑面板 -->
+<div id="alias-panel" class="settings-panel hidden">
+  <div class="settings-card">
+    <div class="settings-header">
+      <h3>设备别名</h3>
+      <button id="close-alias">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+    <div class="settings-body">
+      <div class="form-group">
+        <label>设备序列号</label>
+        <input type="text" id="alias-sn" readonly class="bg-gray-100" />
+      </div>
+      <div class="form-group">
+        <label>别名</label>
+        <input type="text" id="alias-input" placeholder="输入设备别名" />
+      </div>
+      <div class="settings-footer">
+        <button id="alias-save-btn" class="btn-primary">保存</button>
+        <button id="alias-clear-btn" class="btn-secondary">清除别名</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" is:inline>
+  import deviceManager from '/src/shared/services/device-manager.js';
+  import deviceContext from '/src/shared/core/device-context.js';
+  import { saveConfig } from '/src/shared/services/device-scanner.js';
+  import tippy from '/node_modules/tippy.js/dist/tippy.esm.js';
+
+  const deviceList = document.getElementById('device-list');
+  const refreshBtn = document.getElementById('refresh-btn');
+  const settingsBtn = document.getElementById('settings-btn');
+  const settingsPanel = document.getElementById('settings-panel');
+  const closeSettings = document.getElementById('close-settings');
+  const saveBtn = document.getElementById('save-btn');
+  const testBtn = document.getElementById('test-btn');
+  const statusMsg = document.getElementById('status-msg');
+
+  const inputHost = document.getElementById('input-host');
+  const inputPort = document.getElementById('input-port');
+  const inputKey = document.getElementById('input-key');
+  const inputSecret = document.getElementById('input-secret');
+
+  const inputVideoHost = document.getElementById('input-video-host');
+  const inputRtmpUrl = document.getElementById('input-rtmp-url');
+
+  const aliasPanel = document.getElementById('alias-panel');
+  const closeAlias = document.getElementById('close-alias');
+  const aliasSn = document.getElementById('alias-sn');
+  const aliasInput = document.getElementById('alias-input');
+  const aliasSaveBtn = document.getElementById('alias-save-btn');
+  const aliasClearBtn = document.getElementById('alias-clear-btn');
+
+  // 别名管理
+  const ALIAS_KEY = 'device_aliases';
+
+  function getAlias(sn) {
+    try {
+      const aliases = JSON.parse(localStorage.getItem(ALIAS_KEY) || '{}');
+      return aliases[sn] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function setAlias(sn, alias) {
+    try {
+      const aliases = JSON.parse(localStorage.getItem(ALIAS_KEY) || '{}');
+      if (alias) {
+        aliases[sn] = alias;
+      } else {
+        delete aliases[sn];
+      }
+      localStorage.setItem(ALIAS_KEY, JSON.stringify(aliases));
+    } catch (e) {
+      console.error('[别名错误]', e);
+    }
+  }
+
+  // 渲染设备列表
+  function render() {
+    const devices = deviceManager.getDevices();
+    const current = deviceContext.getCurrentDevice();
+
+    if (devices.length === 0) {
+      deviceList.innerHTML = '<div class="device-list-empty"><span class="material-symbols-outlined">search_off</span><span>未发现设备</span></div>';
+      return;
+    }
+
+    // 按别名或SN进行字典顺序排序
+    const sortedDevices = devices.sort((a, b) => {
+      const aliasA = getAlias(a.sn) || a.sn;
+      const aliasB = getAlias(b.sn) || b.sn;
+      return aliasA.localeCompare(aliasB);
+    });
+
+    deviceList.innerHTML = sortedDevices.map(dev => {
+      const alias = getAlias(dev.sn);
+      const displayText = alias || dev.sn;
+
+      return `
+      <div class="device-item ${dev.online ? 'online' : 'offline'} ${dev.sn === current ? 'active' : ''}"
+           data-sn="${dev.sn}">
+        <div class="device-status-indicator">
+          <div class="device-status-dot"></div>
+          <button class="device-alias-btn" data-sn="${dev.sn}">···</button>
+        </div>
+        <span class="device-display" data-sn="${dev.sn}">${displayText}</span>
+        ${!dev.online ? `
+        <button class="device-remove-btn" data-sn="${dev.sn}">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+        ` : ''}
+      </div>
+    `}).join('');
+
+    // 绑定 tippy tooltip
+    deviceList.querySelectorAll('.device-display').forEach(el => {
+      const sn = el.dataset.sn;
+      const alias = getAlias(sn);
+
+      if (alias) {
+        tippy(el, {
+          content: `<code style="font-family: monospace; font-size: 12px;">${sn}</code>`,
+          allowHTML: true,
+          placement: 'bottom',
+          arrow: true,
+          theme: 'light'
+        });
+      }
+    });
+
+    // 绑定点击事件
+    deviceList.querySelectorAll('.device-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.device-remove-btn')) return;
+        if (e.target.closest('.device-alias-btn')) return;
+        deviceContext.setCurrentDevice(el.dataset.sn);
+      });
+    });
+
+    // 绑定删除按钮
+    deviceList.querySelectorAll('.device-remove-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`删除设备 ${btn.dataset.sn}?`)) {
+          deviceManager.remove(btn.dataset.sn);
+        }
+      });
+    });
+
+    // 绑定别名按钮 - 打开别名面板
+    deviceList.querySelectorAll('.device-alias-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sn = btn.dataset.sn;
+        const alias = getAlias(sn);
+
+        aliasSn.value = sn;
+        aliasInput.value = alias || '';
+        aliasPanel.classList.remove('hidden');
+      });
+    });
+  }
+
+  // 加载配置
+  function loadConfig() {
+    // EMQX 配置
+    inputHost.value = localStorage.getItem('emqx_host') || '192.168.31.116';
+    inputPort.value = localStorage.getItem('emqx_port') || '18083';
+    inputKey.value = localStorage.getItem('emqx_key') || '';
+    inputSecret.value = localStorage.getItem('emqx_secret') || '';
+
+    // 视频配置
+    inputVideoHost.value = localStorage.getItem('video_host') || '192.168.31.14';
+    inputRtmpUrl.value = localStorage.getItem('video_rtmp_url') || 'rtmp://192.168.31.14:1935/live/cam';
+  }
+
+  // 保存配置
+  function save() {
+    // 保存 EMQX 配置
+    const config = {
+      host: inputHost.value,
+      port: inputPort.value,
+      apiKey: inputKey.value,
+      secretKey: inputSecret.value
+    };
+
+    saveConfig(config);
+
+    // 保存视频配置
+    localStorage.setItem('video_host', inputVideoHost.value);
+    localStorage.setItem('video_rtmp_url', inputRtmpUrl.value);
+
+    // 触发视频配置更新事件
+    window.dispatchEvent(new CustomEvent('video-config-updated', {
+      detail: {
+        host: inputVideoHost.value,
+        rtmpUrl: inputRtmpUrl.value
+      }
+    }));
+
+    showStatus('保存成功', 'success');
+
+    setTimeout(() => {
+      deviceManager.scan();
+      settingsPanel.classList.add('hidden');
+    }, 1000);
+  }
+
+  // 测试连接
+  async function test() {
+    testBtn.disabled = true;
+    testBtn.textContent = '测试中...';
+
+    const config = {
+      host: inputHost.value,
+      port: inputPort.value,
+      apiKey: inputKey.value,
+      secretKey: inputSecret.value
+    };
+
+    saveConfig(config);
+
+    try {
+      await deviceManager.scan();
+      const devices = deviceManager.getDevices();
+      showStatus(`成功！发现 ${devices.length} 个设备`, 'success');
+    } catch (err) {
+      showStatus(`失败: ${err.message}`, 'error');
+    } finally {
+      testBtn.disabled = false;
+      testBtn.textContent = '测试';
+    }
+  }
+
+  // 显示状态
+  function showStatus(msg, type) {
+    statusMsg.textContent = msg;
+    statusMsg.className = `connection-status ${type}`;
+    statusMsg.classList.remove('hidden');
+    setTimeout(() => statusMsg.classList.add('hidden'), 3000);
+  }
+
+  // 监听设备变化
+  deviceManager.addListener(render);
+  deviceContext.addListener(render);
+
+  // 事件绑定
+  refreshBtn.addEventListener('click', () => {
+    refreshBtn.classList.add('refreshing');
+    deviceManager.scan().then(() => {
+      setTimeout(() => refreshBtn.classList.remove('refreshing'), 500);
+    });
+  });
+
+  settingsBtn.addEventListener('click', () => {
+    loadConfig();
+    settingsPanel.classList.remove('hidden');
+  });
+
+  closeSettings.addEventListener('click', () => {
+    settingsPanel.classList.add('hidden');
+  });
+
+  saveBtn.addEventListener('click', save);
+  testBtn.addEventListener('click', test);
+
+  settingsPanel.addEventListener('click', (e) => {
+    if (e.target === settingsPanel) {
+      settingsPanel.classList.add('hidden');
+    }
+  });
+
+  // 别名面板事件
+  closeAlias.addEventListener('click', () => {
+    aliasPanel.classList.add('hidden');
+  });
+
+  aliasSaveBtn.addEventListener('click', () => {
+    const sn = aliasSn.value;
+    const alias = aliasInput.value.trim();
+
+    setAlias(sn, alias);
+    aliasPanel.classList.add('hidden');
+    render();
+  });
+
+  aliasClearBtn.addEventListener('click', () => {
+    const sn = aliasSn.value;
+    setAlias(sn, '');
+    aliasPanel.classList.add('hidden');
+    render();
+  });
+
+  aliasPanel.addEventListener('click', (e) => {
+    if (e.target === aliasPanel) {
+      aliasPanel.classList.add('hidden');
+    }
+  });
+
+  // 初始化
+  loadConfig();
+  render();
+  deviceManager.start();
+
+  // 清理
+  window.addEventListener('beforeunload', () => {
+    deviceManager.stop();
+  });
+</script>

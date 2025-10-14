@@ -1,4 +1,4 @@
-import CONFIG from '../config/app-config.js';
+import CONFIG from '@/shared/config/app-config.js';
 
 // 终端日志管理
 export class TerminalLogger {

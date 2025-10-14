@@ -1,5 +1,5 @@
 // 主入口文件 - 轻量化协议管理器
-import { videoStreamManager } from '../protocols/video-stream/stream-manager.js';
+import { videoStreamManager } from '@/cards/StreamingCard/stream-manager.js';
 
 console.log('🚀 初始化协议测试系统...');
 

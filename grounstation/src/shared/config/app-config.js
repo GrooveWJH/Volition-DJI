@@ -3,7 +3,7 @@
  * 集成所有模块配置并提供统一接口
  */
 
-import { MQTT_CONFIG, DRC_CONFIG, getMqttEnvironmentOverrides } from './mqtt-config.js';
+import { MQTT_CONFIG, DRC_CONFIG } from './mqtt-config.js';
 import { RTMP_CONFIG, WEBRTC_CONFIG, CONNECTION_CONFIG, STREAM_QUALITY_CONFIG, getVideoEnvironmentOverrides } from './video-config.js';
 
 /**
@@ -137,43 +137,23 @@ export function validateConfig() {
  * 环境配置覆盖
  */
 export function loadEnvironmentConfig() {
-  // 获取各模块的环境变量覆盖
-  const mqttOverrides = getMqttEnvironmentOverrides();
+  // 获取视频模块的环境变量覆盖
   const videoOverrides = getVideoEnvironmentOverrides();
-  
-  // 应用MQTT配置覆盖
-  if (Object.keys(mqttOverrides).length > 0) {
-    mergeConfig(CONFIG.mqtt, mqttOverrides);
-  }
-  
+
   // 应用视频配置覆盖
   if (Object.keys(videoOverrides).length > 0) {
     if (videoOverrides.rtmp) mergeConfig(CONFIG.rtmp, videoOverrides.rtmp);
     if (videoOverrides.webrtc) mergeConfig(CONFIG.webrtc, videoOverrides.webrtc);
     if (videoOverrides.quality) mergeConfig(CONFIG.streamQuality, videoOverrides.quality);
   }
-  
+
   // 通用环境变量覆盖
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
-    
+
     if (params.has('debug')) {
       CONFIG.debug.verbose = params.get('debug') === 'true';
     }
-  }
-  
-  // 从localStorage读取用户自定义配置
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const userConfig = localStorage.getItem('protocol_test_config');
-      if (userConfig) {
-        const parsed = JSON.parse(userConfig);
-        // 深度合并配置
-        mergeConfig(CONFIG, parsed);
-      }
-    }
-  } catch (error) {
-    console.warn('无法加载用户配置:', error);
   }
 }
 
@@ -196,36 +176,6 @@ function mergeConfig(target, source) {
 }
 
 /**
- * 保存用户配置到localStorage
- * @param {Object} configOverrides - 配置覆盖对象
- * @returns {boolean} 是否保存成功
- */
-export function saveUserConfig(configOverrides) {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('protocol_test_config', JSON.stringify(configOverrides));
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('无法保存用户配置:', error);
-    return false;
-  }
-}
-
-/**
- * 重置配置到默认值
- */
-export function resetConfig() {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem('protocol_test_config');
-  }
-  if (typeof window !== 'undefined') {
-    window.location.reload();
-  }
-}
-
-/**
  * 获取配置摘要信息
  * @returns {Object} 配置摘要
  */
@@ -240,14 +190,13 @@ export function getConfigSummary() {
       url: CONFIG.mqtt.buildConnectionUrl(),
       host: CONFIG.mqtt.defaultHost,
       port: CONFIG.mqtt.defaultPort,
-      gateway: CONFIG.mqtt.defaultGatewaySN
+      currentDevice: CONFIG.mqtt.getCurrentGatewaySN()
     },
     webrtc: {
       port: CONFIG.webrtc.defaultPort,
       iceServers: CONFIG.webrtc.iceServers.length
     },
     drc: {
-      serialNumber: CONFIG.drc.defaultSerialNumber,
       timeout: CONFIG.drc.timeoutSeconds,
       retries: CONFIG.drc.maxRetries
     }

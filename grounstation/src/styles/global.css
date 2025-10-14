@@ -86,4 +86,234 @@
   .status-info {
     @apply bg-blue-100 text-blue-800;
   }
+
+  /* Drone Device Switcher - 多机切换器 */
+  .device-switcher {
+    @apply fixed top-4 left-1/2 -translate-x-1/2 z-50;
+  }
+
+  .device-switcher-container {
+    @apply bg-white/95 backdrop-blur-md rounded-full shadow-xl border border-gray-200 px-4 py-2 flex items-center gap-3;
+  }
+
+  .device-list {
+    @apply flex items-center gap-2 max-w-3xl overflow-x-auto py-1 px-1;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 10+ */
+  }
+
+  .device-list::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  .device-list-empty {
+    @apply flex items-center gap-2 text-gray-400 text-sm px-3 py-1;
+  }
+
+  .device-list-empty .material-symbols-outlined {
+    @apply text-lg;
+  }
+
+  .device-item {
+    @apply relative flex items-center gap-2 px-4 py-2 rounded-full border-2 cursor-pointer transition-all duration-200 whitespace-nowrap;
+    @apply border-gray-300 bg-white hover:bg-gray-50;
+  }
+
+  .device-item.online {
+    @apply border-green-500 bg-green-50 hover:bg-green-100;
+  }
+
+  .device-item.offline {
+    @apply border-gray-400 bg-gray-100 hover:bg-gray-200 opacity-60;
+  }
+
+  .device-item.active {
+    @apply ring-4 ring-blue-500;
+  }
+
+  .device-item.online.active {
+    @apply bg-green-100 border-green-600;
+  }
+
+  .device-status-indicator {
+    @apply relative flex items-center justify-center w-2 h-2;
+  }
+
+  .device-status-dot {
+    @apply w-2 h-2 rounded-full absolute;
+  }
+
+  .device-item.online .device-status-dot {
+    @apply bg-green-500;
+    animation: pulse-green 2s ease-in-out infinite;
+  }
+
+  .device-item.offline .device-status-dot {
+    @apply bg-gray-400;
+  }
+
+  .device-item:hover .device-status-dot {
+    display: none;
+  }
+
+  @keyframes pulse-green {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .device-display {
+    @apply text-sm font-semibold text-gray-700 cursor-pointer;
+  }
+
+  .device-item.online .device-display {
+    @apply text-green-800;
+  }
+
+  .device-item.offline .device-display {
+    @apply text-gray-500;
+  }
+
+  .device-alias-add-btn {
+    @apply hidden absolute -top-1 -right-1 w-5 h-5 bg-gray-500 text-white rounded-full items-center justify-center transition-all duration-200;
+    @apply hover:bg-gray-600;
+    font-size: 10px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .device-alias-btn {
+    @apply hidden absolute items-center justify-center text-gray-700 hover:text-gray-900 transition-all duration-200;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .device-item:hover .device-alias-btn {
+    @apply flex;
+  }
+
+  .device-remove-btn {
+    @apply hidden absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full items-center justify-center transition-all duration-200;
+  }
+
+  .device-remove-btn .material-symbols-outlined {
+    @apply text-xs;
+  }
+
+  .device-item:hover .device-remove-btn {
+    @apply flex;
+  }
+
+  .device-refresh-btn {
+    @apply flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-all duration-200;
+  }
+
+  .device-refresh-btn .material-symbols-outlined {
+    @apply text-lg;
+  }
+
+  .device-refresh-btn.refreshing .material-symbols-outlined {
+    animation: spin 0.5s linear infinite;
+  }
+
+  .device-settings-btn {
+    @apply flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-all duration-200;
+  }
+
+  .device-settings-btn .material-symbols-outlined {
+    @apply text-lg;
+  }
+
+  /* Settings Panel */
+  .settings-panel {
+    @apply fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center;
+    @apply transition-opacity duration-200;
+  }
+
+  .settings-panel.hidden {
+    @apply opacity-0 pointer-events-none;
+  }
+
+  .settings-card {
+    @apply bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden;
+  }
+
+  .settings-card-wide {
+    @apply bg-white rounded-xl shadow-2xl max-w-4xl w-full mx-4 overflow-hidden;
+  }
+
+  .config-column {
+    @apply p-4 bg-gray-50 rounded-lg;
+  }
+
+  .settings-header {
+    @apply bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between;
+  }
+
+  .settings-header h3 {
+    @apply text-lg font-semibold;
+  }
+
+  .close-btn {
+    @apply w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors;
+  }
+
+  .close-btn .material-symbols-outlined {
+    @apply text-xl;
+  }
+
+  .settings-body {
+    @apply p-6 space-y-4;
+  }
+
+  .form-group {
+    @apply space-y-2;
+  }
+
+  .form-group label {
+    @apply block text-sm font-medium text-gray-700;
+  }
+
+  .form-group input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors;
+  }
+
+  .settings-footer {
+    @apply flex gap-3 mt-6;
+  }
+
+  .btn-primary {
+    @apply flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+
+  .btn-secondary {
+    @apply flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+
+  .connection-status {
+    @apply mt-4 px-4 py-3 rounded-lg text-sm font-medium;
+  }
+
+  .connection-status.success {
+    @apply bg-green-100 text-green-800 border border-green-200;
+  }
+
+  .connection-status.error {
+    @apply bg-red-100 text-red-800 border border-red-200;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
 }
