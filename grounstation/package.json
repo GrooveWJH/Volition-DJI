@@ -12,6 +12,7 @@
   "dependencies": {
     "@popperjs/core": "^2.11.8",
     "astro": "^4.15.0",
+    "mqtt": "^5.10.1",
     "tippy.js": "^6.3.7"
   },
   "devDependencies": {

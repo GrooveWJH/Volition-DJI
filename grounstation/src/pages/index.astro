@@ -1,8 +1,9 @@
 ---
 import StreamingCard from '@/cards/StreamingCard/StreamingCard.astro';
-import DrcControlCard from '@/cards/DrcControlCard/DrcControlCard.astro';
+import CloudControlCard from '@/cards/CloudControlCard/CloudControlCard.astro';
 import DroneDeviceSwitcher from '@/shared/components/DroneDeviceSwitcher.astro';
 import { CONFIG } from '@/shared/config/app-config.js';
+import { CARD_CONFIG } from '@/shared/config/card-config.js';
 import '@/styles/global.css';
 
 const defaultRtmpUrl = CONFIG.rtmp.getDefaultUrl();
@@ -58,14 +59,14 @@ const defaultHost = CONFIG.rtmp.defaultHost;
           description="实时视频推送与播放"
           rtmpUrl={defaultRtmpUrl}
           host={defaultHost}
-          collapsed={false}
+          collapsed={CARD_CONFIG.streaming.collapsed}
         />
       </div>
 
       <!-- Right Column -->
       <div class="space-y-6">
-        <!-- DRC Remote Control -->
-        <DrcControlCard collapsed={false} />
+        <!-- Cloud Control Authorization -->
+        <CloudControlCard collapsed={CARD_CONFIG.cloudControl.collapsed} />
 
         <!-- Disabled Modules -->
         <div class="material-card">
