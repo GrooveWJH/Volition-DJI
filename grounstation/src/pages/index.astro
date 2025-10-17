@@ -1,9 +1,8 @@
 ---
 import StreamingCard from '@/cards/StreamingCard/StreamingCard.astro';
 import CloudControlCard from '@/cards/CloudControlCard/CloudControlCard.astro';
-import DroneDeviceSwitcher from '@/shared/components/DroneDeviceSwitcher.astro';
-import { CONFIG } from '@/shared/config/app-config.js';
-import { CARD_CONFIG } from '@/shared/config/card-config.js';
+import DroneDeviceSwitcher from '@/components/DroneDeviceSwitcher.astro';
+import { CONFIG, CARD_CONFIG } from '@/config/index.js';
 import '@/styles/global.css';
 
 const defaultRtmpUrl = CONFIG.rtmp.getDefaultUrl();
@@ -140,7 +139,7 @@ const defaultHost = CONFIG.rtmp.defaultHost;
 
     <!-- Scripts -->
     <script type="module" src="/src/scripts/main.js" is:inline></script>
-    <script type="module" src="/src/shared/core/storage.js" is:inline></script>
+    <script type="module" src="/src/lib/utils.js" is:inline></script>
     <script type="module" src="/src/scripts/page-manager.js" is:inline></script>
   </body>
 </html>

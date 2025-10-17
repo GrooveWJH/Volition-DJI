@@ -3,7 +3,7 @@
  * 处理UI交互、状态更新和用户控制操作
  */
 
-import { CONFIG } from '@/shared/config/app-config.js';
+import { CONFIG } from '@/config/index.js';
 
 /**
  * 视频流控制器类

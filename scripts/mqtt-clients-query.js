@@ -1,16 +1,39 @@
 #!/usr/bin/env node
 
 /**
- * EMQX客户端查询脚本
- * 用于查询EMQX Broker的连接客户端信息并格式化输出
+ * EMQX客户端查询脚本 - 快速探测MQTT服务器上的DJI设备SN号
+ * 用于查询EMQX Broker的连接客户端信息并过滤DJI设备
+ *
+ * 使用方法:
+ * 1. 修改下方的配置参数 (apiKey, secretKey, apiUrl 等)
+ * 2. 运行: node mqtt-clients-query.js
+ * 3. 查看输出的DJI设备SN号列表
  */
 
-// ==================== 配置 ====================
-// 从环境变量或命令行参数读取配置
+// ==================== 配置参数 ====================
+// 请在此处直接修改配置参数
 const EMQX_CONFIG = {
-  apiKey: process.env.EMQX_API_KEY || '',
-  secretKey: process.env.EMQX_SECRET_KEY || '',
-  apiUrl: process.env.EMQX_API_URL || 'http://127.0.0.1:18083/api/v5/clients',
+  // EMQX API 认证信息 (必须填写)
+  apiKey: '29275299af4a3366',
+  secretKey: '0WrSJ49ADbOnNIa439CyYGWOUBKnhPhejSPFCqdRR9AcvE',
+
+  // EMQX API 地址
+  apiUrl: 'http://127.0.0.1:18083/api/v5/clients',
+
+  // DJI设备ClientID匹配规则 (14位大写字母和数字)
+  djiClientPattern: /^[A-Z0-9]{14}$/,
+
+  // 输出模式: 'simple' | 'json' | 'full'
+  // simple: 纯文本输出SN列表 (推荐用于快速查看)
+  // json: JSON格式输出SN数组 (用于程序调用)
+  // full: 完整的设备信息 (包含连接状态、流量统计等)
+  outputMode: 'full',
+
+  // 是否只显示DJI设备 (true: 只显示DJI设备, false: 显示所有客户端)
+  onlyDjiDevices: true,
+
+  // 是否显示详细日志 (true: 显示查询过程, false: 仅输出结果)
+  verbose: true
 };
 
 // ==================== 颜色工具 ====================
@@ -46,11 +69,11 @@ function colorize(text, color) {
 }
 
 // ==================== HTTP 请求 ====================
-async function fetchClients(silent = false) {
+async function fetchClients() {
   const auth = Buffer.from(`${EMQX_CONFIG.apiKey}:${EMQX_CONFIG.secretKey}`).toString('base64');
 
   try {
-    if (!silent) {
+    if (EMQX_CONFIG.verbose) {
       console.log(colorize('\n🔍 正在查询 EMQX 客户端列表...', colors.cyan));
       console.log(colorize(`📡 API: ${EMQX_CONFIG.apiUrl}`, colors.dim));
       console.log(colorize('━'.repeat(80), colors.dim));
@@ -69,9 +92,21 @@ async function fetchClients(silent = false) {
     }
 
     const data = await response.json();
+
+    // 如果启用了DJI设备过滤，只返回匹配的设备
+    if (EMQX_CONFIG.onlyDjiDevices && data.data) {
+      data.data = data.data.filter(client =>
+        EMQX_CONFIG.djiClientPattern.test(client.clientid)
+      );
+
+      if (EMQX_CONFIG.verbose) {
+        console.log(colorize(`📱 发现 ${data.data.length} 个DJI设备`, colors.green));
+      }
+    }
+
     return data;
   } catch (error) {
-    if (!silent) {
+    if (EMQX_CONFIG.verbose) {
       console.error(colorize(`\n❌ 请求失败: ${error.message}`, colors.red));
     }
     process.exit(1);
@@ -196,109 +231,71 @@ function printSummary(data) {
   console.log(colorize('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', colors.bright + colors.cyan));
 }
 
-// ==================== ClientID 列表输出 ====================
-function printClientIDs(data) {
+// ==================== DJI设备SN输出 ====================
+function printDjiDevicesSimple(data) {
   const clients = data.data;
-  const clientIds = clients.map(c => c.clientid);
-
-  // 只输出纯 JSON，方便其他程序调用
-  console.log(JSON.stringify(clientIds));
-}
-
-function printClientIDsSimple(data) {
-  const clients = data.data;
-
-  console.log(colorize('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', colors.bright + colors.green));
-  console.log(colorize('  📝 Client IDs (纯文本)', colors.bright + colors.green));
-  console.log(colorize('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', colors.bright + colors.green));
 
   if (clients.length === 0) {
-    console.log(colorize('\n  (无连接客户端)', colors.dim));
-    return;
-  }
-
-  console.log('');
-  clients.forEach((client) => {
-    console.log(`  ${client.clientid}`);
-  });
-  console.log(colorize('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', colors.bright + colors.green));
-}
-
-function printClientIDsJSON(data) {
-  const clients = data.data;
-  const clientIds = clients.map(c => c.clientid);
-
-  console.log(colorize('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', colors.bright + colors.magenta));
-  console.log(colorize('  🔧 Client IDs (JSON)', colors.bright + colors.magenta));
-  console.log(colorize('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', colors.bright + colors.magenta));
-
-  console.log('\n' + JSON.stringify(clientIds, null, 2));
-  console.log(colorize('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', colors.bright + colors.magenta));
-}
-
-// ==================== 命令行参数解析 ====================
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const mode = args[0] || 'full';
-
-  const validModes = ['full', 'ids', 'simple', 'json'];
-
-  if (!validModes.includes(mode)) {
-    console.log(colorize('\n❌ 无效的模式参数', colors.red));
-    console.log(colorize('\n使用方法:', colors.yellow));
-    console.log(colorize('  node emqx-client-query.js [mode]', colors.cyan));
-    console.log(colorize('\n可用模式:', colors.yellow));
-    console.log(colorize('  full   ', colors.cyan) + ' - 显示完整的客户端信息（默认）');
-    console.log(colorize('  ids    ', colors.cyan) + ' - 输出纯 JSON 格式的客户端ID数组（用于程序调用）');
-    console.log(colorize('  simple ', colors.cyan) + ' - 只显示客户端ID（纯文本，每行一个）');
-    console.log(colorize('  json   ', colors.cyan) + ' - 以JSON格式输出客户端ID数组（带格式化）');
-    console.log('');
-    process.exit(1);
-  }
-
-  return mode;
-}
-
-// ==================== 主函数 ====================
-async function main() {
-  const mode = parseArgs();
-
-  // ids 模式静默运行，不输出额外信息
-  if (mode !== 'ids') {
-    console.clear();
-    console.log(colorize('╔════════════════════════════════════════════════════════════════════════════╗', colors.bright + colors.blue));
-    console.log(colorize('║                        EMQX 客户端查询工具                                 ║', colors.bright + colors.blue));
-    console.log(colorize('╚════════════════════════════════════════════════════════════════════════════╝', colors.bright + colors.blue));
-  }
-
-  const data = await fetchClients(mode === 'ids');
-
-  if (!data.data || data.data.length === 0) {
-    if (mode === 'ids') {
-      // ids 模式返回空数组
-      console.log('[]');
-    } else {
-      console.log(colorize('\n⚠️  未找到任何连接的客户端', colors.yellow));
+    if (EMQX_CONFIG.verbose) {
+      console.log(colorize('\n⚠️  未发现任何DJI设备', colors.yellow));
     }
     return;
   }
 
-  if (mode !== 'ids') {
-    console.log(colorize(`\n✅ 成功获取 ${data.meta.count} 个客户端信息`, colors.green));
+  console.log(colorize('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', colors.bright + colors.green));
+  console.log(colorize('  📱 DJI设备SN列表', colors.bright + colors.green));
+  console.log(colorize('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', colors.bright + colors.green));
+
+  console.log('');
+  clients.forEach((client) => {
+    console.log(`  ${colorize(client.clientid, colors.bright)}`);
+  });
+  console.log(colorize('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n', colors.bright + colors.green));
+}
+
+function printDjiDevicesJSON(data) {
+  const clients = data.data;
+  const deviceSNs = clients.map(c => c.clientid);
+
+  console.log(JSON.stringify(deviceSNs, null, 2));
+}
+
+
+// ==================== 主函数 ====================
+async function main() {
+  const mode = EMQX_CONFIG.outputMode;
+
+  if (EMQX_CONFIG.verbose) {
+    console.clear();
+    console.log(colorize('╔════════════════════════════════════════════════════════════════════════════╗', colors.bright + colors.blue));
+    console.log(colorize('║                   DJI设备MQTT客户端探测工具                                ║', colors.bright + colors.blue));
+    console.log(colorize('╚════════════════════════════════════════════════════════════════════════════╝', colors.bright + colors.blue));
   }
 
-  // 根据模式输出不同格式
-  switch (mode) {
-    case 'ids':
-      printClientIDs(data);
-      break;
+  const data = await fetchClients();
 
+  if (!data.data || data.data.length === 0) {
+    if (mode === 'json') {
+      console.log('[]');
+    } else if (EMQX_CONFIG.verbose) {
+      console.log(colorize('\n⚠️  未找到任何连接的设备', colors.yellow));
+    }
+    return;
+  }
+
+  if (EMQX_CONFIG.verbose) {
+    const deviceType = EMQX_CONFIG.onlyDjiDevices ? 'DJI设备' : '客户端';
+    console.log(colorize(`\n✅ 成功获取 ${data.data.length} 个${deviceType}`, colors.green));
+  }
+
+  // 根据配置的输出模式输出不同格式
+  switch (mode) {
     case 'simple':
-      printClientIDsSimple(data);
+      printDjiDevicesSimple(data);
       break;
 
     case 'json':
-      printClientIDsJSON(data);
+      printDjiDevicesJSON(data);
       break;
 
     case 'full':

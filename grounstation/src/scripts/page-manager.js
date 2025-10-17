@@ -34,25 +34,15 @@ export function showConfigMenu() {
   const menu = `
     <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;" onclick="this.remove()">
       <div style="background: white; padding: 24px; border-radius: 8px; max-width: 400px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);" onclick="event.stopPropagation()">
-        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #1f2937;">配置管理</h3>
-        
+        <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #1f2937;">系统信息</h3>
+
         <div style="display: flex; flex-direction: column; gap: 8px;">
-          <button onclick="showStorageStats()" style="width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
-            📊 查看存储统计
-          </button>
-          
-          <button onclick="exportConfig()" style="width: 100%; padding: 12px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
-            📥 导出配置
-          </button>
-          
-          <button onclick="importConfig()" style="width: 100%; padding: 12px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
-            📤 导入配置
-          </button>
-          
-          <button onclick="if(confirm('确定要清除所有保存的配置吗？')) clearAllConfig()" style="width: 100%; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
-            🗑️ 清除所有配置
-          </button>
-          
+          <div style="padding: 12px; background: #f3f4f6; border-radius: 6px; font-size: 14px;">
+            <strong>地面站控制台</strong><br>
+            版本: v1.0.0<br>
+            状态: 运行中
+          </div>
+
           <button onclick="this.closest('[style*=\"position: fixed\"]').remove()" style="width: 100%; padding: 12px; background: #6b7280; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;">
             关闭
           </button>
@@ -60,7 +50,7 @@ export function showConfigMenu() {
       </div>
     </div>
   `;
-  
+
   document.body.insertAdjacentHTML('beforeend', menu);
 }
 

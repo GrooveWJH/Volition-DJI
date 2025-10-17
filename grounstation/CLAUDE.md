@@ -51,7 +51,25 @@ return cardStateManager.register(this, 'cardId', {
 this.status = 'active';  // Auto-saved to DeviceStateManager[currentSN]['cardId']
 ```
 
-**Critical**: See `CARD_STATE_MANAGEMENT_GUIDE.md` for complete implementation details. This pattern allows cards to maintain separate state for each device without manual state management.
+This pattern allows cards to maintain separate state for each device without manual state management.
+
+#### Topic Service Layer Architecture
+
+Modern abstraction layer for MQTT service calls:
+- **JSON Configuration**: Services defined in `topic-templates.json` for easy manual editing
+- **Template Manager**: Parses config and builds topic/message structures
+- **Service Manager**: High-level API for service calls with timeout/retry handling
+- **Message Router**: Unified message routing with rule-based dispatching
+
+```javascript
+// Modern service call pattern:
+import topicServiceManager from '@/shared/services/topic-service-manager.js';
+
+const result = await topicServiceManager.callService(sn, 'cloud_control_auth', {
+  user_id: 'pilot123',
+  user_callsign: 'Station1'
+});
+```
 
 #### MQTT Connection Pool
 
@@ -61,7 +79,7 @@ Global singleton manages MQTT connections:
 - **Connection persistence**: Connections stay alive until device goes offline
 - **Access**: `window.mqttManager.getCurrentConnection()`
 
-**Critical**: See `MQTT_CONNECTION_GUIDE.md` for usage patterns. Never create MQTT connections manually in Cards.
+Never create MQTT connections manually in Cards.
 
 ### Directory Structure
 
@@ -73,24 +91,24 @@ src/
 │       ├── controllers/      # Business logic
 │       ├── config/           # Card-specific config
 │       └── [feature-modules] # Workflow, auth, etc.
-├── shared/
-│   ├── core/                 # Core services (MUST READ)
-│   │   ├── device-context.js          # Current device SN tracker
-│   │   ├── device-state-manager.js    # State storage engine
-│   │   ├── card-state-proxy.js        # Proxy interceptor
-│   │   └── card-state-manager.js      # State management entry point
-│   ├── services/             # MQTT, device scanning
-│   │   ├── mqtt-connection-manager.js # MQTT connection pool
-│   │   ├── mqtt-client-wrapper.js     # Single MQTT client
-│   │   └── device-manager.js          # Device discovery (EMQX API)
-│   ├── config/               # Configuration files
-│   │   ├── card-config.js    # Card collapse state
-│   │   └── mqtt-config.js    # MQTT connection config
-│   └── components/           # Shared UI components
-│       ├── DroneDeviceSwitcher.astro  # Top device selector
-│       └── CollapsibleCard.astro      # Card wrapper
+├── lib/                      # Core library (consolidated)
+│   ├── state.js             # State management (device context, card state, proxies)
+│   ├── mqtt.js              # MQTT connection pool and client wrappers
+│   ├── services.js          # Service layer (topic service, message router, templates)
+│   ├── devices.js           # Device management and EMQX scanning
+│   ├── utils.js             # Utilities (validation, events, helpers)
+│   └── debug.js             # Centralized logging system
+├── config/                   # Configuration files
+│   ├── index.js             # Unified configuration (app, cards, mqtt, video)
+│   └── topic-templates.json # Service definitions (JSON)
+├── components/               # Shared UI components
+│   ├── DroneDeviceSwitcher.astro  # Top device selector
+│   └── CollapsibleCard.astro      # Card wrapper
 └── pages/
-    └── index.astro           # Main page
+    ├── index.astro           # Main ground station
+    ├── debug.astro           # Debug console (like Linux dmesg)
+    └── api/
+        └── emqx-clients.js   # Simplified EMQX API (direct fetch)
 ```
 
 ### Data Flow for Device Switching
@@ -127,7 +145,7 @@ DeviceContext.setCurrentDevice('SN-2')
 1. Create card in `src/cards/[CardName]/`
 2. In Card's controller constructor:
    ```javascript
-   import cardStateManager from '@/shared/core/card-state-manager.js';
+   import { cardStateManager } from '@/lib/state.js';
 
    constructor() {
      // Define state properties
@@ -148,7 +166,7 @@ DeviceContext.setCurrentDevice('SN-2')
    }
    ```
 
-3. Add to `src/shared/config/card-config.js`:
+3. Add to `src/config/index.js`:
    ```javascript
    export const CARD_CONFIG = {
      uniqueCardId: {
@@ -164,11 +182,33 @@ DeviceContext.setCurrentDevice('SN-2')
 
 ### Using MQTT in a Card
 
-```javascript
-// Get current device connection
-const connection = window.mqttManager.getCurrentConnection();
+Modern approach using Topic Service Layer:
 
-if (connection && connection.isConnected()) {
+```javascript
+import { topicServiceManager } from '@/lib/services.js';
+
+// Service call (preferred method)
+const result = await topicServiceManager.callService(sn, 'cloud_control_auth', {
+  user_id: 'pilot123',
+  user_callsign: 'Station1'
+});
+
+if (result.success) {
+  console.log('Service successful:', result.data);
+} else {
+  console.error('Service failed:', result.error);
+}
+```
+
+Legacy direct MQTT approach (avoid for new code):
+
+```javascript
+import { mqttManager } from '@/lib/mqtt.js';
+
+// Get current device connection
+const connection = mqttManager.getCurrentConnection();
+
+if (connection && connection.isConnected) {
   // Subscribe
   connection.subscribe('topic', (message) => {
     console.log(message);
@@ -177,46 +217,63 @@ if (connection && connection.isConnected()) {
   // Publish
   await connection.publish('topic', { data: 'value' });
 }
-
-// Or use manager methods directly
-const sn = deviceContext.getCurrentDevice();
-await window.mqttManager.publish(sn, 'topic', payload);
 ```
 
 ## Configuration Files
 
-- **`card-config.js`**: Controls default collapsed state of all cards
-- **`mqtt-config.js`**: MQTT broker settings, default subscriptions, connection states
-- **`app-config.js`**: General app config (DRC, video, etc.)
+- **`config/index.js`**: Unified configuration (app, cards, mqtt, video, emqx settings)
+- **`config/topic-templates.json`**: Service definitions with topic templates, timeouts, parameters (JSON format for easy manual editing)
 
 ## Important Constraints
 
-1. **Never modify Card business logic for state management**: Use CardStateManager proxy pattern
-2. **Never create MQTT connections manually**: Use `window.mqttManager`
-3. **State properties must be serializable**: No DOM elements, functions, or circular references
-4. **Card controllers are singletons**: Exported as `new ClassName()` at bottom of file
-5. **Astro SSR mode**: Components run on server, use `is:inline` scripts for client-side JS
+1. **Use Topic Service Layer for new MQTT code**: Prefer `topicServiceManager.callService()` over direct MQTT
+2. **Never modify Card business logic for state management**: Use CardStateManager proxy pattern
+3. **Never create MQTT connections manually**: Use `window.mqttManager`
+4. **State properties must be serializable**: No DOM elements, functions, or circular references
+5. **Card controllers are singletons**: Exported as `new ClassName()` at bottom of file
+6. **Astro SSR mode**: Components run on server, use `is:inline` scripts for client-side JS
+7. **Use centralized logging**: Import from `@/lib/debug.js` instead of `console.log/error/warn`
 
 ## Device Discovery
 
-Devices are discovered via EMQX HTTP API (`device-scanner.js`):
+Devices are discovered via EMQX HTTP API (`devices.js`):
 - Polls EMQX `/api/v5/clients` endpoint every 3 seconds
 - Filters clients matching DJI RC regex: `/^[A-Z0-9]{14}$/`
 - Updates `DeviceManager` which triggers UI refresh
 
 ## Debugging
 
+### Debug Console (Web Interface)
+
+Access debug logs via web interface: `http://localhost:4321/debug`
+- Real-time log streaming (like Linux dmesg)
+- Advanced filtering by level, source, time range
+- Search functionality and log export
+- No need to open browser console
+
+### Programmatic Debugging
+
 ```javascript
+// Use centralized logger (replaces console.log)
+import debugLogger from '@/lib/debug.js';
+
+debugLogger.service('Service call completed', result);
+debugLogger.mqtt('Message received', message);
+debugLogger.state('Device state changed', newState);
+debugLogger.error('Connection failed', error);
+
 // Check device state
-window.deviceContext.getSummary()
+import { deviceContext, deviceStateManager, cardStateManager } from '@/lib/state.js';
+deviceContext.getSummary()
 
 // Check all card states
-window.cardStateManager.debug()
-window.deviceStateManager.getAllStates()
+cardStateManager.debug()
+deviceStateManager.getAllStates()
 
 // Check MQTT connections
-window.mqttManager.getStats()
-window.mqttManager.getConnectionsInfo()
+import { mqttManager } from '@/lib/mqtt.js';
+mqttManager.getStats()
+mqttManager.getConnectionsInfo()
 
 // Enable card proxy debug mode
 cardStateManager.register(this, 'myCard', { debug: true });

@@ -1,6 +1,6 @@
 // 视频流协议管理器 - 基于WebRTC的低延迟视频流播放管理
 import { SimpleVideoPlayer } from '@/cards/StreamingCard/webrtc-player.js';
-import { TerminalLogger } from '@/shared/core/terminal.js';
+import debugLogger from '@/lib/debug.js';
 import { globalStreamController } from '@/cards/StreamingCard/stream-controls.js';
 
 export class VideoStreamManager {
@@ -47,7 +47,26 @@ export class VideoStreamManager {
       return null;
     }
 
-    const logger = new TerminalLogger(playerId);
+    // 创建logger适配器来兼容原有的TerminalLogger接口
+    const logger = {
+      log: (message, type = 'info') => {
+        const prefix = `[${playerId}]`;
+        switch(type) {
+          case 'error':
+            debugLogger.error(prefix, message);
+            break;
+          case 'warning':
+          case 'warn':
+            debugLogger.warn(prefix, message);
+            break;
+          case 'success':
+            debugLogger.info(prefix, '✅', message);
+            break;
+          default:
+            debugLogger.info(prefix, message);
+        }
+      }
+    };
     this.loggers.set(playerId, logger);
 
     const player = new SimpleVideoPlayer(container, logger, playerId);

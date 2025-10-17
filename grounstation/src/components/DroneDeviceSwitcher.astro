@@ -124,11 +124,10 @@
 </div>
 
 <script type="module" is:inline>
-  import deviceManager from '/src/shared/services/device-manager.js';
-  import deviceContext from '/src/shared/core/device-context.js';
-  import { saveConfig } from '/src/shared/services/device-scanner.js';
+  import { deviceManager } from '/src/lib/devices.js';
+  import { deviceContext } from '/src/lib/state.js';
+  import { mqttManager } from '/src/lib/mqtt.js';
   import tippy from '/node_modules/tippy.js/dist/tippy.esm.js';
-  import mqttConnectionManager from '/src/shared/services/mqtt-connection-manager.js';
 
   const deviceList = document.getElementById('device-list');
   const refreshBtn = document.getElementById('refresh-btn');
@@ -158,35 +157,18 @@
   const aliasSaveBtn = document.getElementById('alias-save-btn');
   const aliasClearBtn = document.getElementById('alias-clear-btn');
 
-  // 别名管理
-  const ALIAS_KEY = 'device_aliases';
-
+  // 别名管理 - 使用DeviceManager统一管理
   function getAlias(sn) {
-    try {
-      const aliases = JSON.parse(localStorage.getItem(ALIAS_KEY) || '{}');
-      return aliases[sn] || null;
-    } catch {
-      return null;
-    }
+    return deviceManager.getDeviceAlias(sn);
   }
 
   function setAlias(sn, alias) {
-    try {
-      const aliases = JSON.parse(localStorage.getItem(ALIAS_KEY) || '{}');
-      if (alias) {
-        aliases[sn] = alias;
-      } else {
-        delete aliases[sn];
-      }
-      localStorage.setItem(ALIAS_KEY, JSON.stringify(aliases));
-    } catch (e) {
-      console.error('[别名错误]', e);
-    }
+    deviceManager.setDeviceAlias(sn, alias);
   }
 
   // 渲染设备列表
   function render() {
-    const devices = deviceManager.getDevices();
+    const devices = deviceManager.getDeviceList();
     const current = deviceContext.getCurrentDevice();
 
     if (devices.length === 0) {
@@ -204,20 +186,21 @@
     deviceList.innerHTML = sortedDevices.map(dev => {
       const alias = getAlias(dev.sn);
       const displayText = alias || dev.sn;
+      const isOnline = (dev.status === 'online');
 
       // 获取MQTT连接状态 - 只判断是否已连接
-      const mqttConnection = mqttConnectionManager.getConnection(dev.sn);
-      const mqttClass = (mqttConnection && mqttConnection.isConnected()) ? 'mqtt-connected' : '';
+      const mqttConnection = mqttManager.getConnection(dev.sn);
+      const mqttClass = (mqttConnection && mqttConnection.isConnected) ? 'mqtt-connected' : '';
 
       return `
-      <div class="device-item ${dev.online ? 'online' : 'offline'} ${dev.sn === current ? 'active' : ''} ${mqttClass}"
+      <div class="device-item ${isOnline ? 'online' : 'offline'} ${dev.sn === current ? 'active' : ''} ${mqttClass}"
            data-sn="${dev.sn}">
         <div class="device-status-indicator">
           <div class="device-status-dot"></div>
           <button class="device-alias-btn" data-sn="${dev.sn}">···</button>
         </div>
         <span class="device-display" data-sn="${dev.sn}">${displayText}</span>
-        ${!dev.online ? `
+        ${!isOnline ? `
         <button class="device-remove-btn" data-sn="${dev.sn}">
           <span class="material-symbols-outlined">close</span>
         </button>
@@ -241,21 +224,55 @@
       }
     });
 
-    // 绑定点击事件
+    // 绑定点击事件 - 设备选择和MQTT连接创建
     deviceList.querySelectorAll('.device-item').forEach(el => {
       el.addEventListener('click', (e) => {
         if (e.target.closest('.device-remove-btn')) return;
         if (e.target.closest('.device-alias-btn')) return;
-        deviceContext.setCurrentDevice(el.dataset.sn);
+
+        const sn = el.dataset.sn;
+        console.log('[DroneDeviceSwitcher]', '设备点击:', sn);
+
+        // 设置当前设备
+        deviceContext.setCurrentDevice(sn);
+
+        // 确保MQTT连接 - 使用现有接口
+        mqttManager.ensureConnection(sn).then(connection => {
+          if (connection) {
+            console.log('[DroneDeviceSwitcher]', 'MQTT连接已建立:', `station-${sn}`);
+            // 重新渲染以更新蓝色指示灯
+            render();
+          }
+        });
       });
     });
 
-    // 绑定删除按钮
+    // 绑定删除按钮 - 针对离线设备
     deviceList.querySelectorAll('.device-remove-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (confirm(`删除设备 ${btn.dataset.sn}?`)) {
-          deviceManager.remove(btn.dataset.sn);
+        const sn = btn.dataset.sn;
+
+        if (confirm(`删除离线设备 ${sn}?`)) {
+          console.log('[DroneDeviceSwitcher]', '移除离线设备:', sn);
+
+          // 断开MQTT连接
+          mqttManager.disconnectDevice(sn);
+
+          // 从设备管理器中移除
+          deviceManager.removeDevice(sn);
+
+          // 如果当前设备被移除，切换到第一个在线设备
+          if (deviceContext.getCurrentDevice() === sn) {
+            const onlineDevices = deviceManager.getOnlineDevices();
+            if (onlineDevices.length > 0) {
+              deviceContext.setCurrentDevice(onlineDevices[0].sn);
+            } else {
+              deviceContext.setCurrentDevice(null);
+            }
+          }
+
+          render();
         }
       });
     });
@@ -277,11 +294,11 @@
   // 加载配置
   function loadConfig() {
     // EMQX 配置（服务器地址共用）
-    const host = localStorage.getItem('emqx_host') || '192.168.31.116';
+    const host = localStorage.getItem('emqx_host') || '127.0.0.1';
     inputHost.value = host;
     inputPort.value = localStorage.getItem('emqx_port') || '18083';
-    inputKey.value = localStorage.getItem('emqx_key') || '';
-    inputSecret.value = localStorage.getItem('emqx_secret') || '';
+    inputKey.value = localStorage.getItem('emqx_api_key') || '29275299af4a3366';
+    inputSecret.value = localStorage.getItem('emqx_secret_key') || '0WrSJ49ADbOnNIa439CyYGWOUBKnhPhejSPFCqdRR9AcvE';
 
     // MQTT Broker 配置（使用同一服务器地址）
     inputMqttPort.value = localStorage.getItem('mqtt_broker_port') || '8083';
@@ -289,8 +306,8 @@
     inputMqttPassword.value = localStorage.getItem('mqtt_broker_password') || 'public';
 
     // 视频配置
-    inputVideoHost.value = localStorage.getItem('video_host') || '192.168.31.14';
-    inputRtmpUrl.value = localStorage.getItem('video_rtmp_url') || 'rtmp://192.168.31.14:1935/live/cam';
+    inputVideoHost.value = localStorage.getItem('video_host') || '127.0.0.1';
+    inputRtmpUrl.value = localStorage.getItem('video_rtmp_url') || 'rtmp://127.0.0.1:1935/live/cam';
   }
 
   // 保存配置
@@ -304,7 +321,14 @@
       secretKey: inputSecret.value
     };
 
-    saveConfig(config);
+    // 保存到localStorage以便下次自动补全
+    localStorage.setItem('emqx_host', config.host);
+    localStorage.setItem('emqx_port', config.port);
+    localStorage.setItem('emqx_api_key', config.apiKey);
+    localStorage.setItem('emqx_secret_key', config.secretKey);
+
+    // 更新deviceManager配置
+    deviceManager.updateEmqxConfig(config);
 
     // 保存 MQTT Broker 配置（使用同一服务器地址）
     const mqttConfig = {
@@ -314,13 +338,14 @@
       password: inputMqttPassword.value
     };
 
+    // 保存到localStorage以便下次自动补全
     localStorage.setItem('mqtt_broker_host', mqttConfig.host);
     localStorage.setItem('mqtt_broker_port', mqttConfig.port);
     localStorage.setItem('mqtt_broker_username', mqttConfig.username);
     localStorage.setItem('mqtt_broker_password', mqttConfig.password);
 
-    // 更新MQTT连接管理器配置
-    mqttConnectionManager.updateConfig(mqttConfig);
+    // 更新MQTT管理器配置
+    mqttManager.updateConfig(mqttConfig);
 
     // 保存视频配置
     localStorage.setItem('video_host', inputVideoHost.value);
@@ -354,11 +379,12 @@
       secretKey: inputSecret.value
     };
 
-    saveConfig(config);
+    // 直接更新配置，无需保存
+    deviceManager.updateEmqxConfig(config);
 
     try {
       await deviceManager.scan();
-      const devices = deviceManager.getDevices();
+      const devices = deviceManager.getDeviceList();
       showStatus(`成功！发现 ${devices.length} 个设备`, 'success');
     } catch (err) {
       showStatus(`失败: ${err.message}`, 'error');
@@ -377,12 +403,30 @@
   }
 
   // 监听设备变化
-  deviceManager.addListener(render);
-  deviceContext.addListener(render);
+  deviceManager.addListener((eventType, data) => {
+    try {
+      console.log('[DroneDeviceSwitcher]', 'DeviceManager事件:', eventType, data);
+      if (eventType === 'devices-updated' || eventType === 'device-alias-changed') {
+        render();
+      }
+    } catch (error) {
+      console.error('[DroneDeviceSwitcher]', 'DeviceManager事件处理错误:', error);
+    }
+  });
+  deviceContext.addListener((eventType, data) => {
+    try {
+      console.log('[DroneDeviceSwitcher]', 'DeviceContext事件:', eventType, data);
+      if (eventType === 'device-changed') {
+        render();
+      }
+    } catch (error) {
+      console.error('[DroneDeviceSwitcher]', 'DeviceContext事件处理错误:', error);
+    }
+  });
 
   // 监听MQTT连接状态变化
   window.addEventListener('mqtt-connection-changed', (event) => {
-    console.log('[Switcher] MQTT连接状态变化:', event.detail);
+    console.log('[DroneDeviceSwitcher]', 'MQTT连接状态变化:', event.detail);
     render(); // 重新渲染以更新指示灯颜色
   });
 
@@ -423,14 +467,12 @@
 
     setAlias(sn, alias);
     aliasPanel.classList.add('hidden');
-    render();
   });
 
   aliasClearBtn.addEventListener('click', () => {
     const sn = aliasSn.value;
     setAlias(sn, '');
     aliasPanel.classList.add('hidden');
-    render();
   });
 
   aliasPanel.addEventListener('click', (e) => {
@@ -439,19 +481,58 @@
     }
   });
 
+  // 设备列表横向滚动支持
+  function setupHorizontalScroll() {
+    deviceList.addEventListener('wheel', (e) => {
+      // 阻止默认的垂直滚动
+      e.preventDefault();
+
+      // 水平滚动
+      const scrollAmount = e.deltaY * 2; // 调整滚动速度
+      deviceList.scrollLeft += scrollAmount;
+    }, { passive: false });
+  }
+
   // 初始化
   loadConfig();
-  render();
-  deviceManager.start();
+  setupHorizontalScroll();
 
-  // 初始化MQTT连接管理器
-  mqttConnectionManager.cancelCleanup(); // 取消可能存在的清理定时器（刷新保护）
-  mqttConnectionManager.init();
-  console.log('[Switcher] MQTT连接管理器已初始化');
+  // 将localStorage中的EMQX配置加载到deviceManager
+  const emqxConfig = {
+    host: localStorage.getItem('emqx_host') || '127.0.0.1',
+    port: localStorage.getItem('emqx_port') || '18083',
+    apiKey: localStorage.getItem('emqx_api_key') || '29275299af4a3366',
+    secretKey: localStorage.getItem('emqx_secret_key') || '0WrSJ49ADbOnNIa439CyYGWOUBKnhPhejSPFCqdRR9AcvE'
+  };
+  deviceManager.updateEmqxConfig(emqxConfig);
+
+  // 更新MQTT配置
+  const mqttConfig = {
+    host: localStorage.getItem('mqtt_broker_host') || '127.0.0.1',
+    port: parseInt(localStorage.getItem('mqtt_broker_port')) || 8083,
+    username: localStorage.getItem('mqtt_broker_username') || '',
+    password: localStorage.getItem('mqtt_broker_password') || ''
+  };
+  mqttManager.updateBrokerConfig(mqttConfig);
+
+  render();
+  deviceManager.startScanning();
+
+  // 为当前设备建立MQTT连接（如果有的话）
+  const currentDevice = deviceContext.getCurrentDevice();
+  if (currentDevice) {
+    console.log('[DroneDeviceSwitcher]', '为当前设备建立MQTT连接:', currentDevice);
+    mqttManager.ensureConnection(currentDevice).then(connection => {
+      if (connection) {
+        console.log('[DroneDeviceSwitcher]', '当前设备MQTT连接已建立:', `station-${currentDevice}`);
+        render(); // 重新渲染以显示蓝色指示灯
+      }
+    });
+  }
 
   // 清理 - 延迟1秒断开连接（刷新保护）
   window.addEventListener('beforeunload', () => {
-    deviceManager.stop();
-    mqttConnectionManager.cleanup(); // 延迟1秒后断开
+    deviceManager.stopScanning();
+    mqttManager.cleanup();
   });
 </script>

@@ -1,0 +1,108 @@
+/* Debug Console Styles */
+
+.log-entry {
+  border-left: 3px solid transparent;
+  transition: all 0.2s ease;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.log-entry:hover {
+  background-color: rgba(59, 130, 246, 0.05);
+  border-left-color: #3b82f6;
+}
+
+.log-level-DEBUG { border-left-color: #6b7280; }
+.log-level-INFO { border-left-color: #3b82f6; }
+.log-level-WARN { border-left-color: #f59e0b; }
+.log-level-ERROR { border-left-color: #ef4444; }
+.log-level-MQTT { border-left-color: #10b981; }
+.log-level-STATE { border-left-color: #8b5cf6; }
+.log-level-SERVICE { border-left-color: #06b6d4; }
+
+.console-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auto-scroll {
+  scroll-behavior: smooth;
+}
+
+.filter-badge {
+  @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium;
+}
+
+.log-collapsible {
+  cursor: pointer;
+}
+
+.log-collapsed .log-full {
+  display: none !important;
+}
+
+.log-expanded .log-preview {
+  display: none !important;
+}
+
+.log-preview {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-full {
+  white-space: pre-wrap;
+}
+
+.collapse-indicator {
+  color: #8b5cf6;
+  font-weight: bold;
+  margin-right: 4px;
+}
+
+.json-tag {
+  background: #1e40af;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  margin-right: 4px;
+}
+
+/* 表格式对齐布局 */
+.log-table-layout {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.log-table-row {
+  display: table-row;
+}
+
+.log-table-cell {
+  display: table-cell;
+  vertical-align: top;
+  padding-right: 1ch; /* 1个字符宽度的间距 */
+}
+
+.log-table-cell.timestamp {
+  width: 9ch; /* 8个字符的时间戳 + 1ch间距 */
+}
+
+.log-table-cell.level {
+  width: 11ch; /* 足够容纳"🔧 SERVICE"(9个字符) + 间距 */
+  white-space: nowrap; /* 绝对禁止换行 */
+}
+
+.log-table-cell.source {
+  width: 32ch; /* 31个字符的源文件 + 1ch间距 */
+  word-break: break-all;
+}
+
+.log-table-cell.content {
+  width: auto;
+  word-break: break-word;
+}

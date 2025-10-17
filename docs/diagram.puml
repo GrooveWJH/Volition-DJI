@@ -1,0 +1,193 @@
+@startuml
+!define RECTANGLE class
+
+package "DJI Ground Station Web System" {
+
+  package "Frontend Layer" {
+    RECTANGLE "Device Switcher" as DS {
+      + 设备选择器
+      + 状态指示灯
+      + 设备别名管理
+    }
+
+    RECTANGLE "DRC Control Card" as DRC {
+      + 控制权申请
+      + DRC 模式管理
+      + 操作日志
+    }
+
+    RECTANGLE "Streaming Card" as SC {
+      + 视频流播放
+      + 流媒体控制
+      + 录制功能
+    }
+
+    RECTANGLE "Cloud Control Card" as CC {
+      + 云端控制授权
+      + 权限管理
+      + 状态监控
+    }
+
+    RECTANGLE "Debug Console" as DC_WEB {
+      + Web端日志查看器
+      + 实时日志流
+      + 过滤和搜索功能
+    }
+  }
+
+  package "Service Abstraction Layer" as SAL {
+    RECTANGLE "Topic Service Manager" as TSM {
+      + callService(sn, service, data)
+      + callCloudControlAuth()
+      + callCameraService()
+      + callDrcService()
+    }
+
+    RECTANGLE "Topic Template Manager" as TTM {
+      + getServiceTopic(sn, service)
+      + buildMessage(method, data)
+      + validateMessage(message)
+    }
+
+    RECTANGLE "Message Router" as MR {
+      + routeMessage(message, topic)
+      + registerServiceRoute()
+      + registerTopicRoute()
+    }
+  }
+
+  package "State Management" as SM {
+    RECTANGLE "Global State Store" as GSS {
+      + getMultiDeviceState(devices, cardId)
+      + subscribeToMultiDevice()
+      + getAggregatedCardState()
+    }
+
+    RECTANGLE "Cross Page State Sync" as CPSS {
+      + broadcastStateChange()
+      + handleRemoteStateChange()
+      + BroadcastChannel 通信
+    }
+
+    RECTANGLE "Multi Device State Viewer" as MDSV {
+      + createDashboardView()
+      + subscribeToAllDevices()
+      + getDeviceViewData()
+    }
+  }
+
+  package "Core Management Layer" {
+    RECTANGLE "Device Context" as DC {
+      + 当前设备 SN 管理
+      + 设备切换事件
+      + 设备列表维护
+    }
+
+    RECTANGLE "Card State Manager" as CSM {
+      + 统一状态管理入口
+      + 卡片注册与注销
+      + 功能集成
+    }
+
+    RECTANGLE "MQTT Connection Manager" as MCM {
+      + 连接池管理
+      + 自动连接/断开
+      + Topic 服务层集成
+    }
+  }
+
+  package "State Layer" {
+    RECTANGLE "Card State Proxy" as CSP {
+      + JavaScript Proxy 拦截
+      + 属性读写代理
+      + 设备状态隔离
+    }
+
+    RECTANGLE "Device State Manager" as DSM {
+      + 多设备状态存储
+      + localStorage 持久化
+      + 状态 CRUD 操作
+    }
+  }
+
+  package "Communication Layer" {
+    RECTANGLE "MQTT Client Wrapper" as MCW {
+      + 单设备 MQTT 客户端
+      + 连接状态管理
+      + 消息发布/订阅
+      + MessageRouter 集成
+    }
+
+    RECTANGLE "Device Manager" as DM {
+      + 设备发现 (EMQX API)
+      + 在线状态监控
+      + 设备列表更新
+    }
+  }
+
+  package "Debug System" {
+    RECTANGLE "Debug Logger" as DL {
+      + 集中日志收集
+      + Console 拦截
+      + 实时日志推送
+      + 日志持久化
+    }
+  }
+}
+
+package "External Systems" {
+  RECTANGLE "EMQX MQTT Broker" as EMQX {
+    + WebSocket 接口
+    + 消息路由
+    + 客户端管理 API
+  }
+
+  RECTANGLE "DJI Drones" as DRONES {
+    + RC 遥控器
+    + 无人机本体
+    + MQTT 客户端
+  }
+}
+
+' 连接关系 - Frontend Layer
+DS --> DC : 设备切换
+DRC --> TSM : 服务调用
+CC --> TSM : 服务调用
+SC --> TSM : 服务调用
+DC_WEB --> DL : 日志查看
+
+' 连接关系 - Service Layer
+TSM --> TTM : 模板管理
+TSM --> MCM : MQTT 通信
+MR --> TSM : 消息路由
+MCW --> MR : 消息分发
+
+' 连接关系 - State Management
+DC --> CSM : 设备变更事件
+DC --> MCM : 设备变更事件
+CSM --> GSS : 多设备状态
+CSM --> CPSS : 跨页面同步
+CSM --> MDSV : Dashboard 视图
+CPSS --> GSS : 状态同步
+
+' 连接关系 - Core Layer
+CSM --> CSP : 创建代理
+CSP --> DSM : 状态读写
+GSS --> DSM : 扩展访问
+
+' 连接关系 - Communication Layer
+MCM --> MCW : 管理连接
+MCW --> EMQX : WebSocket 连接
+DM --> EMQX : HTTP API 查询
+DM --> DC : 设备列表更新
+
+' 连接关系 - Debug System
+TSM --> DL : 日志记录
+CSM --> DL : 日志记录
+MCM --> DL : 日志记录
+DM --> DL : 日志记录
+
+' 外部连接
+EMQX <--> DRONES : MQTT 通信
+
+@enduml

@@ -1,0 +1,112 @@
+{
+  "dji_services": {
+    "cloud_control_auth": {
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
+      "method": "cloud_control_auth",
+      "description": "云端控制权限申请",
+      "timeout": 10000,
+      "required_params": ["user_id", "user_callsign"],
+      "optional_params": ["control_keys"],
+      "default_values": {
+        "control_keys": ["flight"]
+      }
+    },
+    "drc_mode_enter": {
+      "topic_template": "thing/product/{sn}/drc/down",
+      "response_topic": "thing/product/{sn}/drc/up",
+      "method": "drc_mode_enter",
+      "description": "进入DRC模式",
+      "timeout": 5000,
+      "required_params": ["type"],
+      "optional_params": [],
+      "default_values": {
+        "type": "a"
+      }
+    },
+    "drc_mode_exit": {
+      "topic_template": "thing/product/{sn}/drc/down",
+      "response_topic": "thing/product/{sn}/drc/up",
+      "method": "drc_mode_exit",
+      "description": "退出DRC模式",
+      "timeout": 5000,
+      "required_params": [],
+      "optional_params": [],
+      "default_values": {}
+    },
+    "camera_start_stream": {
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
+      "method": "camera_start_stream",
+      "description": "开始相机流",
+      "timeout": 8000,
+      "required_params": [],
+      "optional_params": ["resolution", "bitrate"],
+      "default_values": {
+        "resolution": "1080p",
+        "bitrate": 4000
+      }
+    },
+    "camera_stop_stream": {
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
+      "method": "camera_stop_stream",
+      "description": "停止相机流",
+      "timeout": 5000,
+      "required_params": [],
+      "optional_params": [],
+      "default_values": {}
+    },
+    "wayline_upload": {
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
+      "method": "wayline_upload",
+      "description": "航线上传",
+      "timeout": 30000,
+      "required_params": ["file"],
+      "optional_params": ["mission_type", "execute_immediately"],
+      "default_values": {
+        "mission_type": "survey",
+        "execute_immediately": false
+      }
+    },
+    "wayline_execute": {
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
+      "method": "wayline_execute",
+      "description": "执行航线",
+      "timeout": 5000,
+      "required_params": ["wayline_id"],
+      "optional_params": ["break_point_index"],
+      "default_values": {
+        "break_point_index": 0
+      }
+    },
+    "device_reboot": {
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
+      "method": "device_reboot",
+      "description": "设备重启",
+      "timeout": 15000,
+      "required_params": [],
+      "optional_params": ["reboot_type"],
+      "default_values": {
+        "reboot_type": "soft"
+      }
+    }
+  },
+  "custom_services": {
+    "example_service": {
+      "topic_template": "custom/{sn}/command",
+      "response_topic": "custom/{sn}/response",
+      "method": "example_method",
+      "description": "自定义服务示例",
+      "timeout": 10000,
+      "required_params": ["param1"],
+      "optional_params": ["param2"],
+      "default_values": {
+        "param2": "default_value"
+      }
+    }
+  }
+}

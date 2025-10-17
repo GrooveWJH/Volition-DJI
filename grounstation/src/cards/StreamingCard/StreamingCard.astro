@@ -1,6 +1,5 @@
 ---
-import { CONFIG } from '@/shared/config/app-config.js';
-import CollapsibleCard from '@/shared/components/CollapsibleCard.astro';
+import CollapsibleCard from '@/components/CollapsibleCard.astro';
 
 interface Props {
   playerId: string;
@@ -11,15 +10,10 @@ interface Props {
   collapsed?: boolean;
 }
 
-const defaultRtmpUrl = CONFIG.rtmp.getDefaultUrl();
-const defaultHost = CONFIG.rtmp.defaultHost;
-
 const {
   playerId,
   title = "视频推流服务",
   description = "实时视频推送与播放",
-  rtmpUrl = defaultRtmpUrl,
-  host = defaultHost,
   collapsed = false,
 } = Astro.props;
 ---

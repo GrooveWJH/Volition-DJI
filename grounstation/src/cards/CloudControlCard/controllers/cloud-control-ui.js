@@ -3,8 +3,8 @@
  * 负责请求和释放无人机云端飞行控制权
  */
 
-import deviceContext from '@/shared/core/device-context.js';
-import cardStateManager from '@/shared/core/card-state-manager.js';
+import { deviceContext, cardStateManager } from '@/lib/state.js';
+import { topicServiceManager, messageRouter } from '@/lib/services.js';
 
 export class CloudControlCardUI {
   constructor() {
@@ -88,9 +88,25 @@ export class CloudControlCardUI {
         this.updateMqttStatus();
       });
 
-      // 监听MQTT消息
-      this.subscribeMqttMessages();
+      // 使用MessageRouter注册服务回复处理
+      this.registerServiceHandlers();
     }
+  }
+
+  /**
+   * 注册服务回复处理器
+   */
+  registerServiceHandlers() {
+    // 注册云端控制服务的消息处理
+    messageRouter.registerServiceRoute('cloud_control_auth_request', (message) => {
+      this.handleAuthRequestReply(message);
+    });
+
+    messageRouter.registerServiceRoute('cloud_control_release', (message) => {
+      this.handleReleaseReply(message);
+    });
+
+    this.addLog('信息', '已注册云端控制服务消息处理器');
   }
 
   setupStateRestoreListener() {
@@ -104,36 +120,6 @@ export class CloudControlCardUI {
     }
   }
 
-  subscribeMqttMessages() {
-    const currentSN = deviceContext.getCurrentDevice();
-    if (!currentSN) return;
-
-    const connection = window.mqttManager?.getConnection(currentSN);
-    if (!connection || !connection.isConnected()) {
-      setTimeout(() => this.subscribeMqttMessages(), 1000);
-      return;
-    }
-
-    // 订阅 services_reply 主题
-    const replyTopic = `thing/product/${currentSN}/services_reply`;
-
-    connection.subscribe(replyTopic, (message) => {
-      try {
-        const msg = typeof message === 'string' ? JSON.parse(message) : message;
-
-        if (msg.method === 'cloud_control_auth_request') {
-          this.handleAuthRequestReply(msg);
-        } else if (msg.method === 'cloud_control_release') {
-          this.handleReleaseReply(msg);
-        }
-      } catch (error) {
-        this.addLog('错误', `解析MQTT消息失败: ${error.message}`);
-      }
-    });
-
-    this.addLog('信息', `已订阅主题: ${replyTopic}`);
-  }
-
   /**
    * 请求云端控制授权
    */
@@ -144,35 +130,26 @@ export class CloudControlCardUI {
       return;
     }
 
-    const connection = window.mqttManager?.getConnection(currentSN);
-    if (!connection || !connection.isConnected()) {
-      this.addLog('错误', 'MQTT未连接');
-      return;
-    }
-
-    const topic = `thing/product/${currentSN}/services`;
-    const payload = {
-      bid: this.generateUUID(),
-      data: {
-        control_keys: ['flight'],
-        user_callsign: this.userCallsign || 'CloudPilot',
-        user_id: this.userId || 'cloud_user_001'
-      },
-      method: 'cloud_control_auth_request',
-      tid: this.generateUUID(),
-      timestamp: Date.now()
-    };
-
     this.addLog('信息', '发送授权请求...');
-    this.addLog('信息', `发送消息:\n${JSON.stringify(payload, null, 2)}`);
     this.authStatus = 'requesting';
     this.updateUI();
 
     try {
-      await connection.publish(topic, JSON.stringify(payload));
-      this.addLog('成功', `已发送授权请求 (用户: ${payload.data.user_callsign})`);
+      const result = await topicServiceManager.callService(sn, 'cloud_control_auth', {
+        user_id: this.userId || 'cloud_user_001',
+        user_callsign: this.userCallsign || 'CloudPilot'
+      });
+
+      if (result.success) {
+        this.addLog('成功', `已发送授权请求 (用户: ${this.userCallsign})`);
+        this.addLog('信息', `发送消息:\n${JSON.stringify(result.data, null, 2)}`);
+      } else {
+        this.addLog('错误', `发送失败: ${result.error}`);
+        this.authStatus = 'unauthorized';
+        this.updateUI();
+      }
     } catch (error) {
-      this.addLog('错误', `发送失败: ${error.message}`);
+      this.addLog('错误', `请求异常: ${error.message}`);
       this.authStatus = 'unauthorized';
       this.updateUI();
     }
@@ -188,31 +165,19 @@ export class CloudControlCardUI {
       return;
     }
 
-    const connection = window.mqttManager?.getConnection(currentSN);
-    if (!connection || !connection.isConnected()) {
-      this.addLog('错误', 'MQTT未连接');
-      return;
-    }
-
-    const topic = `thing/product/${currentSN}/services`;
-    const payload = {
-      bid: this.generateUUID(),
-      data: {
-        control_keys: ['flight']
-      },
-      method: 'cloud_control_release',
-      tid: this.generateUUID(),
-      timestamp: Date.now()
-    };
-
     this.addLog('信息', '发送释放控制请求...');
-    this.addLog('信息', `发送消息:\n${JSON.stringify(payload, null, 2)}`);
 
     try {
-      await connection.publish(topic, JSON.stringify(payload));
-      this.addLog('成功', '已发送释放控制请求');
+      const result = await topicServiceManager.callService(sn, 'cloud_control_release', {});
+
+      if (result.success) {
+        this.addLog('成功', '已发送释放控制请求');
+        this.addLog('信息', `发送消息:\n${JSON.stringify(result.data, null, 2)}`);
+      } else {
+        this.addLog('错误', `发送失败: ${result.error}`);
+      }
     } catch (error) {
-      this.addLog('错误', `发送失败: ${error.message}`);
+      this.addLog('错误', `请求异常: ${error.message}`);
     }
   }
 
