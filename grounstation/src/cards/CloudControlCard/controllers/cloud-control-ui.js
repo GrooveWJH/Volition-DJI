@@ -130,21 +130,27 @@ export class CloudControlCardUI {
       return;
     }
 
-    this.addLog('信息', '发送授权请求...');
+    if (!this.userId || !this.userCallsign) {
+      this.addLog('错误', '请填写用户ID和用户呼号');
+      return;
+    }
+
+    this.addLog('信息', `发送授权请求 (设备: ${currentSN})`);
     this.authStatus = 'requesting';
     this.updateUI();
 
     try {
-      const result = await topicServiceManager.callService(sn, 'cloud_control_auth', {
-        user_id: this.userId || 'cloud_user_001',
-        user_callsign: this.userCallsign || 'CloudPilot'
+      const result = await topicServiceManager.callService(currentSN, 'cloud_control_auth_request', {
+        user_id: this.userId,
+        user_callsign: this.userCallsign,
+        control_keys: ['flight']
       });
 
       if (result.success) {
         this.addLog('成功', `已发送授权请求 (用户: ${this.userCallsign})`);
-        this.addLog('信息', `发送消息:\n${JSON.stringify(result.data, null, 2)}`);
+        this.addLog('调试', `TID: ${result.data?.tid || 'N/A'}`);
       } else {
-        this.addLog('错误', `发送失败: ${result.error}`);
+        this.addLog('错误', `发送失败: ${result.error?.message || '未知错误'}`);
         this.authStatus = 'unauthorized';
         this.updateUI();
       }
@@ -165,16 +171,18 @@ export class CloudControlCardUI {
       return;
     }
 
-    this.addLog('信息', '发送释放控制请求...');
+    this.addLog('信息', `发送释放控制请求 (设备: ${currentSN})`);
 
     try {
-      const result = await topicServiceManager.callService(sn, 'cloud_control_release', {});
+      const result = await topicServiceManager.callService(currentSN, 'cloud_control_release', {
+        control_keys: ['flight']
+      });
 
       if (result.success) {
         this.addLog('成功', '已发送释放控制请求');
-        this.addLog('信息', `发送消息:\n${JSON.stringify(result.data, null, 2)}`);
+        this.addLog('调试', `TID: ${result.data?.tid || 'N/A'}`);
       } else {
-        this.addLog('错误', `发送失败: ${result.error}`);
+        this.addLog('错误', `发送失败: ${result.error?.message || '未知错误'}`);
       }
     } catch (error) {
       this.addLog('错误', `请求异常: ${error.message}`);
@@ -228,11 +236,13 @@ export class CloudControlCardUI {
     const currentSN = deviceContext.getCurrentDevice();
     if (!currentSN) {
       this.elements.mqttStatus.textContent = '未选择设备';
+      this.elements.mqttStatus.classList.remove('text-green-600');
+      this.elements.mqttStatus.classList.add('text-gray-600');
       return;
     }
 
     const connection = window.mqttManager?.getConnection(currentSN);
-    if (connection && connection.isConnected()) {
+    if (connection && connection.isConnected) {
       this.elements.mqttStatus.textContent = '已连接';
       this.elements.mqttStatus.classList.add('text-green-600');
       this.elements.mqttStatus.classList.remove('text-gray-600');

@@ -1,6 +1,9 @@
 // DJI Ground Station - MQTT连接管理
+// 合并: mqtt-client-wrapper.js + mqtt-connection-manager.js
+
 import debugLogger from './debug.js';
 
+// MQTT客户端包装器
 class MQTTClientWrapper {
   constructor(clientId, brokerConfig) {
     this.clientId = clientId;
@@ -23,17 +26,20 @@ class MQTTClientWrapper {
 
     try {
       const mqtt = (await import('mqtt')).default;
-      const brokerUrl = `ws://${this.brokerConfig.host}:${this.brokerConfig.port}/mqtt`;
 
-      this.client = mqtt.connect(brokerUrl, {
+      const options = {
         clientId: this.clientId,
         username: this.brokerConfig.username,
         password: this.brokerConfig.password,
         keepalive: 60,
         connectTimeout: 30000,
-        reconnectPeriod: 0,
+        reconnectPeriod: 0, // 手动重连
         clean: true
-      });
+      };
+
+      const brokerUrl = `ws://${this.brokerConfig.host}:${this.brokerConfig.port}/mqtt`;
+
+      this.client = mqtt.connect(brokerUrl, options);
 
       this.client.on('connect', () => {
         this.isConnected = true;
@@ -44,7 +50,10 @@ class MQTTClientWrapper {
         this._processMessageQueue();
       });
 
-      this.client.on('message', (topic, message) => this._handleMessage(topic, message));
+      this.client.on('message', (topic, message) => {
+        this._handleMessage(topic, message);
+      });
+
       this.client.on('error', (error) => {
         debugLogger.error(`[MQTTClient-${this.clientId}]`, 'MQTT连接错误:', error);
         this.isConnected = false;
@@ -84,6 +93,7 @@ class MQTTClientWrapper {
 
   async _handleMessage(topic, message) {
     try {
+      // 延迟加载消息路由器避免循环依赖
       if (!this.messageRouter) {
         const module = await import('./services.js');
         this.messageRouter = module.getMessageRouter();
@@ -92,7 +102,7 @@ class MQTTClientWrapper {
       const parsedMessage = JSON.parse(message.toString());
       const sn = this._extractSNFromTopic(topic);
 
-      if (this.messageRouter?.routeMessage) {
+      if (this.messageRouter && typeof this.messageRouter.routeMessage === 'function') {
         this.messageRouter.routeMessage(parsedMessage, topic, sn);
       }
     } catch (error) {
@@ -112,15 +122,20 @@ class MQTTClientWrapper {
       return false;
     }
 
-    this.client.subscribe(topic, (err) => {
-      if (err) {
-        debugLogger.error(`[MQTTClient-${this.clientId}]`, '订阅失败:', topic, err);
-      } else {
-        debugLogger.mqtt(`[MQTTClient-${this.clientId}]`, '订阅成功:', topic);
-        this.subscriptions.set(topic, callback);
-      }
-    });
-    return true;
+    try {
+      this.client.subscribe(topic, (err) => {
+        if (err) {
+          debugLogger.error(`[MQTTClient-${this.clientId}]`, '订阅失败:', topic, err);
+        } else {
+          debugLogger.mqtt(`[MQTTClient-${this.clientId}]`, '订阅成功:', topic);
+          this.subscriptions.set(topic, callback);
+        }
+      });
+      return true;
+    } catch (error) {
+      debugLogger.error(`[${this.clientId}] 订阅异常: ${topic}`, error);
+      return false;
+    }
   }
 
   async publish(topic, message) {
@@ -192,6 +207,7 @@ class MQTTClientWrapper {
   }
 }
 
+// MQTT连接管理器
 class MQTTConnectionManager {
   constructor() {
     this.connections = new Map();
@@ -204,14 +220,15 @@ class MQTTConnectionManager {
     try {
       const module = await import('./state.js');
       this.deviceContext = module.deviceContext;
+
+      // 监听设备切换事件
       this.deviceContext.addListener((eventType, data) => {
         if (eventType === 'device-changed' && data.currentSN) {
-          debugLogger.info('[MQTTConnectionManager]', `设备切换到: ${data.currentSN}，准备建立MQTT连接`);
           this.ensureConnection(data.currentSN);
         }
       });
     } catch (error) {
-      debugLogger.error('[MQTTConnectionManager]', '初始化设备上下文失败:', error);
+      debugLogger.error('初始化设备上下文失败:', error);
     }
   }
 
@@ -229,7 +246,12 @@ class MQTTConnectionManager {
       }
     }
 
-    return { host: '127.0.0.1', port: 8083, username: '', password: '' };
+    return {
+      host: '127.0.0.1',
+      port: 8083,
+      username: '',
+      password: ''
+    };
   }
 
   updateBrokerConfig(config) {
@@ -253,7 +275,9 @@ class MQTTConnectionManager {
 
     if (this.connections.has(sn)) {
       const connection = this.connections.get(sn);
-      if (connection.isConnected) return connection;
+      if (connection.isConnected) {
+        return connection;
+      }
     }
 
     const clientId = `station-${sn}`;
@@ -263,7 +287,10 @@ class MQTTConnectionManager {
     if (success) {
       this.connections.set(sn, connection);
       debugLogger.mqtt(`[MQTTConnectionManager]`, `设备 ${sn} MQTT连接已建立`);
+
+      // 订阅默认主题
       this._subscribeDefaultTopics(connection, sn);
+
       return connection;
     } else {
       debugLogger.error(`设备 ${sn} MQTT连接失败`);
@@ -277,11 +304,15 @@ class MQTTConnectionManager {
       `thing/product/${sn}/events`,
       `thing/product/${sn}/drc/up`
     ];
-    defaultTopics.forEach(topic => connection.subscribe(topic));
+
+    defaultTopics.forEach(topic => {
+      connection.subscribe(topic);
+    });
   }
 
   getCurrentConnection() {
     if (!this.deviceContext) return null;
+
     const currentSN = this.deviceContext.getCurrentDevice();
     return currentSN ? this.connections.get(currentSN) : null;
   }
@@ -327,7 +358,9 @@ class MQTTConnectionManager {
     for (const [sn, connection] of this.connections) {
       const info = connection.getConnectionInfo();
       stats.connections[sn] = info;
-      if (info.isConnected) stats.activeConnections++;
+      if (info.isConnected) {
+        stats.activeConnections++;
+      }
     }
 
     return stats;
@@ -346,8 +379,10 @@ class MQTTConnectionManager {
   }
 }
 
+// 全局实例
 const mqttManager = new MQTTConnectionManager();
 
+// 浏览器全局变量
 if (typeof window !== 'undefined') {
   window.mqttManager = mqttManager;
 }

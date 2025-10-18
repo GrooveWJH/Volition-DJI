@@ -5,6 +5,28 @@ export default {
     extend: {
       fontFamily: {
         'roboto': ['Roboto', 'sans-serif'],
+        'sans': [
+          'Roboto',
+          // Windows
+          'Segoe UI',
+          // macOS
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'SF Pro Text',
+          // Linux
+          'Ubuntu',
+          'Cantarell',
+          'Noto Sans',
+          'Liberation Sans',
+          // Fallbacks
+          'Arial',
+          'sans-serif',
+          // Emoji support
+          'Apple Color Emoji',
+          'Segoe UI Emoji',
+          'Segoe UI Symbol',
+          'Noto Color Emoji',
+        ],
       },
       boxShadow: {
         'material': 'var(--md-elevation-1)',

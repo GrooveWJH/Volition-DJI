@@ -1,6 +1,9 @@
 // DJI Ground Station - 统一状态管理
+// 合并: device-context, device-state-manager, card-state-manager, card-state-proxy
+
 import debugLogger from './debug.js';
 
+// 设备上下文管理
 class DeviceContext {
   constructor() {
     this.currentDevice = null;
@@ -73,6 +76,7 @@ class DeviceContext {
   }
 }
 
+// 设备状态存储
 class DeviceStateManager {
   constructor() {
     this.states = new Map();
@@ -85,6 +89,7 @@ class DeviceStateManager {
     if (!this.states.has(sn)) {
       this.states.set(sn, new Map());
     }
+
     if (!this.states.get(sn).has(cardId)) {
       this.states.get(sn).set(cardId, {});
     }
@@ -134,8 +139,9 @@ class DeviceStateManager {
   _saveState(sn, cardId) {
     if (typeof window !== 'undefined') {
       try {
+        const cardState = this.getState(sn, cardId);
         const key = `device_state_${sn}_${cardId}`;
-        localStorage.setItem(key, JSON.stringify(this.getState(sn, cardId)));
+        localStorage.setItem(key, JSON.stringify(cardState));
       } catch (e) {
         debugLogger.warn(`保存状态失败: ${sn}.${cardId}`, e);
       }
@@ -148,7 +154,7 @@ class DeviceStateManager {
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key?.startsWith('device_state_')) {
+        if (key && key.startsWith('device_state_')) {
           const parts = key.split('_');
           if (parts.length >= 4) {
             const sn = parts[2];
@@ -171,7 +177,8 @@ class DeviceStateManager {
   _removeStorageState(sn, cardId) {
     if (typeof window !== 'undefined') {
       try {
-        localStorage.removeItem(`device_state_${sn}_${cardId}`);
+        const key = `device_state_${sn}_${cardId}`;
+        localStorage.removeItem(key);
       } catch (e) {
         debugLogger.warn(`删除状态失败: ${sn}.${cardId}`, e);
       }
@@ -184,7 +191,7 @@ class DeviceStateManager {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
-          if (key?.startsWith(`device_state_${sn}_`)) {
+          if (key && key.startsWith(`device_state_${sn}_`)) {
             keysToRemove.push(key);
           }
         }
@@ -196,6 +203,7 @@ class DeviceStateManager {
   }
 }
 
+// 卡片状态代理
 class CardStateProxy {
   constructor(target, cardId, options = {}) {
     this.target = target;
@@ -206,7 +214,7 @@ class CardStateProxy {
 
     return new Proxy(target, {
       set: (obj, prop, value) => this._handleSet(obj, prop, value),
-      get: (obj, prop) => obj[prop]
+      get: (obj, prop) => this._handleGet(obj, prop)
     });
   }
 
@@ -224,15 +232,20 @@ class CardStateProxy {
     return true;
   }
 
+  _handleGet(obj, prop) {
+    return obj[prop];
+  }
+
   _isSerializable(value) {
     if (value === null || value === undefined) return true;
     if (typeof value === 'function') return false;
-    if (value instanceof Element || value instanceof Node) return false;
+    if (value instanceof Element) return false;
+    if (value instanceof Node) return false;
 
     try {
       JSON.stringify(value);
       return true;
-    } catch {
+    } catch (e) {
       return false;
     }
   }
@@ -251,6 +264,7 @@ class CardStateProxy {
   }
 }
 
+// 卡片状态管理器
 class CardStateManager {
   constructor() {
     this.registeredCards = new Map();
@@ -261,7 +275,10 @@ class CardStateManager {
   register(cardInstance, cardId, options = {}) {
     const proxy = new CardStateProxy(cardInstance, cardId, options);
     this.registeredCards.set(cardId, { proxy, instance: cardInstance, options });
+
+    // 立即恢复当前设备的状态
     proxy.restoreState();
+
     debugLogger.state(`卡片已注册: ${cardId}`);
     return proxy;
   }
@@ -283,6 +300,7 @@ class CardStateManager {
     this.registeredCards.forEach((cardInfo, cardId) => {
       try {
         cardInfo.proxy.restoreState();
+
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('card-state-restored', {
             detail: { cardId, sn: data.currentSN }
@@ -316,10 +334,12 @@ class CardStateManager {
   }
 }
 
+// 全局实例
 const deviceContext = new DeviceContext();
 const deviceStateManager = new DeviceStateManager();
 const cardStateManager = new CardStateManager();
 
+// 浏览器全局变量
 if (typeof window !== 'undefined') {
   window.deviceContext = deviceContext;
   window.deviceStateManager = deviceStateManager;

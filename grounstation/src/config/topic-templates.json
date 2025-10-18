@@ -1,13 +1,25 @@
 {
   "dji_services": {
-    "cloud_control_auth": {
+    "cloud_control_auth_request": {
       "topic_template": "thing/product/{sn}/services",
       "response_topic": "thing/product/{sn}/services_reply",
-      "method": "cloud_control_auth",
-      "description": "云端控制权限申请",
+      "method": "cloud_control_auth_request",
+      "description": "请求云端控制授权",
       "timeout": 10000,
       "required_params": ["user_id", "user_callsign"],
       "optional_params": ["control_keys"],
+      "default_values": {
+        "control_keys": ["flight"]
+      }
+    },
+    "cloud_control_release": {
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
+      "method": "cloud_control_release",
+      "description": "释放云端控制",
+      "timeout": 10000,
+      "required_params": ["control_keys"],
+      "optional_params": [],
       "default_values": {
         "control_keys": ["flight"]
       }

@@ -7,19 +7,25 @@
     "start": "astro dev",
     "build": "astro check && astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test": "pnpm test:unit",
+    "test:unit": "node tests/unit/topic-template-manager.test.js && node tests/unit/message-router.test.js",
+    "test:integration": "node tests/integration/cloud-control-auth.test.js",
+    "test:cloud-auth": "node tests/integration/cloud-control-auth.test.js"
   },
   "dependencies": {
+    "@astrojs/node": "^8.3.4",
     "@popperjs/core": "^2.11.8",
-    "astro": "^4.15.0",
-    "mqtt": "^5.10.1",
+    "astro": "^4.16.19",
+    "material-symbols": "^0.37.0",
+    "mqtt": "^5.14.1",
     "tippy.js": "^6.3.7"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
-    "@astrojs/tailwind": "^5.1.2",
+    "@astrojs/tailwind": "^5.1.5",
     "autoprefixer": "^10.4.21",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.0.0"
+    "tailwindcss": "^3.4.18",
+    "typescript": "^5.9.3"
   }
 }

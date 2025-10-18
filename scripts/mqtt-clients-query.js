@@ -12,13 +12,14 @@
 
 // ==================== 配置参数 ====================
 // 请在此处直接修改配置参数
+
 const EMQX_CONFIG = {
   // EMQX API 认证信息 (必须填写)
-  apiKey: '29275299af4a3366',
-  secretKey: '0WrSJ49ADbOnNIa439CyYGWOUBKnhPhejSPFCqdRR9AcvE',
+  apiKey: 'ce9de7b674acfed7',
+  secretKey: 'XaG9CEa2AserrayKx13MjlWPTJ29AYPdfB7KeXORhiVqP',
 
   // EMQX API 地址
-  apiUrl: 'http://127.0.0.1:18083/api/v5/clients',
+  apiUrl: 'http://192.168.31.209:18083/api/v5/clients',
 
   // DJI设备ClientID匹配规则 (14位大写字母和数字)
   djiClientPattern: /^[A-Z0-9]{14}$/,

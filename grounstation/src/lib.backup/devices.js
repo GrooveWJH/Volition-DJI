@@ -1,4 +1,6 @@
 // DJI Ground Station - 设备管理
+// 合并: device-manager.js + device-scanner.js
+
 import debugLogger from './debug.js';
 
 // 设备扫描器
@@ -13,22 +15,30 @@ class DeviceScanner {
   }
 
   _getEmqxConfig() {
-    if (typeof window === 'undefined') return { host: '127.0.0.1', port: '18083', apiKey: '', secretKey: '' };
-    try {
-      return {
-        host: localStorage.getItem('emqx_host') || '127.0.0.1',
-        port: localStorage.getItem('emqx_port') || '18083',
-        apiKey: localStorage.getItem('emqx_api_key') || '',
-        secretKey: localStorage.getItem('emqx_secret_key') || ''
-      };
-    } catch (e) {
-      debugLogger.warn('无法从localStorage加载EMQX配置:', e);
-      return { host: '127.0.0.1', port: '18083', apiKey: '', secretKey: '' };
+    if (typeof window !== 'undefined') {
+      try {
+        return {
+          host: localStorage.getItem('emqx_host') || '127.0.0.1',
+          port: localStorage.getItem('emqx_port') || '18083',
+          apiKey: localStorage.getItem('emqx_api_key') || '',
+          secretKey: localStorage.getItem('emqx_secret_key') || ''
+        };
+      } catch (e) {
+        debugLogger.warn('无法从localStorage加载EMQX配置:', e);
+      }
     }
+
+    return {
+      host: '127.0.0.1',
+      port: '18083',
+      apiKey: '',
+      secretKey: ''
+    };
   }
 
   updateConfig(config) {
     this.emqxConfig = { ...this.emqxConfig, ...config };
+
     if (typeof window !== 'undefined') {
       try {
         Object.entries(config).forEach(([key, value]) => {
@@ -38,20 +48,13 @@ class DeviceScanner {
         debugLogger.warn('无法保存EMQX配置到localStorage:', e);
       }
     }
+
     debugLogger.info('EMQX配置已更新:', this.emqxConfig);
   }
 
   async scanDevices() {
-    debugLogger.debug('[DeviceScanner]', '🚀 scanDevices() 方法开始执行');
-
-    // 检查配置完整性
-    const missingConfig = [];
-    if (!this.emqxConfig.host) missingConfig.push('host');
-    if (!this.emqxConfig.apiKey) missingConfig.push('apiKey');
-    if (!this.emqxConfig.secretKey) missingConfig.push('secretKey');
-
-    if (missingConfig.length > 0) {
-      debugLogger.warn('[DeviceScanner]', `EMQX配置不完整，缺少: ${missingConfig.join(', ')}。请在设置中配置 EMQX API 密钥`);
+    if (!this.emqxConfig.host || !this.emqxConfig.apiKey || !this.emqxConfig.secretKey) {
+      debugLogger.warn('EMQX配置不完整，无法扫描设备');
       return [];
     }
 
@@ -63,54 +66,15 @@ class DeviceScanner {
         secretKey: this.emqxConfig.secretKey
       });
 
-      const apiUrl = `/api/emqx-clients?${queryParams.toString()}`;
-
-      debugLogger.debug('[DeviceScanner]', `正在扫描设备 - 配置:`, {
-        host: this.emqxConfig.host,
-        port: this.emqxConfig.port,
-        apiUrl
-      });
-
-      debugLogger.debug('[DeviceScanner]', '📡 即将发起 fetch 请求:', apiUrl);
-
-      // 添加随机参数防止浏览器缓存
-      const cacheBuster = `&_t=${Date.now()}`;
-      const response = await fetch(apiUrl + cacheBuster, {
-        cache: 'no-store', // 强制不使用缓存
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      });
-
-      debugLogger.debug('[DeviceScanner]', '✅ fetch 返回，响应状态:', response.status, response.statusText);
+      const response = await fetch(`/api/emqx-clients?${queryParams}`);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        debugLogger.error('[DeviceScanner]', `EMQX API请求失败 [HTTP ${response.status}]:`, {
-          status: response.status,
-          statusText: response.statusText,
-          url: `${this.emqxConfig.host}:${this.emqxConfig.port}`,
-          response: errorText
-        });
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      debugLogger.debug('[DeviceScanner]', '📥 开始解析 JSON 响应...');
       const data = await response.json();
-      debugLogger.debug('[DeviceScanner]', '✅ JSON 解析完成，原始数据:', JSON.stringify(data));
 
       if (data.error) {
-        debugLogger.error('[DeviceScanner]', 'EMQX API返回错误:', {
-          error: data.error,
-          config: {
-            host: this.emqxConfig.host,
-            port: this.emqxConfig.port,
-            hasApiKey: !!this.emqxConfig.apiKey,
-            hasSecretKey: !!this.emqxConfig.secretKey
-          }
-        });
         throw new Error(data.error);
       }
 
@@ -118,47 +82,15 @@ class DeviceScanner {
       this.lastScanResult = deviceList;
 
       debugLogger.info('[DeviceScanner]', `设备扫描完成，发现 ${deviceList.length} 个设备:`, deviceList);
-      if (this.onDevicesFound) this.onDevicesFound(deviceList);
+
+      if (this.onDevicesFound) {
+        this.onDevicesFound(deviceList);
+      }
 
       return deviceList;
-    } catch (error) {
-      debugLogger.error('[DeviceScanner]', '💥 scanDevices() 捕获异常:', error.name, error.message);
-      debugLogger.error('[DeviceScanner]', '💥 异常堆栈:', error.stack);
 
-      // 详细的错误分类
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        debugLogger.error('[DeviceScanner]', '网络连接失败，无法访问 EMQX API:', {
-          reason: '可能原因: EMQX服务未启动 / 主机地址错误 / 网络不可达',
-          config: {
-            host: this.emqxConfig.host,
-            port: this.emqxConfig.port
-          },
-          error: error.message
-        });
-      } else if (error.message.includes('HTTP 401') || error.message.includes('HTTP 403')) {
-        debugLogger.error('[DeviceScanner]', 'EMQX API认证失败:', {
-          reason: 'API Key 或 Secret Key 错误',
-          config: {
-            host: this.emqxConfig.host,
-            port: this.emqxConfig.port,
-            apiKey: this.emqxConfig.apiKey ? `${this.emqxConfig.apiKey.substring(0, 8)}...` : '未设置',
-            secretKey: this.emqxConfig.secretKey ? '***已设置***' : '未设置'
-          },
-          error: error.message
-        });
-      } else {
-        debugLogger.error('[DeviceScanner]', '设备扫描失败:', {
-          errorType: error.name,
-          errorMessage: error.message,
-          stack: error.stack,
-          config: {
-            host: this.emqxConfig.host,
-            port: this.emqxConfig.port,
-            hasApiKey: !!this.emqxConfig.apiKey,
-            hasSecretKey: !!this.emqxConfig.secretKey
-          }
-        });
-      }
+    } catch (error) {
+      debugLogger.error('设备扫描失败:', error);
       return [];
     }
   }
@@ -169,22 +101,35 @@ class DeviceScanner {
       return;
     }
 
-    if (callback) this.onDevicesFound = callback;
+    if (callback) {
+      this.onDevicesFound = callback;
+    }
+
     this.isScanning = true;
 
+    // 立即执行一次扫描
     this.scanDevices();
-    this.scanInterval = setInterval(() => this.scanDevices(), this.intervalMs);
+
+    // 设置定时扫描
+    this.scanInterval = setInterval(() => {
+      this.scanDevices();
+    }, this.intervalMs);
 
     debugLogger.info(`设备扫描已启动，间隔: ${this.intervalMs}ms`);
   }
 
   stopScanning() {
-    if (!this.isScanning) return;
+    if (!this.isScanning) {
+      return;
+    }
+
     this.isScanning = false;
+
     if (this.scanInterval) {
       clearInterval(this.scanInterval);
       this.scanInterval = null;
     }
+
     debugLogger.info('设备扫描已停止');
   }
 
@@ -214,7 +159,13 @@ class DeviceManager {
     this.eventListeners = new Set();
 
     this._loadAliases();
-    this.scanner.onDevicesFound = (deviceList) => this._updateDeviceList(deviceList);
+    this._initScanner();
+  }
+
+  _initScanner() {
+    this.scanner.onDevicesFound = (deviceList) => {
+      this._updateDeviceList(deviceList);
+    };
   }
 
   _updateDeviceList(deviceList) {
@@ -226,7 +177,7 @@ class DeviceManager {
     for (const sn of newDevices) {
       if (!this.devices.has(sn)) {
         this.devices.set(sn, {
-          sn,
+          sn: sn,
           alias: this.deviceAliases.get(sn) || '',
           lastSeen: currentTime,
           status: 'online',
@@ -235,13 +186,14 @@ class DeviceManager {
         this._notifyListeners('device-added', { sn });
         debugLogger.info('[DeviceManager]', `新设备发现: ${sn}`);
       } else {
+        // 更新已存在设备的最后见时间
         const device = this.devices.get(sn);
         device.lastSeen = currentTime;
         device.status = 'online';
       }
     }
 
-    // 标记离线设备
+    // 标记离线设备并断开MQTT连接
     for (const sn of oldDevices) {
       if (!newDevices.has(sn)) {
         const device = this.devices.get(sn);
@@ -249,6 +201,8 @@ class DeviceManager {
           device.status = 'offline';
           this._notifyListeners('device-offline', { sn });
           debugLogger.info('[DeviceManager]', `设备离线: ${sn}`);
+
+          // 自动断开MQTT连接
           this._disconnectMqttForOfflineDevice(sn);
         }
       }
@@ -262,6 +216,7 @@ class DeviceManager {
 
   async _disconnectMqttForOfflineDevice(sn) {
     try {
+      // 延迟加载避免循环依赖
       if (typeof window !== 'undefined' && window.mqttManager) {
         window.mqttManager.disconnectDevice(sn);
         debugLogger.info('[DeviceManager]', `设备 ${sn} MQTT连接已自动断开`);
@@ -279,6 +234,7 @@ class DeviceManager {
     this.scanner.stopScanning();
   }
 
+  // 用于测试的单次扫描方法
   async scan() {
     const deviceList = await this.scanner.scanDevices();
     this._updateDeviceList(deviceList);
@@ -298,7 +254,10 @@ class DeviceManager {
 
   getDevice(sn) {
     const device = this.devices.get(sn);
-    return device ? { ...device, alias: this.deviceAliases.get(sn) || '' } : null;
+    return device ? {
+      ...device,
+      alias: this.deviceAliases.get(sn) || ''
+    } : null;
   }
 
   removeDevice(sn) {
@@ -323,24 +282,28 @@ class DeviceManager {
   }
 
   _loadAliases() {
-    if (typeof window === 'undefined') return;
-    try {
-      const stored = localStorage.getItem('device_aliases');
-      if (stored) {
-        this.deviceAliases = new Map(Object.entries(JSON.parse(stored)));
-        debugLogger.debug('[DeviceManager]', '设备别名已加载');
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('device_aliases');
+        if (stored) {
+          const aliases = JSON.parse(stored);
+          this.deviceAliases = new Map(Object.entries(aliases));
+          debugLogger.debug('[DeviceManager]', '设备别名已加载');
+        }
+      } catch (e) {
+        debugLogger.warn('[DeviceManager]', '无法加载设备别名:', e);
       }
-    } catch (e) {
-      debugLogger.warn('[DeviceManager]', '无法加载设备别名:', e);
     }
   }
 
   _saveAliases() {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem('device_aliases', JSON.stringify(Object.fromEntries(this.deviceAliases)));
-    } catch (e) {
-      debugLogger.warn('[DeviceManager]', '无法保存设备别名:', e);
+    if (typeof window !== 'undefined') {
+      try {
+        const aliases = Object.fromEntries(this.deviceAliases);
+        localStorage.setItem('device_aliases', JSON.stringify(aliases));
+      } catch (e) {
+        debugLogger.warn('[DeviceManager]', '无法保存设备别名:', e);
+      }
     }
   }
 
@@ -392,6 +355,7 @@ class DeviceManager {
 // 全局实例
 const deviceManager = new DeviceManager();
 
+// 浏览器全局变量
 if (typeof window !== 'undefined') {
   window.deviceManager = deviceManager;
 }

@@ -69,7 +69,7 @@ export const CARD_CONFIG = {
 
   streaming: {
     id: 'streaming',
-    collapsed: false,
+    collapsed: true,
     title: '视频流',
     description: '实时视频传输控制',
     order: 2

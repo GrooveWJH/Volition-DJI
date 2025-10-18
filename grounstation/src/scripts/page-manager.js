@@ -4,30 +4,6 @@
  */
 
 /**
- * 切换禁用模块显示
- */
-export function toggleDisabledModules() {
-  const content = document.getElementById('disabledModulesContent');
-  const header = document.getElementById('disabledModulesHeader');
-  const icon = document.getElementById('toggleIcon');
-
-  if (!content || !header || !icon) {
-    console.warn('Disabled modules toggle elements missing');
-    return;
-  }
-  
-  if (content.classList.contains('hidden')) {
-    content.classList.remove('hidden');
-    header.classList.add('bg-gray-50');
-    icon.style.transform = 'rotate(180deg)';
-  } else {
-    content.classList.add('hidden');
-    header.classList.remove('bg-gray-50');
-    icon.style.transform = 'rotate(0deg)';
-  }
-}
-
-/**
  * 显示配置管理菜单
  */
 export function showConfigMenu() {
@@ -59,9 +35,8 @@ export function showConfigMenu() {
  */
 export function initializePageManager() {
   // 将函数暴露到全局作用域以便HTML onclick使用
-  window.toggleDisabledModules = toggleDisabledModules;
   window.showConfigMenu = showConfigMenu;
-  
+
   console.log('页面管理器已初始化');
 }
 

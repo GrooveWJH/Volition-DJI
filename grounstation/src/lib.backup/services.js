@@ -1,6 +1,9 @@
 // DJI Ground Station - 服务层管理
+// 合并: topic-service-manager.js + topic-template-manager.js + message-router.js + topic-service-layer.js
+
 import debugLogger from './debug.js';
 
+// 加载主题模板配置
 async function loadTopicTemplates() {
   try {
     const response = await fetch('/src/config/topic-templates.json');
@@ -11,6 +14,7 @@ async function loadTopicTemplates() {
   }
 }
 
+// 主题模板管理器
 class TopicTemplateManager {
   constructor() {
     this.templates = {};
@@ -31,36 +35,46 @@ class TopicTemplateManager {
   }
 
   hasService(serviceName) {
-    return !!(this.templates.dji_services?.[serviceName]);
+    return !!(this.templates.dji_services && this.templates.dji_services[serviceName]);
   }
 
   getServiceConfig(serviceName) {
-    return this.templates.dji_services?.[serviceName] || null;
+    if (!this.templates.dji_services) return null;
+    return this.templates.dji_services[serviceName] || null;
   }
 
   buildServiceTopic(sn, serviceName) {
     const config = this.getServiceConfig(serviceName);
-    if (!config) throw new Error(`未找到服务配置: ${serviceName}`);
+    if (!config) {
+      throw new Error(`未找到服务配置: ${serviceName}`);
+    }
+
     return config.topic_template.replace('{sn}', sn);
   }
 
   buildResponseTopic(sn, serviceName) {
     const config = this.getServiceConfig(serviceName);
-    return config?.response_topic?.replace('{sn}', sn) || null;
+    if (!config || !config.response_topic) return null;
+
+    return config.response_topic.replace('{sn}', sn);
   }
 
   buildServiceMessage(serviceName, params = {}, options = {}) {
     const config = this.getServiceConfig(serviceName);
-    if (!config) throw new Error(`未找到服务配置: ${serviceName}`);
+    if (!config) {
+      throw new Error(`未找到服务配置: ${serviceName}`);
+    }
 
     const missing = (config.required_params || []).filter(param => !(param in params));
     if (missing.length > 0) {
       throw new Error(`服务 ${serviceName} 缺少必需参数: ${missing.join(', ')}`);
     }
 
+    const data = { ...(config.default_values || {}), ...params };
+
     return {
       method: config.method,
-      data: { ...(config.default_values || {}), ...params },
+      data: data,
       tid: options.tid || this.generateTid(),
       bid: options.bid || this.generateBid(),
       timestamp: options.timestamp || Date.now()
@@ -69,7 +83,7 @@ class TopicTemplateManager {
 
   getServiceTimeout(serviceName) {
     const config = this.getServiceConfig(serviceName);
-    return config?.timeout || 10000;
+    return config ? (config.timeout || 10000) : 10000;
   }
 
   generateTid() {
@@ -85,6 +99,7 @@ class TopicTemplateManager {
   }
 }
 
+// 消息路由器
 export const MESSAGE_TYPES = {
   SERVICE_REPLY: 'service_reply',
   DRC_DATA: 'drc_data',
@@ -120,10 +135,12 @@ class MessageRouter {
     }
 
     this.routeRules.set(ruleId, rule);
+
     if (!this.callbacks.has(ruleId)) {
       this.callbacks.set(ruleId, new Set());
     }
     this.callbacks.get(ruleId).add(callback);
+
     debugLogger.service(`路由规则已注册: ${ruleId}`);
     return ruleId;
   }
@@ -142,12 +159,14 @@ class MessageRouter {
       this.callbacks.delete(ruleId);
       this.routeRules.delete(ruleId);
     }
+
     debugLogger.service(`路由规则已注销: ${ruleId}`);
   }
 
   registerServiceRoute(serviceType, callback) {
     const ruleId = `service_${serviceType}`;
-    return this.registerRoute(ruleId, { type: ROUTE_TYPES.SERVICE, serviceType }, callback);
+    const rule = { type: ROUTE_TYPES.SERVICE, serviceType: serviceType };
+    return this.registerRoute(ruleId, rule, callback);
   }
 
   routeMessage(rawMessage, topic, sn = null) {
@@ -161,15 +180,17 @@ class MessageRouter {
       }
 
       const messageType = this._identifyMessageType(topic);
-      if (!sn) sn = this._extractSNFromTopic(topic);
+      if (!sn) {
+        sn = this._extractSNFromTopic(topic);
+      }
 
       this._updateStats(messageType, message);
 
       const context = {
-        message,
-        topic,
-        sn,
-        messageType,
+        message: message,
+        topic: topic,
+        sn: sn,
+        messageType: messageType,
         timestamp: Date.now()
       };
 
@@ -201,37 +222,60 @@ class MessageRouter {
       }
     }
 
-    if (routedCount > 0) this.stats.totalRouted++;
+    if (routedCount > 0) {
+      this.stats.totalRouted++;
+    }
+
     debugLogger.mqtt(`消息已路由到 ${routedCount} 个处理器`);
   }
 
   _matchRule(rule, context) {
     switch (rule.type) {
       case ROUTE_TYPES.EXACT:
-        return rule.topic === context.topic;
+        return this._matchExact(rule, context);
       case ROUTE_TYPES.PREFIX:
-        return context.topic.startsWith(rule.prefix);
+        return this._matchPrefix(rule, context);
       case ROUTE_TYPES.PATTERN:
-        try {
-          return new RegExp(rule.pattern).test(context.topic);
-        } catch (error) {
-          debugLogger.error(`路由规则模式错误: ${rule.pattern}`, error);
-          return false;
-        }
+        return this._matchPattern(rule, context);
       case ROUTE_TYPES.SERVICE:
-        // 支持通配符 * 匹配所有服务回复
-        if (rule.serviceType === '*') {
-          return context.messageType === MESSAGE_TYPES.SERVICE_REPLY;
-        }
-        return context.messageType === MESSAGE_TYPES.SERVICE_REPLY &&
-               context.message?.method === rule.serviceType;
+        return this._matchService(rule, context);
       default:
         return false;
     }
   }
 
+  _matchExact(rule, context) {
+    return rule.topic === context.topic;
+  }
+
+  _matchPrefix(rule, context) {
+    return context.topic.startsWith(rule.prefix);
+  }
+
+  _matchPattern(rule, context) {
+    try {
+      const regex = new RegExp(rule.pattern);
+      return regex.test(context.topic);
+    } catch (error) {
+      debugLogger.error(`路由规则模式错误: ${rule.pattern}`, error);
+      return false;
+    }
+  }
+
+  _matchService(rule, context) {
+    if (context.messageType !== MESSAGE_TYPES.SERVICE_REPLY) {
+      return false;
+    }
+
+    const message = context.message;
+    return message && message.method === rule.serviceType;
+  }
+
   _parseMessage(rawMessage) {
-    if (typeof rawMessage === 'object') return rawMessage;
+    if (typeof rawMessage === 'object') {
+      return rawMessage;
+    }
+
     if (typeof rawMessage === 'string') {
       try {
         return JSON.parse(rawMessage);
@@ -240,13 +284,23 @@ class MessageRouter {
         return null;
       }
     }
+
     return null;
   }
 
   _identifyMessageType(topic) {
-    if (topic.includes('/services_reply')) return MESSAGE_TYPES.SERVICE_REPLY;
-    if (topic.includes('/drc/')) return MESSAGE_TYPES.DRC_DATA;
-    if (topic.includes('/events')) return MESSAGE_TYPES.DEVICE_STATUS;
+    if (topic.includes('/services_reply')) {
+      return MESSAGE_TYPES.SERVICE_REPLY;
+    }
+
+    if (topic.includes('/drc/')) {
+      return MESSAGE_TYPES.DRC_DATA;
+    }
+
+    if (topic.includes('/events')) {
+      return MESSAGE_TYPES.DEVICE_STATUS;
+    }
+
     return MESSAGE_TYPES.UNKNOWN;
   }
 
@@ -261,7 +315,7 @@ class MessageRouter {
     }
     this.stats.byMessageType[messageType]++;
 
-    if (messageType === MESSAGE_TYPES.SERVICE_REPLY && message?.method) {
+    if (messageType === MESSAGE_TYPES.SERVICE_REPLY && message && message.method) {
       const serviceType = message.method;
       if (!this.stats.byServiceType[serviceType]) {
         this.stats.byServiceType[serviceType] = 0;
@@ -302,6 +356,7 @@ class MessageRouter {
   }
 }
 
+// 服务结果类型
 export const SERVICE_RESULT = {
   SUCCESS: 'success',
   ERROR: 'error',
@@ -310,6 +365,7 @@ export const SERVICE_RESULT = {
   INVALID_PARAMS: 'invalid_params'
 };
 
+// 主题服务管理器
 class TopicServiceManager {
   constructor() {
     this.mqttManager = null;
@@ -340,7 +396,7 @@ class TopicServiceManager {
       return this._error(SERVICE_RESULT.INVALID_PARAMS, `未知服务: ${serviceName}`);
     }
 
-    const connection = this.mqttManager?.getConnection(sn);
+    const connection = this._getConnection(sn);
     if (!connection) {
       return this._error(SERVICE_RESULT.NO_CONNECTION, `设备 ${sn} 未连接`);
     }
@@ -372,6 +428,10 @@ class TopicServiceManager {
     }
   }
 
+  _getConnection(sn) {
+    return this.mqttManager ? this.mqttManager.getConnection(sn) : null;
+  }
+
   _setupResponseHandler(serviceName, tid, timeout) {
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
@@ -387,7 +447,7 @@ class TopicServiceManager {
   _handleServiceResponse(message, topic, sn) {
     debugLogger.service(`处理设备 ${sn} 服务回复: ${topic}`, message);
 
-    if (!message?.tid) {
+    if (!message || !message.tid) {
       debugLogger.warn('[TopicServiceManager] 响应消息缺少tid');
       return;
     }
@@ -396,7 +456,7 @@ class TopicServiceManager {
     if (callback) {
       this._cleanupResponseHandler(message.tid);
 
-      if (message.data?.result === 0) {
+      if (message.data && message.data.result === 0) {
         callback(this._success(message.data));
       } else {
         const errorMsg = message.data?.output || message.data?.reason || '服务调用失败';
@@ -407,6 +467,7 @@ class TopicServiceManager {
 
   _cleanupResponseHandler(tid) {
     this.pendingCallbacks.delete(tid);
+
     const timeoutId = this.callTimeouts.get(tid);
     if (timeoutId) {
       clearTimeout(timeoutId);
@@ -417,7 +478,7 @@ class TopicServiceManager {
   _success(data = null) {
     return {
       success: true,
-      data,
+      data: data,
       error: null,
       timestamp: Date.now()
     };
@@ -452,20 +513,24 @@ class TopicServiceManager {
   }
 }
 
+// 全局实例
 const templateManager = new TopicTemplateManager();
 const messageRouter = new MessageRouter();
 const topicServiceManager = new TopicServiceManager();
 
+// 设置消息路由器处理服务回复
 messageRouter.registerServiceRoute('*', (message, topic, context) => {
   topicServiceManager._handleServiceResponse(message, topic, context.sn);
 });
 
+// 浏览器全局变量
 if (typeof window !== 'undefined') {
   window.templateManager = templateManager;
   window.messageRouter = messageRouter;
   window.topicServiceManager = topicServiceManager;
 }
 
+// 导出函数供其他模块使用
 export function getMessageRouter() {
   return messageRouter;
 }
