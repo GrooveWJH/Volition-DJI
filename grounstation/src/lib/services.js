@@ -3,8 +3,22 @@ import debugLogger from './debug.js';
 
 async function loadTopicTemplates() {
   try {
-    const response = await fetch('/src/config/topic-templates.json');
-    return await response.json();
+    // 浏览器环境
+    if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+      const response = await fetch('/src/config/topic-templates.json');
+      return await response.json();
+    }
+
+    // Node.js环境 - 动态导入
+    const { readFile } = await import('fs/promises');
+    const { fileURLToPath } = await import('url');
+    const { dirname, join } = await import('path');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const configPath = join(__dirname, '../config/topic-templates.json');
+    const content = await readFile(configPath, 'utf-8');
+    return JSON.parse(content);
   } catch (error) {
     debugLogger.error('加载主题模板失败:', error);
     return { dji_services: {} };
@@ -318,7 +332,7 @@ class TopicServiceManager {
     this.callTimeouts = new Map();
     this.defaultTimeout = 10000;
     this.debug = false;
-    this._initMqttManager();
+    this._mqttReadyPromise = this._initMqttManager();
   }
 
   async _initMqttManager() {
@@ -334,14 +348,23 @@ class TopicServiceManager {
     if (!sn) return this._error(SERVICE_RESULT.INVALID_PARAMS, '设备SN不能为空');
     if (!serviceName) return this._error(SERVICE_RESULT.INVALID_PARAMS, '服务名称不能为空');
 
+    if (this._mqttReadyPromise) {
+      await this._mqttReadyPromise;
+    }
+
     await this.templateManager.waitForLoad();
 
     if (!this.templateManager.hasService(serviceName)) {
       return this._error(SERVICE_RESULT.INVALID_PARAMS, `未知服务: ${serviceName}`);
     }
 
-    const connection = this.mqttManager?.getConnection(sn);
-    if (!connection) {
+    let connection = this.mqttManager?.getConnection(sn);
+    if (!connection || !connection.isConnected) {
+      debugLogger.service(`[${sn}] 未找到现有MQTT连接或连接已断开，尝试自动建立`);
+      connection = await this.mqttManager?.ensureConnection(sn);
+    }
+
+    if (!connection || !connection.isConnected) {
       return this._error(SERVICE_RESULT.NO_CONNECTION, `设备 ${sn} 未连接`);
     }
 
@@ -350,31 +373,47 @@ class TopicServiceManager {
       const topic = this.templateManager.buildServiceTopic(sn, serviceName);
       const timeout = options.timeout || this.templateManager.getServiceTimeout(serviceName);
 
+      const serializedMessage = JSON.stringify(message);
+      const requestContext = {
+        topic,
+        message,
+        pretty: JSON.stringify(message, null, 2)
+      };
+
       const responsePromise = this._setupResponseHandler(serviceName, message.tid, timeout);
 
-      const success = await connection.publish(topic, JSON.stringify(message));
+      const success = await connection.publish(topic, serializedMessage);
       if (!success) {
         this._cleanupResponseHandler(message.tid);
-        return this._error(SERVICE_RESULT.ERROR, '消息发送失败');
+        return this._error(SERVICE_RESULT.ERROR, '消息发送失败', { request: requestContext });
       }
 
       debugLogger.service(`[${sn}] 服务调用成功: ${serviceName}`, message);
 
       if (options.noWait) {
         this._cleanupResponseHandler(message.tid);
-        return this._success({ sent: true });
+        const result = this._success({ sent: true });
+        result.request = requestContext;
+        return result;
       }
 
-      return await responsePromise;
+      const response = await responsePromise;
+      if (response?.success) {
+        response.request = requestContext;
+      } else if (response?.error) {
+        response.error.request = requestContext;
+      }
+      return response;
 
     } catch (error) {
-      return this._error(SERVICE_RESULT.ERROR, error.message);
+      return this._error(SERVICE_RESULT.ERROR, error.message, { originalError: error?.stack || error?.message });
     }
   }
 
   _setupResponseHandler(serviceName, tid, timeout) {
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
+        debugLogger.warn(`[TopicServiceManager] 服务调用超时 (service=${serviceName}, tid=${tid})`);
         this._cleanupResponseHandler(tid);
         resolve(this._error(SERVICE_RESULT.TIMEOUT, `服务调用超时: ${serviceName}`));
       }, timeout);
@@ -393,15 +432,30 @@ class TopicServiceManager {
     }
 
     const callback = this.pendingCallbacks.get(message.tid);
-    if (callback) {
-      this._cleanupResponseHandler(message.tid);
+    if (!callback) {
+      debugLogger.warn(`[TopicServiceManager] 未找到服务回调 (tid: ${message.tid}, topic: ${topic})，可能已超时或未注册`);
+      return;
+    }
 
-      if (message.data?.result === 0) {
-        callback(this._success(message.data));
-      } else {
-        const errorMsg = message.data?.output || message.data?.reason || '服务调用失败';
-        callback(this._error(SERVICE_RESULT.ERROR, errorMsg));
-      }
+    this._cleanupResponseHandler(message.tid);
+
+    if (message.data?.result === 0) {
+      const successResult = this._success(message.data);
+      successResult.response = {
+        topic,
+        message,
+        pretty: JSON.stringify(message, null, 2)
+      };
+      callback(successResult);
+    } else {
+      const errorMsg = message.data?.output || message.data?.reason || '服务调用失败';
+      const errorResult = this._error(SERVICE_RESULT.ERROR, errorMsg, message.data);
+      errorResult.response = {
+        topic,
+        message,
+        pretty: JSON.stringify(message, null, 2)
+      };
+      callback(errorResult);
     }
   }
 
@@ -423,11 +477,11 @@ class TopicServiceManager {
     };
   }
 
-  _error(type, message) {
+  _error(type, message, details = null) {
     return {
       success: false,
       data: null,
-      error: { type, message },
+      error: { type, message, details },
       timestamp: Date.now()
     };
   }

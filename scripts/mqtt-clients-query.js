@@ -15,11 +15,11 @@
 
 const EMQX_CONFIG = {
   // EMQX API 认证信息 (必须填写)
-  apiKey: '9b8799abe2c3d581',
-  secretKey: '8AotAV126dc9B7E8eMhfnbSlC6pTxtl0eLS29AWMi2DrC',
+  apiKey: '58daf077b9db40e9',
+  secretKey: 'gRaOrMSTp0YQNK2HzlKcbnbGeiYOf0WwZqybM19AyRZA',
 
   // EMQX API 地址
-  apiUrl: 'http://192.168.31.209:18083/api/v5/clients',
+  apiUrl: 'http://192.168.31.73:18083/api/v5/clients',
 
   // DJI设备ClientID匹配规则 (14位大写字母和数字)
   djiClientPattern: /^[A-Z0-9]{14}$/,
@@ -268,9 +268,9 @@ async function main() {
 
   if (EMQX_CONFIG.verbose) {
     console.clear();
-    console.log(colorize('╔════════════════════════════════════════════════════════════════════════════╗', colors.bright + colors.blue));
-    console.log(colorize('║                   DJI设备MQTT客户端探测工具                                ║', colors.bright + colors.blue));
-    console.log(colorize('╚════════════════════════════════════════════════════════════════════════════╝', colors.bright + colors.blue));
+    console.log(colorize('╔═══════════════════════════════════════════════════════════════╗', colors.bright + colors.blue));
+    console.log(colorize('║                   DJI设备MQTT客户端探测工具                   ║', colors.bright + colors.blue));
+    console.log(colorize('╚═══════════════════════════════════════════════════════════════╝', colors.bright + colors.blue));
   }
 
   const data = await fetchClients();

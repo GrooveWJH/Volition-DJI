@@ -25,7 +25,7 @@ from rich.live import Live
 
 
 # ======== 通用配置 ========
-MQTT_HOST = "127.0.0.1"
+MQTT_HOST = "192.168.31.73"
 MQTT_PORT = 1883
 MQTT_USERNAME = "admin"  # 如果 broker 需要认证，填入用户名
 MQTT_PASSWORD = "302811055wjhhz"  # 如果 broker 需要认证，填入密码
@@ -36,8 +36,8 @@ GATEWAY_SN = "9N9CN2J0012CXY"
 USER_ID = "groove"
 USER_CALLSIGN = "吴建豪"
 
-# DRC 模式中继参数
-MQTT_RELAY_ADDRESS = "192.168.18.130:1883"
+# DRC 模式中继参数``
+MQTT_RELAY_ADDRESS = "192.168.31.73:1883"
 MQTT_RELAY_CLIENT_ID = "drc-9N9CN8400164WH"
 MQTT_RELAY_USERNAME = "admin"
 MQTT_RELAY_PASSWORD = "302811055wjhhz"

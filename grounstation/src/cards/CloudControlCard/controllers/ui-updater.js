@@ -174,18 +174,8 @@ export class UIUpdater {
       this.elements.userCallsignInput.value = userCallsignValue;
     }
 
-    // 确保状态与UI同步
     authStateManager.userId = userIdValue;
     authStateManager.userCallsign = userCallsignValue;
-  }
-
-  /**
-   * 更新设备序列号显示
-   */
-  updateDeviceSerial(deviceSN) {
-    if (this.elements?.serialInput) {
-      this.elements.serialInput.value = deviceSN || '';
-    }
   }
 
   /**

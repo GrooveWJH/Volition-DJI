@@ -18,7 +18,8 @@
     "test:unit": "node tests/unit/topic-template-manager.test.js && node tests/unit/message-router.test.js && node tests/unit/auth-state-manager.test.js && node tests/unit/error-handler.test.js",
     "test:integration": "node tests/integration/cloud-control-auth.test.js",
     "test:cloud-auth": "node tests/integration/cloud-control-auth.test.js",
-    "test:drc-workflow": "node tests/integration/drc-full-workflow.test.js"
+    "test:drc-workflow": "node tests/integration/drc-full-workflow.test.js",
+    "test:device-scan": "node tests/integration/device-scan-mqtt-connection.test.js"
   },
   "dependencies": {
     "@astrojs/node": "^8.3.4",

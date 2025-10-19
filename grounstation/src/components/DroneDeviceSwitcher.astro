@@ -279,57 +279,67 @@
           if (connection) {
             debugLogger.mqtt('MQTT连接已建立:', `station-${sn}`);
 
-            // 显示连接成功提示
-            const deviceElement = el.querySelector('.device-display');
-            if (deviceElement) {
-              // 创建临时tippy提示
-              const tempTippy = tippy(deviceElement, {
-                content: '✅ MQTT连接已建立',
-                placement: 'top',
-                arrow: true,
-                theme: 'mqtt-success',
-                showOnCreate: true,
-                duration: [300, 1500],
-                onHidden() {
-                  // 销毁临时tippy实例
-                  tempTippy.destroy();
-                }
-              });
-
-              // 2秒后自动隐藏
-              setTimeout(() => {
-                if (tempTippy.state.isVisible) {
-                  tempTippy.hide();
-                }
-              }, 2000);
-            }
-
-            // 重新渲染以更新蓝色指示灯
+            // 先重新渲染以更新蓝色指示灯
             render();
+
+            // 等待DOM更新后再显示tippy提示
+            setTimeout(() => {
+              const updatedDeviceItem = deviceList.querySelector(`.device-item[data-sn="${sn}"]`);
+              const deviceElement = updatedDeviceItem?.querySelector('.device-display');
+
+              if (deviceElement) {
+                // 创建临时tippy提示
+                const tempTippy = tippy(deviceElement, {
+                  content: '✅ MQTT连接已建立',
+                  placement: 'bottom',
+                  arrow: true,
+                  theme: 'mqtt-success',
+                  showOnCreate: true,
+                  duration: [300, 1500],
+                  onHidden() {
+                    tempTippy.destroy();
+                  }
+                });
+
+                // 2秒后自动隐藏
+                setTimeout(() => {
+                  if (tempTippy.state.isVisible) {
+                    tempTippy.hide();
+                  }
+                }, 2000);
+              }
+            }, 100);
           } else {
             debugLogger.error('MQTT连接失败:', sn);
 
-            // 显示连接失败提示
-            const deviceElement = el.querySelector('.device-display');
-            if (deviceElement) {
-              const tempTippy = tippy(deviceElement, {
-                content: '❌ MQTT连接失败',
-                placement: 'top',
-                arrow: true,
-                theme: 'light-border',
-                showOnCreate: true,
-                duration: [300, 2000],
-                onHidden() {
-                  tempTippy.destroy();
-                }
-              });
+            // 先渲染
+            render();
 
-              setTimeout(() => {
-                if (tempTippy.state.isVisible) {
-                  tempTippy.hide();
-                }
-              }, 3000);
-            }
+            // 等待DOM更新后显示失败提示
+            setTimeout(() => {
+              const updatedDeviceItem = deviceList.querySelector(`.device-item[data-sn="${sn}"]`);
+              const deviceElement = updatedDeviceItem?.querySelector('.device-display');
+
+              if (deviceElement) {
+                const tempTippy = tippy(deviceElement, {
+                  content: '❌ MQTT连接失败',
+                  placement: 'bottom',
+                  arrow: true,
+                  theme: 'light-border',
+                  showOnCreate: true,
+                  duration: [300, 2000],
+                  onHidden() {
+                    tempTippy.destroy();
+                  }
+                });
+
+                setTimeout(() => {
+                  if (tempTippy.state.isVisible) {
+                    tempTippy.hide();
+                  }
+                }, 3000);
+              }
+            }, 100);
           }
         }).catch(error => {
           debugLogger.error('MQTT连接异常:', error);

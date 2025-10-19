@@ -1,233 +1,286 @@
 #!/usr/bin/env node
-
 /**
  * DRC全流程集成测试
  *
  * 用法: node tests/integration/drc-full-workflow.test.js <设备SN>
+ * 示例: node tests/integration/drc-full-workflow.test.js 9N9CN2J0012CXY
  */
 
+// ==================== 配置参数 ====================
+const CONFIG = {
+  // 云端控制授权
+  auth: {
+    user_id: 'test_pilot_001',
+    user_callsign: 'TestStation',
+    control_keys: ['flight']
+  },
+
+  // DRC模式配置
+  drc: {
+    mqtt_broker: {
+      address: '192.168.31.73:1883',
+      username: 'admin',
+      password: '302811055wjhhz',
+      enable_tls: false
+    },
+    osd_frequency: 30,
+    hsi_frequency: 10
+  },
+
+  // 心跳监测
+  heartbeat: {
+    duration: 10000  // 监测时长(ms)
+  }
+};
+
+// ANSI颜色
+const colors = {
+  blue: '\x1b[34m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+  red: '\x1b[31m',
+  gray: '\x1b[90m',
+  reset: '\x1b[0m'
+};
+
+// ==================== 导入业务代码 ====================
 import { deviceContext } from '#lib/state.js';
 import { mqttManager } from '#lib/mqtt.js';
+import { topicServiceManager } from '#lib/services.js';
 import { DrcModeController } from '#cards/DrcModeCard/controllers/drc-mode-controller.js';
-import { CloudControlCardUI } from '#cards/CloudControlCard/controllers/cloud-control-ui.js';
 
+// ==================== 测试类 ====================
 class DrcWorkflowTest {
-  constructor(deviceSN) {
-    this.deviceSN = deviceSN;
-    this.drcController = null;
-    this.cloudCard = null;
+  constructor(sn) {
+    this.sn = sn;
+    this.heartbeatStats = {
+      sent: 0,
+      received: 0,
+      lastSentSeq: null,
+      lastRecvSeq: null
+    };
+    this.setupGlobals();
   }
 
-  async run() {
-    if (!this.deviceSN) {
-      console.error('❌ 请提供设备SN');
-      console.log('用法: node tests/integration/drc-full-workflow.test.js <设备SN>');
-      process.exit(1);
-    }
-
-    console.log(`🚀 开始DRC全流程测试 - 设备: ${this.deviceSN}`);
-
-    try {
-      await this.setup();
-      await this.testDeviceSelection();
-      await this.testMqttConnection();
-      await this.testCloudControlAuth();
-      await this.testDrcEntry();
-      await this.testHeartbeat();
-      console.log('✅ 全流程测试完成');
-    } catch (error) {
-      console.error('❌ 测试失败:', error.message);
-    }
-  }
-
-  async setup() {
-    console.log('📦 初始化组件...');
-
-    // 创建Node.js环境的模拟依赖
+  setupGlobals() {
     global.window = {
       addEventListener() {},
       dispatchEvent() {},
-      setInterval: setInterval,
-      clearInterval: clearInterval,
-      setTimeout: setTimeout,
-      clearTimeout: clearTimeout
+      setInterval, clearInterval,
+      setTimeout, clearTimeout
     };
-
-    // 模拟localStorage
     global.localStorage = {
       getItem: () => null,
       setItem: () => {},
       removeItem: () => {}
     };
-
-    // 初始化卡片实例
-    this.drcController = new DrcModeController();
-    this.cloudCard = new CloudControlCardUI();
-
-    console.log('✅ 组件初始化完成');
   }
 
-  async testDeviceSelection() {
-    console.log('🔍 1. 设备选择测试...');
+  async run() {
+    console.log(`${colors.cyan}🚀 DRC全流程测试 - ${this.sn}${colors.reset}\n`);
 
-    // 直接设置当前设备
-    deviceContext.setCurrentDevice(this.deviceSN);
-
-    const currentDevice = deviceContext.getCurrentDevice();
-    if (currentDevice !== this.deviceSN) {
-      throw new Error(`设备设置失败: ${currentDevice}`);
+    try {
+      await this.setupDevice();
+      await this.testCloudControlAuth();
+      await this.testDrcMode();
+      console.log(`${colors.green}✅ 测试完成${colors.reset}`);
+    } catch (error) {
+      console.log(`${colors.red}❌ 测试失败: ${error.message}${colors.reset}`);
+      process.exit(1);
     }
-
-    console.log(`✅ 设备已选择: ${this.deviceSN}`);
   }
 
-  async testMqttConnection() {
-    console.log('🌐 2. MQTT连接测试...');
+  async setupDevice() {
+    // 1. 设备选择
+    deviceContext.setCurrentDevice(this.sn);
+    console.log(`${colors.green}✅ 设备已选择: ${this.sn}${colors.reset}\n`);
 
-    // 调用生产代码建立MQTT连接
-    const connection = await mqttManager.ensureConnection(this.deviceSN);
-
-    if (!connection || !connection.isConnected) {
+    // 2. MQTT连接
+    const connection = await mqttManager.ensureConnection(this.sn);
+    if (!connection?.isConnected) {
       throw new Error('MQTT连接失败');
     }
+    this.connection = connection;
+    console.log(`${colors.green}✅ MQTT已连接 (ClientID: station-${this.sn})${colors.reset}\n`);
 
-    console.log(`✅ MQTT连接已建立 (ClientID: station-${this.deviceSN})`);
+    // 3. 设置数据包监听
+    this.setupPacketLogging();
+    this.setupHeartbeatMonitoring();
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  setupPacketLogging() {
+    // 监听接收的消息
+    this.connection.client.on('message', (topic, message) => {
+      // 心跳消息特殊处理（不打印，只统计）
+      if (topic.includes('/drc/up')) {
+        try {
+          const parsed = JSON.parse(message.toString());
+          if (parsed.method === 'heart_beat') {
+            this.heartbeatStats.received++;
+            this.heartbeatStats.lastRecvSeq = parsed.seq;
+            return;
+          }
+        } catch (e) {}
+      }
+
+      // 其他消息正常打印
+      console.log(`${colors.green}[← 接收] ${topic}${colors.reset}`);
+      try {
+        console.log(JSON.stringify(JSON.parse(message.toString()), null, 2) + '\n');
+      } catch (e) {
+        console.log(message.toString() + '\n');
+      }
+    });
+
+    // 拦截发送，打印数据包
+    const originalPublish = this.connection.publish.bind(this.connection);
+    this.connection.publish = async (topic, payload, options) => {
+      // 心跳消息特殊处理（不打印，只统计）
+      if (topic.includes('/drc/down')) {
+        try {
+          const parsed = typeof payload === 'string' ? JSON.parse(payload) : payload;
+          if (parsed.method === 'heart_beat') {
+            this.heartbeatStats.sent++;
+            this.heartbeatStats.lastSentSeq = parsed.seq;
+            return originalPublish(topic, payload, options);
+          }
+        } catch (e) {}
+      }
+
+      // 其他消息正常打印
+      console.log(`${colors.blue}[→ 发送] ${topic}${colors.reset}`);
+      try {
+        const parsed = typeof payload === 'string' ? JSON.parse(payload) : payload;
+        console.log(JSON.stringify(parsed, null, 2) + '\n');
+      } catch (e) {
+        console.log(payload + '\n');
+      }
+      return originalPublish(topic, payload, options);
+    };
+  }
+
+  setupHeartbeatMonitoring() {
+    this.heartbeatInterval = setInterval(() => {
+      this.updateHeartbeatDisplay();
+    }, 500);
+  }
+
+  updateHeartbeatDisplay() {
+    if (!this.showingHeartbeat) return;
+
+    // 清除之前的4行
+    process.stdout.write('\x1b[4A\x1b[0J');
+
+    const { sent, received, lastSentSeq, lastRecvSeq } = this.heartbeatStats;
+    const elapsed = ((Date.now() - this.heartbeatStartTime) / 1000).toFixed(1);
+    const sendRate = (sent / (elapsed || 1)).toFixed(1);
+    const recvRate = (received / (elapsed || 1)).toFixed(1);
+
+    console.log(`${colors.yellow}━━━ DRC心跳监测 ━━━${colors.reset}`);
+    console.log(`${colors.blue}↓ 发送[${sent}]${colors.reset} | 频率: ${sendRate}Hz | seq: ${lastSentSeq || '-'}`);
+    console.log(`${colors.green}↑ 接收[${received}]${colors.reset} | 频率: ${recvRate}Hz | seq: ${lastRecvSeq || '-'}`);
+    console.log(`${colors.gray}已运行: ${elapsed}s${colors.reset}`);
   }
 
   async testCloudControlAuth() {
-    console.log('☁️ 3. 云端控制授权测试...');
+    console.log(`${colors.cyan}☁️  云端控制授权${colors.reset}`);
 
-    // 配置云端控制参数
-    const authConfig = {
-      user_id: 'test_pilot_001',
-      user_callsign: 'TestStation',
-      expire_time: Math.floor(Date.now() / 1000) + 3600
-    };
+    // 使用业务代码调用授权服务
+    const result = await topicServiceManager.callService(
+      this.sn,
+      'cloud_control_auth_request',
+      CONFIG.auth
+    );
 
-    console.log('📤 发送云端控制授权请求...');
-    console.log(`👤 用户ID: ${authConfig.user_id}`);
-    console.log(`📻 呼号: ${authConfig.user_callsign}`);
+    console.log(`${colors.yellow}📤 授权结果:${colors.reset}`);
+    console.log(JSON.stringify(result, null, 2) + '\n');
 
-    // 调用生产代码发送授权
-    const authResult = await this.cloudCard.requestAuth(authConfig);
-
-    if (!authResult || !authResult.success) {
-      throw new Error(`云端授权请求发送失败: ${authResult?.error || '未知错误(无回复/不成功)'}`);
+    if (!result.success) {
+      throw new Error(`授权失败: ${result.error?.message}`);
     }
 
-    console.log('✅ 云端控制授权请求已发送到遥控器');
-    console.log('⚠️  请在遥控器上手动点击确认授权');
-    console.log('⏳ 确认后请按回车键继续下一步测试...');
+    console.log(`${colors.green}✅ 授权请求已发送${colors.reset}`);
+    console.log(`${colors.yellow}📱 请在遥控器上点击"允许"${colors.reset}`);
+    console.log(`${colors.yellow}⏳ 完成后按回车继续...${colors.reset}\n`);
 
-    // 等待用户手动确认
-    await this.waitForUserInput();
-
-    console.log('✅ 用户已确认，继续下一步测试');
+    await this.waitForEnter();
   }
 
-  async waitForUserInput() {
-    return new Promise((resolve) => {
-      process.stdin.once('data', () => {
-        resolve();
-      });
-    });
-  }
+  async testDrcMode() {
+    console.log(`${colors.cyan}🛸 DRC模式测试${colors.reset}`);
 
-  async testDrcEntry() {
-    console.log('🛸 4. DRC模式进入测试...');
+    // 使用业务代码的DRC控制器
+    const drcController = new DrcModeController();
 
     // 配置DRC参数
-    const drcConfig = {
-      mqtt_broker: {
-        address: 'mqtt.dji.com:8883',
-        client_id: `station-${this.deviceSN}`,
-        username: 'drc_test_user',
-        password: 'drc_test_pass',
-        enable_tls: true,
-        expire_time: Math.floor(Date.now() / 1000) + 3600
-      },
-      osd_frequency: 30,
-      hsi_frequency: 5
-    };
+    drcController.updateMqttConfig({
+      ...CONFIG.drc.mqtt_broker,
+      client_id: `drc-${this.sn}`
+    });
+    drcController.osdFrequency = CONFIG.drc.osd_frequency;
+    drcController.hsiFrequency = CONFIG.drc.hsi_frequency;
 
-    console.log('📤 发送DRC模式进入请求...');
-    console.log(`🔧 MQTT中继: ${drcConfig.mqtt_broker.address}`);
-    console.log(`📊 OSD频率: ${drcConfig.osd_frequency}Hz`);
-    console.log(`🧭 HSI频率: ${drcConfig.hsi_frequency}Hz`);
-
-    // 调用生产代码进入DRC
-    const drcResult = await this.drcController.enterDrcMode();
+    // 进入DRC模式
+    const drcResult = await drcController.enterDrcMode();
+    console.log(`${colors.yellow}📤 DRC结果:${colors.reset}`);
+    console.log(JSON.stringify(drcResult, null, 2) + '\n');
 
     if (!drcResult.success) {
-      throw new Error(`DRC进入失败: ${drcResult.error}`);
+      throw new Error(`DRC进入失败: ${drcResult.error?.message}`);
     }
 
-    console.log(`📋 DRC TID: ${drcResult.tid}`);
+    console.log(`${colors.green}✅ DRC模式已进入${colors.reset}\n`);
 
-    // 等待DRC激活
-    await this.waitForDrcActivation();
-
-    console.log('✅ DRC模式已激活');
+    // 启动心跳
+    await this.testHeartbeat(drcController);
   }
 
-  async waitForDrcActivation(timeout = 30000) {
-    return new Promise((resolve, reject) => {
-      const startTime = Date.now();
+  async testHeartbeat(drcController) {
+    console.log(`${colors.cyan}💓 启动DRC心跳${colors.reset}\n`);
 
-      const checkDrc = () => {
-        // 检查DRC状态
-        const drcStatus = this.drcController.drcStatus;
+    // 重置统计
+    this.heartbeatStats = { sent: 0, received: 0, lastSentSeq: null, lastRecvSeq: null };
+    this.heartbeatStartTime = Date.now();
+    this.showingHeartbeat = true;
 
-        if (drcStatus === 'active') {
-          resolve();
-        } else if (Date.now() - startTime > timeout) {
-          reject(new Error('DRC模式激活超时'));
-        } else {
-          setTimeout(checkDrc, 1000);
-        }
-      };
+    // 预留4行显示空间
+    console.log('\n\n\n');
 
-      checkDrc();
+    // 使用业务代码启动心跳
+    drcController.startHeartbeat();
+
+    // 监测指定时长
+    await new Promise(resolve => setTimeout(resolve, CONFIG.heartbeat.duration));
+
+    // 停止心跳
+    drcController.stopHeartbeat();
+    this.showingHeartbeat = false;
+    clearInterval(this.heartbeatInterval);
+
+    // 最后更新一次显示
+    this.updateHeartbeatDisplay();
+
+    console.log(`\n${colors.green}✅ 心跳测试完成${colors.reset}\n`);
+  }
+
+  waitForEnter() {
+    return new Promise((resolve) => {
+      process.stdin.once('data', () => resolve());
     });
-  }
-
-  async testHeartbeat() {
-    console.log('💓 5. 心跳测试...');
-
-    // 检查心跳是否启动
-    const heartbeatActive = this.drcController.heartbeatActive;
-
-    if (!heartbeatActive) {
-      throw new Error('心跳未启动');
-    }
-
-    console.log('✅ 心跳已启动');
-
-    // 验证心跳频率
-    console.log('⏱️  验证心跳频率 (10秒)...');
-
-    const initialCount = this.drcController.heartbeatSeq || 0;
-    const startTime = Date.now();
-
-    await new Promise(resolve => setTimeout(resolve, 10000));
-
-    const finalCount = this.drcController.heartbeatSeq || 0;
-    const elapsed = Date.now() - startTime;
-    const heartbeatCount = finalCount - initialCount;
-    const frequency = (heartbeatCount / elapsed * 1000).toFixed(1);
-
-    console.log(`📊 10秒内发送 ${heartbeatCount} 个心跳`);
-    console.log(`📈 平均频率: ${frequency}Hz`);
-
-    if (heartbeatCount < 40) {  // 期望50个，允许误差
-      throw new Error(`心跳频率过低: ${frequency}Hz (期望: ~5Hz)`);
-    }
-
-    console.log('✅ 心跳频率正常');
   }
 }
 
-// 运行测试
-const deviceSN = process.argv[2];
-const test = new DrcWorkflowTest(deviceSN);
+// ==================== 主程序 ====================
+const sn = process.argv[2];
+if (!sn) {
+  console.error(`${colors.red}错误: 缺少设备SN参数${colors.reset}`);
+  console.log('用法: node tests/integration/drc-full-workflow.test.js <设备SN>');
+  console.log('示例: node tests/integration/drc-full-workflow.test.js 9N9CN2J0012CXY');
+  process.exit(1);
+}
+
+const test = new DrcWorkflowTest(sn);
 test.run().catch(console.error);

@@ -60,7 +60,6 @@ export class CloudControlCardUI {
 
   bindElements() {
     this.elements = {
-      serialInput: document.querySelector('[data-config="device-serial"]'),
       userIdInput: document.querySelector('[data-config="user-id"]'),
       userCallsignInput: document.querySelector('[data-config="user-callsign"]'),
       requestBtn: document.getElementById('request-auth-btn'),
@@ -103,14 +102,8 @@ export class CloudControlCardUI {
   setupDeviceContextListener() {
     if (typeof window !== 'undefined') {
       window.addEventListener('device-changed', (event) => {
-        const currentSN = event.detail?.currentSN;
-        this.uiUpdater.updateDeviceSerial(currentSN);
         this.uiUpdater.updateMqttStatus();
       });
-
-      // 初始化时设置当前设备
-      const currentDevice = deviceContext.getCurrentDevice();
-      this.uiUpdater.updateDeviceSerial(currentDevice);
     }
   }
 
@@ -194,25 +187,46 @@ export class CloudControlCardUI {
    * 请求云端控制授权
    */
   async requestAuth() {
+    this.logManager.addLog('信息', '▶ 按钮被点击，开始处理授权请求...');
+    this.logAuthProgress('request.start', '收到请求授权指令');
+
     const currentSN = deviceContext.getCurrentDevice();
+    this.logAuthProgress('request.deviceContext', `当前设备SN: ${currentSN || '未选择'}`);
 
     // 验证授权请求参数
     const validation = this.errorHandler.validateAuthRequest(this.userId, this.userCallsign, currentSN);
     if (!validation.isValid) {
+      const connectionInfo = (typeof window !== 'undefined' && currentSN)
+        ? window.mqttManager?.getConnection(currentSN)
+        : null;
+      this.logAuthProgress(
+        'request.validation_context',
+        JSON.stringify({
+          userId: this.userId,
+          userCallsign: this.userCallsign,
+          deviceSN: currentSN,
+          connectionFound: !!connectionInfo,
+          connectionState: connectionInfo ? connectionInfo.isConnected : null
+        })
+      );
+      this.logAuthProgress('request.validation_failed', validation.errors.map(error => error.type).join(', ') || '未知错误');
       validation.errors.forEach(error => {
         this.logManager.addLog('错误', error.message);
         this.errorHandler.showErrorAdvice(error.type);
       });
       return;
     }
+    this.logAuthProgress('request.validation_passed', `用户: ${this.userCallsign}, 控制权: flight`);
 
     // 防止重复请求
     if (this.authStatus === 'requesting') {
       this.logManager.addLog('警告', '授权请求进行中，请勿重复发送');
+      this.logAuthProgress('request.duplicate', '检测到重复点击，已阻止');
       return;
     }
 
     this.logManager.addLog('信息', `发送授权请求 (设备: ${currentSN})`);
+    this.logAuthProgress('request.prepare_state', '状态管理器开始记录请求');
     this.authStateManager.startAuthRequest(null);
     this.authStateManager.setAuthTimeout(30000, () => {
       this.logManager.addLog('警告', '授权请求超时，已自动取消');
@@ -223,6 +237,7 @@ export class CloudControlCardUI {
 
     this.syncFromAuthState();
     this.updateUI();
+    this.logAuthProgress('request.ui_synced', 'UI已切换到请求中状态');
 
     try {
       const requestData = {
@@ -231,33 +246,28 @@ export class CloudControlCardUI {
         control_keys: ['flight']
       };
 
-      debugLogger.service('发送云端控制授权请求', {
-        topic: 'cloud_control_auth_request',
-        data: requestData
-      });
-
+      this.logAuthProgress('request.service_call', `调用服务 cloud_control_auth_request: ${JSON.stringify(requestData)}`);
       const result = await topicServiceManager.callService(currentSN, 'cloud_control_auth_request', requestData);
-
-      debugLogger.service('云端控制授权回复', {
-        topic: 'cloud_control_auth_request_reply',
-        result: result
-      });
+      this.logAuthProgress('request.service_reply', `收到服务返回: ${result.success ? 'success' : result.error?.type || 'unknown'}`);
 
       if (result.success) {
         this.authStateManager.currentRequestTid = result.data?.tid;
         this.logManager.addLog('成功', `已发送授权请求 (用户: ${this.userCallsign})`);
         this.logManager.addLog('调试', `TID: ${result.data?.tid || 'N/A'}`);
+        this.logAuthProgress('request.wait_for_reply', `已记录TID: ${result.data?.tid || 'N/A'}`);
       } else {
         this.errorHandler.handleServiceError(null, result);
         this.authStateManager.resetAuth();
         this.syncFromAuthState();
         this.updateUI();
+        this.logAuthProgress('request.service_error', result.error?.message || '未知错误');
       }
     } catch (error) {
       this.errorHandler.handleServiceError(error, null);
       this.authStateManager.resetAuth();
       this.syncFromAuthState();
       this.updateUI();
+      this.logAuthProgress('request.exception', error.message || String(error));
     }
   }
 
@@ -310,6 +320,13 @@ export class CloudControlCardUI {
   addLog(type, message) {
     this.logManager.addLog(type, message);
     this.logsHTML = this.logManager.getLogsHTML();
+  }
+
+  /**
+   * 记录授权流程的详细阶段
+   */
+  logAuthProgress(stage, detail) {
+    this.logManager.addLog('调试', `[AUTH][${stage}] ${detail}`);
   }
 }
 

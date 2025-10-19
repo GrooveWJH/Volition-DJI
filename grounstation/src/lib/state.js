@@ -42,13 +42,12 @@ class DeviceContext {
   }
 
   _loadFromStorage() {
-    // 初次进入页面时不自动选择设备，要求用户主动点击建立连接
-    // 这样可以确保MQTT连接在用户明确操作时才建立
     if (typeof window !== 'undefined') {
       try {
-        // 注释掉自动加载逻辑，改为手动选择
-        // this.currentDevice = localStorage.getItem('current_device_sn');
-        debugLogger.state('初始化设备上下文: 不自动选择设备，等待用户操作');
+        this.currentDevice = localStorage.getItem('current_device_sn');
+        if (this.currentDevice) {
+          debugLogger.state(`已从localStorage恢复设备: ${this.currentDevice}`);
+        }
       } catch (e) {
         debugLogger.warn('设备上下文初始化错误:', e);
       }
@@ -237,7 +236,10 @@ class CardStateProxy {
   _isSerializable(value) {
     if (value === null || value === undefined) return true;
     if (typeof value === 'function') return false;
-    if (value instanceof Element || value instanceof Node) return false;
+
+    // 只在浏览器环境且DOM API可用时检查DOM元素
+    if (typeof Element !== 'undefined' && value instanceof Element) return false;
+    if (typeof Node !== 'undefined' && value instanceof Node) return false;
 
     try {
       JSON.stringify(value);

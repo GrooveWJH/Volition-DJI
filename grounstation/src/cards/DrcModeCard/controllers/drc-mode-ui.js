@@ -1,228 +1,398 @@
 /**
- * DRC模式UI适配器
- * 负责DOM交互，业务逻辑委托给DrcModeController
+ * DRC模式控制器 - 极简版
+ * UI层：绑定DOM和事件
  */
 
 import { deviceContext, cardStateManager } from '#lib/state.js';
-import { DrcModeController } from './drc-mode-controller.js';
-import { UIUpdater } from './ui-updater.js';
+import { DrcStateManager } from './drc-state-manager.js';
+import { LogManager } from './log-manager.js';
+import debugLogger from '#lib/debug.js';
 
-export class DrcModeCardUI {
+const HEARTBEAT_INTERVAL_MS = 1000; // 1Hz
+
+export class DrcModeUI {
   constructor() {
     this.elements = {};
 
-    // 创建业务逻辑控制器
-    this.controller = new DrcModeController();
-    this.uiUpdater = new UIUpdater();
+    // 子模块
+    this.stateManager = new DrcStateManager();
+    this.logManager = new LogManager();
 
-    // 只在浏览器环境初始化DOM相关功能
-    if (typeof document !== 'undefined') {
-      this.init();
-    }
+    // 内部状态（不保存到cardStateManager，避免干扰）
+    this.drcStatus = 'idle'; // idle | entering | active | exiting | error
+    this.heartbeatActive = false;
+    this.heartbeatInterval = null;
+    this.logsHTML = this.logManager.getLogsHTML();
 
-    // 注册到状态管理器
-    return cardStateManager.register(this.controller, 'drcMode', {
-      debug: true
-    });
+    this.init();
+
+    // 不注册到cardStateManager，避免状态持久化干扰长连接
   }
 
   init() {
+    if (typeof document === 'undefined') return;
+
     this.bindElements();
     this.bindEvents();
-    this.setupDeviceContextListener();
-    this.setupMqttListener();
-    this.setupStateRestoreListener();
-
-    // 初始化UI状态
-    this.updateHeartbeatUI();
+    this.setupDeviceListener();
     this.updateUI();
   }
 
   bindElements() {
     this.elements = {
-      // DRC状态显示
-      drcStatus: document.getElementById('drc-status'),
-      drcStatusText: document.getElementById('drc-status-text'),
-      drcStatusDescription: document.getElementById('drc-status-description'),
-      drcStatusSpinner: document.getElementById('drc-status-spinner'),
+      // MQTT配置
+      mqttAddress: document.getElementById('mqtt-address'),
+      mqttClientId: document.getElementById('mqtt-client-id'),
+      mqttUsername: document.getElementById('mqtt-username'),
+      mqttPassword: document.getElementById('mqtt-password'),
+      mqttTls: document.getElementById('mqtt-tls-toggle'),
+      mqttAnonymous: document.getElementById('mqtt-anonymous'),
+
+      // 频率
+      osdFrequency: document.getElementById('osd-frequency'),
+      osdFrequencyValue: document.getElementById('osd-frequency-value'),
+      hsiFrequency: document.getElementById('hsi-frequency'),
+      hsiFrequencyValue: document.getElementById('hsi-frequency-value'),
 
       // 控制按钮
-      enterDrcBtn: document.getElementById('enter-drc-btn'),
+      enterBtn: document.getElementById('enter-drc-btn'),
+      exitBtn: document.getElementById('exit-drc-btn'),
       enterBtnText: document.getElementById('enter-btn-text'),
       enterBtnSpinner: document.getElementById('enter-btn-spinner'),
       enterBtnIcon: document.getElementById('enter-btn-icon'),
-      exitDrcBtn: document.getElementById('exit-drc-btn'),
-      exitBtnText: document.getElementById('exit-btn-text'),
 
-      // MQTT配置
-      mqttAddressInput: document.getElementById('mqtt-address'),
-      mqttClientIdInput: document.getElementById('mqtt-client-id'),
-      mqttUsernameInput: document.getElementById('mqtt-username'),
-      mqttPasswordInput: document.getElementById('mqtt-password'),
-      mqttTlsToggle: document.getElementById('mqtt-tls-toggle'),
-      mqttAnonymousToggle: document.getElementById('mqtt-anonymous-toggle'),
-      mqttStatus: document.getElementById('drc-mqtt-status'),
-
-      // 频率控制
-      osdFrequencySlider: document.getElementById('osd-frequency'),
-      osdFrequencyValue: document.getElementById('osd-frequency-value'),
-      hsiFrequencySlider: document.getElementById('hsi-frequency'),
-      hsiFrequencyValue: document.getElementById('hsi-frequency-value'),
-
-      // 心跳状态
+      // 心跳指示器
       heartbeatIndicator: document.getElementById('heartbeat-indicator'),
       heartbeatStatus: document.getElementById('heartbeat-status'),
 
-      // 日志和结果显示
-      logsContainer: document.getElementById('drc-logs'),
-      operationResult: document.getElementById('operation-result')
+      // 日志
+      logs: document.getElementById('drc-logs'),
+      logFilter: document.getElementById('drc-log-filter'),
+      clearLogsBtn: document.getElementById('clear-drc-logs-btn'),
     };
 
-    this.uiUpdater.setElements(this.elements);
+    this.logManager.setElements(this.elements);
+    this.restoreInputs();
   }
 
   bindEvents() {
-    // 进入DRC模式按钮
-    this.elements.enterDrcBtn?.addEventListener('click', () => {
-      this.onEnterDrcClick();
+    // MQTT配置
+    this.elements.mqttAddress?.addEventListener('input', (e) => {
+      this.stateManager.mqttBrokerConfig.address = e.target.value;
+      this.stateManager.saveConfig();
     });
 
-    // 退出DRC模式按钮
-    this.elements.exitDrcBtn?.addEventListener('click', () => {
-      this.onExitDrcClick();
+    this.elements.mqttUsername?.addEventListener('input', (e) => {
+      this.stateManager.mqttBrokerConfig.username = e.target.value;
+      this.stateManager.saveConfig();
     });
 
-    // MQTT配置输入事件
-    this.elements.mqttAddressInput?.addEventListener('input', (e) => {
-      this.controller.updateMqttConfig({ address: e.target.value });
+    this.elements.mqttPassword?.addEventListener('input', (e) => {
+      this.stateManager.mqttBrokerConfig.password = e.target.value;
+      this.stateManager.saveConfig();
     });
 
-    this.elements.mqttClientIdInput?.addEventListener('input', (e) => {
-      this.controller.updateMqttConfig({ client_id: e.target.value });
+    this.elements.mqttTls?.addEventListener('change', (e) => {
+      this.stateManager.mqttBrokerConfig.enable_tls = e.target.checked;
+      this.stateManager.saveConfig();
     });
 
-    this.elements.mqttUsernameInput?.addEventListener('input', (e) => {
-      this.controller.updateMqttConfig({ username: e.target.value });
+    this.elements.mqttAnonymous?.addEventListener('change', (e) => {
+      this.stateManager.mqttBrokerConfig.anonymous = e.target.checked;
+      if (e.target.checked) {
+        this.stateManager.mqttBrokerConfig.username = '';
+        this.stateManager.mqttBrokerConfig.password = '';
+        this.elements.mqttUsername.value = '';
+        this.elements.mqttPassword.value = '';
+      }
+      this.stateManager.saveConfig();
     });
 
-    this.elements.mqttPasswordInput?.addEventListener('input', (e) => {
-      this.controller.updateMqttConfig({ password: e.target.value });
+    // 频率
+    this.elements.osdFrequency?.addEventListener('input', (e) => {
+      this.stateManager.osdFrequency = parseInt(e.target.value);
+      this.elements.osdFrequencyValue.textContent = `${this.stateManager.osdFrequency}Hz`;
+      this.stateManager.saveConfig();
     });
 
-    this.elements.mqttTlsToggle?.addEventListener('change', (e) => {
-      this.controller.updateMqttConfig({ enable_tls: e.target.checked });
+    this.elements.hsiFrequency?.addEventListener('input', (e) => {
+      this.stateManager.hsiFrequency = parseInt(e.target.value);
+      this.elements.hsiFrequencyValue.textContent = `${this.stateManager.hsiFrequency}Hz`;
+      this.stateManager.saveConfig();
     });
 
-    this.elements.mqttAnonymousToggle?.addEventListener('change', (e) => {
-      this.controller.updateAnonymousMode(e.target.checked);
-      this.updateUI();
+    // 按钮
+    this.elements.enterBtn?.addEventListener('click', () => this.handleEnterDrc());
+    this.elements.exitBtn?.addEventListener('click', () => this.handleExitDrc());
+
+    // 日志
+    this.elements.clearLogsBtn?.addEventListener('click', () => {
+      this.logManager.clearLogs();
+      this.logsHTML = this.logManager.getLogsHTML();
     });
 
-    // 频率滑块事件
-    this.elements.osdFrequencySlider?.addEventListener('input', (e) => {
-      this.controller.updateFrequency('osd', parseInt(e.target.value));
-      this.updateUI();
-    });
-
-    this.elements.hsiFrequencySlider?.addEventListener('input', (e) => {
-      this.controller.updateFrequency('hsi', parseInt(e.target.value));
-      this.updateUI();
+    this.elements.logFilter?.addEventListener('change', () => {
+      this.logManager.updateDisplay();
     });
   }
 
-  setupDeviceContextListener() {
-    window.addEventListener('device-changed', () => {
-      const currentDevice = deviceContext.getCurrentDevice();
-      if (currentDevice) {
-        this.controller.updateClientIdSuggestion(currentDevice);
-        this.updateUI();
+  setupDeviceListener() {
+    if (typeof window === 'undefined') return;
+
+    window.addEventListener('device-changed', (event) => {
+      const { currentSN } = event.detail;
+      if (currentSN) {
+        this.stateManager.mqttBrokerConfig.client_id = `station-${currentSN}`;
+        if (this.elements.mqttClientId) {
+          this.elements.mqttClientId.value = this.stateManager.mqttBrokerConfig.client_id;
+        }
       }
     });
   }
 
-  setupMqttListener() {
-    window.addEventListener('mqtt-connection-changed', () => {
-      this.updateUI();
-    });
+  restoreInputs() {
+    if (!this.elements.mqttAddress) return;
+
+    this.elements.mqttAddress.value = this.stateManager.mqttBrokerConfig.address;
+    this.elements.mqttClientId.value = this.stateManager.mqttBrokerConfig.client_id;
+    this.elements.mqttUsername.value = this.stateManager.mqttBrokerConfig.username;
+    this.elements.mqttPassword.value = this.stateManager.mqttBrokerConfig.password;
+    this.elements.mqttTls.checked = this.stateManager.mqttBrokerConfig.enable_tls;
+    this.elements.mqttAnonymous.checked = this.stateManager.mqttBrokerConfig.anonymous;
+
+    this.elements.osdFrequency.value = this.stateManager.osdFrequency;
+    this.elements.osdFrequencyValue.textContent = `${this.stateManager.osdFrequency}Hz`;
+    this.elements.hsiFrequency.value = this.stateManager.hsiFrequency;
+    this.elements.hsiFrequencyValue.textContent = `${this.stateManager.hsiFrequency}Hz`;
   }
 
-  setupStateRestoreListener() {
-    window.addEventListener('card-state-restored', () => {
-      this.updateUI();
-    });
-  }
+  async handleEnterDrc() {
+    const sn = deviceContext.getCurrentDevice();
 
-  async onEnterDrcClick() {
+    if (!sn) {
+      this.addLog('错误', '未选择设备');
+      return;
+    }
+
+    if (this.drcStatus === 'entering' || this.drcStatus === 'active') {
+      this.addLog('警告', 'DRC模式已在运行中');
+      return;
+    }
+
+    this.drcStatus = 'entering';
+    this.updateUI();
+    this.addLog('信息', `开始进入 DRC 模式 (设备: ${sn})`);
+
     try {
-      await this.controller.enterDrcMode();
+      const mqttHost = this.stateManager.mqttBrokerConfig.address.split(':')[0] || '192.168.31.73';
+      this.addLog('调试', `MQTT配置: ws://${mqttHost}:8083/mqtt`);
+
+      // 调用API
+      const result = await this.callDrcAPI('enter', {
+        sn,
+        mqttHost,
+        mqttPort: 8083,
+        username: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.username,
+        password: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.password,
+        osdFreq: this.stateManager.osdFrequency,
+        hsiFreq: this.stateManager.hsiFrequency,
+        enableTls: this.stateManager.mqttBrokerConfig.enable_tls,
+      });
+
+      if (!result.success) {
+        this.drcStatus = 'error';
+        this.addLog('错误', `进入DRC失败: ${result.error || 'Unknown error'}`);
+        this.updateUI();
+        return;
+      }
+
+      this.stateManager.setDrcActive();
+      this.drcStatus = 'active';
+      this.addLog('成功', '✓ 已成功进入DRC模式');
+      this.startHeartbeat();
       this.updateUI();
-      this.uiUpdater.showOperationResult(true, 'DRC模式进入请求已发送');
     } catch (error) {
+      this.drcStatus = 'error';
+      this.addLog('错误', `进入DRC失败: ${error.message}`);
       this.updateUI();
-      this.uiUpdater.showOperationResult(false, `进入失败: ${error.message}`);
     }
   }
 
-  async onExitDrcClick() {
+  async handleExitDrc() {
+    const sn = deviceContext.getCurrentDevice();
+
+    if (!sn) {
+      this.addLog('错误', '未选择设备');
+      return;
+    }
+
+    this.drcStatus = 'exiting';
+    this.updateUI();
+    this.addLog('信息', `开始退出 DRC 模式 (设备: ${sn})`);
+
     try {
-      await this.controller.exitDrcMode();
+      const mqttHost = this.stateManager.mqttBrokerConfig.address.split(':')[0] || '192.168.31.73';
+
+      // 调用API
+      const result = await this.callDrcAPI('exit', {
+        sn,
+        mqttHost,
+        mqttPort: 8083,
+        username: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.username,
+        password: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.password,
+      });
+
+      if (!result.success) {
+        this.drcStatus = 'error';
+        this.addLog('错误', `退出DRC失败: ${result.error || 'Unknown error'}`);
+        this.updateUI();
+        return;
+      }
+
+      this.stopHeartbeat();
+      this.stateManager.resetDrcState();
+      this.drcStatus = 'idle';
+      this.addLog('成功', '✓ 已退出DRC模式');
       this.updateUI();
-      this.uiUpdater.showOperationResult(true, 'DRC模式退出成功');
     } catch (error) {
+      this.drcStatus = 'error';
+      this.addLog('错误', `退出DRC失败: ${error.message}`);
       this.updateUI();
-      this.uiUpdater.showOperationResult(false, `退出失败: ${error.message}`);
+    }
+  }
+
+  startHeartbeat() {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+
+    this.heartbeatActive = true;
+    this.heartbeatInterval = setInterval(() => this.sendHeartbeatInternal(), HEARTBEAT_INTERVAL_MS);
+    this.addLog('心跳', '心跳发送已启动 (1Hz)');
+    this.updateUI();
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    this.heartbeatActive = false;
+    this.addLog('心跳', '心跳发送已停止');
+    this.updateUI();
+  }
+
+  async sendHeartbeatInternal() {
+    const sn = deviceContext.getCurrentDevice();
+    if (!sn || !this.heartbeatActive) return;
+
+    try {
+      // 使用长连接发送心跳，不创建临时连接
+      if (typeof window !== 'undefined' && window.mqttManager) {
+        const connection = window.mqttManager.getConnection(sn);
+
+        if (!connection || !connection.isConnected) {
+          debugLogger.warn('[DRC] 长连接未建立，跳过心跳');
+          this.addLog('警告', '长连接断开，心跳发送失败');
+          return;
+        }
+
+        const topic = `thing/product/${sn}/drc/down`;
+        const message = {
+          seq: Date.now(),
+          method: 'heart_beat',
+          data: { timestamp: Date.now() },
+        };
+
+        // 同步发送，不等待完成
+        connection.publish(topic, message, { qos: 0 });
+
+        // 打印每次心跳的JSON
+        const timestamp = new Date().toLocaleTimeString();
+        this.addLog('心跳', `[${timestamp}] ${JSON.stringify(message)}`);
+      }
+    } catch (error) {
+      debugLogger.error('[DRC] 心跳发送失败:', error);
+      this.addLog('错误', `心跳发送失败: ${error.message}`);
     }
   }
 
   updateUI() {
-    if (!this.uiUpdater.elements) return;
+    if (!this.elements.enterBtn) return;
 
-    this.uiUpdater.updateDrcStatusDisplay(this.controller);
-    this.uiUpdater.updateButtonStates(this.controller);
-    this.uiUpdater.updateConfigurationDisplay(this.controller);
-    this.uiUpdater.updateMqttStatus();
-    this.updateLogsDisplay();
-  }
+    // 按钮状态
+    switch (this.drcStatus) {
+      case 'entering':
+        this.elements.enterBtn.disabled = true;
+        this.elements.enterBtnSpinner.classList.remove('hidden');
+        this.elements.enterBtnIcon.classList.add('hidden');
+        this.elements.enterBtnText.textContent = '正在进入...';
+        this.elements.exitBtn.classList.add('hidden');
+        break;
 
-  updateHeartbeatUI() {
-    if (!this.elements.heartbeatIndicator || !this.elements.heartbeatStatus) return;
+      case 'active':
+        this.elements.enterBtn.classList.add('hidden');
+        this.elements.exitBtn.classList.remove('hidden');
+        this.elements.exitBtn.disabled = false;
+        const exitBtnTextActive = this.elements.exitBtn.querySelector('span:last-child');
+        if (exitBtnTextActive) exitBtnTextActive.textContent = '退出DRC模式';
+        break;
 
-    if (this.controller.heartbeatActive) {
-      this.elements.heartbeatIndicator.classList.add('animate-pulse', 'bg-green-500');
+      case 'exiting':
+        this.elements.exitBtn.disabled = true;
+        const exitBtnText = this.elements.exitBtn.querySelector('span:last-child');
+        if (exitBtnText) exitBtnText.textContent = '正在退出...';
+        break;
+
+      case 'idle':
+      case 'error':
+        this.elements.enterBtn.disabled = false;
+        this.elements.enterBtn.classList.remove('hidden');
+        this.elements.enterBtnSpinner.classList.add('hidden');
+        this.elements.enterBtnIcon.classList.remove('hidden');
+        this.elements.enterBtnText.textContent = '进入DRC模式';
+        this.elements.exitBtn.classList.add('hidden');
+        this.elements.exitBtn.disabled = false;
+        break;
+    }
+
+    // 心跳指示器
+    if (this.heartbeatActive) {
       this.elements.heartbeatIndicator.classList.remove('bg-gray-400');
-      this.elements.heartbeatStatus.textContent = '运行中 (5Hz)';
-      this.elements.heartbeatStatus.classList.add('text-green-600');
+      this.elements.heartbeatIndicator.classList.add('bg-green-500', 'animate-pulse');
+      this.elements.heartbeatStatus.textContent = '运行中';
       this.elements.heartbeatStatus.classList.remove('text-gray-600');
+      this.elements.heartbeatStatus.classList.add('text-green-600');
     } else {
-      this.elements.heartbeatIndicator.classList.remove('animate-pulse', 'bg-green-500');
+      this.elements.heartbeatIndicator.classList.remove('bg-green-500', 'animate-pulse');
       this.elements.heartbeatIndicator.classList.add('bg-gray-400');
-      this.elements.heartbeatStatus.textContent = '未激活';
+      this.elements.heartbeatStatus.textContent = '未启动';
       this.elements.heartbeatStatus.classList.remove('text-green-600');
       this.elements.heartbeatStatus.classList.add('text-gray-600');
     }
   }
 
-  updateLogsDisplay() {
-    if (this.elements.logsContainer) {
-      this.elements.logsContainer.innerHTML = this.controller.logsHTML;
-      this.elements.logsContainer.scrollTop = this.elements.logsContainer.scrollHeight;
+  async callDrcAPI(action, params) {
+    const response = await fetch('/api/drc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action,
+        ...params,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
     }
+
+    return await response.json();
   }
 
-  // 暴露控制器状态供外部访问（兼容性）
-  get drcStatus() { return this.controller.drcStatus; }
-  get mqttBrokerConfig() { return this.controller.mqttBrokerConfig; }
-  get osdFrequency() { return this.controller.osdFrequency; }
-  get hsiFrequency() { return this.controller.hsiFrequency; }
-  get heartbeatActive() { return this.controller.heartbeatActive; }
-  get lastError() { return this.controller.lastError; }
-  get logsHTML() { return this.controller.logsHTML; }
-
-  // 业务方法代理（兼容性）
-  async enterDrcMode() { return this.controller.enterDrcMode(); }
-  async exitDrcMode() { return this.controller.exitDrcMode(); }
-  getDrcDuration() { return this.controller.getDrcDuration(); }
+  addLog(type, message) {
+    this.logManager.addLog(type, message);
+  }
 }
 
-// 保持现有导出方式
-export const drcModeCardUI = new DrcModeCardUI();
+// 全局实例
+export const drcModeCardUI = new DrcModeUI();

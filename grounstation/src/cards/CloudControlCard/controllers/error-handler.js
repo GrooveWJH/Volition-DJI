@@ -42,10 +42,6 @@ export class ErrorHandler {
       errors.push({ type: 'invalid_params', message: '请填写用户ID和用户呼号' });
     }
 
-    if (deviceSN && !this.isDeviceOnline(deviceSN)) {
-      errors.push({ type: 'device_offline', message: '设备未连接，请检查MQTT连接状态' });
-    }
-
     return {
       isValid: errors.length === 0,
       errors: errors

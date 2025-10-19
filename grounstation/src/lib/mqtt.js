@@ -8,12 +8,13 @@ class MQTTClientWrapper {
     this.client = null;
     this.isConnected = false;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = Infinity; // 无限重连
     this.reconnectInterval = 3000;
     this.subscriptions = new Map();
     this.messageQueue = [];
     this.isReconnecting = false;
     this.messageRouter = null;
+    this.manualDisconnect = false; // 标记是否为手动断开
   }
 
   async connect() {
@@ -38,6 +39,7 @@ class MQTTClientWrapper {
         mqtt = (await import('mqtt')).default;
       }
       const brokerUrl = `ws://${this.brokerConfig.host}:${this.brokerConfig.port}/mqtt`;
+      debugLogger.mqtt(`[${this.clientId}] 正在连接`, { brokerUrl });
 
       this.client = mqtt.connect(brokerUrl, {
         clientId: this.clientId,
@@ -45,7 +47,7 @@ class MQTTClientWrapper {
         password: this.brokerConfig.password,
         keepalive: 60,
         connectTimeout: 30000,
-        reconnectPeriod: 0,
+        reconnectPeriod: 5000, // 启用MQTT.js自动重连，每5秒尝试一次
         clean: true
       });
 
@@ -54,11 +56,27 @@ class MQTTClientWrapper {
         this.isReconnecting = false;
         this.reconnectAttempts = 0;
         debugLogger.mqtt(`[MQTTClient-${this.clientId}]`, 'MQTT连接成功');
+        console.log(`[MQTT] ✓ ${this.clientId} 已连接到 ${brokerUrl}`);
         this._restoreSubscriptions();
         this._processMessageQueue();
+
+        // 触发全局事件通知UI更新
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('mqtt-connection-changed', {
+            detail: {
+              clientId: this.clientId,
+              isConnected: true,
+              event: 'connected'
+            }
+          }));
+        }
       });
 
-      this.client.on('message', (topic, message) => this._handleMessage(topic, message));
+      this.client.on('message', (topic, message) => {
+        console.log(`[MQTT] ✓ ${this.clientId} 收到消息: topic=${topic}, length=${message.length}`);
+        this._handleMessage(topic, message);
+      });
+
       this.client.on('error', (error) => {
         debugLogger.error(`[MQTTClient-${this.clientId}]`, 'MQTT连接错误:', error);
         this.isConnected = false;
@@ -67,8 +85,22 @@ class MQTTClientWrapper {
 
       this.client.on('close', () => {
         this.isConnected = false;
-        debugLogger.warn(`[MQTTClient-${this.clientId}]`, 'MQTT连接关闭');
-        this._scheduleReconnect();
+        if (this.manualDisconnect) {
+          debugLogger.info(`[MQTTClient-${this.clientId}]`, 'MQTT手动断开连接');
+        } else {
+          debugLogger.warn(`[MQTTClient-${this.clientId}]`, 'MQTT连接意外关闭，MQTT.js将自动重连');
+        }
+
+        // 触发全局事件通知UI更新
+        if (typeof window !== 'undefined' && !this.manualDisconnect) {
+          window.dispatchEvent(new CustomEvent('mqtt-connection-changed', {
+            detail: {
+              clientId: this.clientId,
+              isConnected: false,
+              event: 'disconnected'
+            }
+          }));
+        }
       });
 
       return new Promise((resolve) => {
@@ -98,6 +130,23 @@ class MQTTClientWrapper {
 
   async _handleMessage(topic, message) {
     try {
+      debugLogger.mqtt(`[${this.clientId}] _handleMessage 收到消息`, { topic, length: message.length });
+
+      // 1. 先调用订阅回调（如果有的话）
+      for (const [subscribedTopic, callback] of this.subscriptions) {
+        if (topic === subscribedTopic || topic.match(new RegExp(subscribedTopic.replace('+', '[^/]+').replace('#', '.*')))) {
+          if (callback && typeof callback === 'function') {
+            debugLogger.mqtt(`[${this.clientId}] 触发订阅回调`, { topic: subscribedTopic });
+            try {
+              callback(topic, message);
+            } catch (err) {
+              debugLogger.error(`[${this.clientId}] 订阅回调执行失败:`, err);
+            }
+          }
+        }
+      }
+
+      // 2. 然后调用 messageRouter
       if (!this.messageRouter) {
         const module = await import('./services.js');
         this.messageRouter = module.getMessageRouter();
@@ -109,6 +158,9 @@ class MQTTClientWrapper {
       if (this.messageRouter?.routeMessage) {
         this.messageRouter.routeMessage(parsedMessage, topic, sn);
       }
+
+      // 消息继续传播到其他监听器（不阻止）
+      debugLogger.mqtt(`[${this.clientId}] _handleMessage 处理完成，消息已路由`);
     } catch (error) {
       debugLogger.error(`[${this.clientId}] 消息处理失败:`, error);
     }
@@ -120,39 +172,44 @@ class MQTTClientWrapper {
   }
 
   subscribe(topic, callback = null) {
+    debugLogger.mqtt(`[${this.clientId}] subscribe 被调用`, { topic, isConnected: this.isConnected });
+
     if (!this.isConnected) {
       debugLogger.warn(`[${this.clientId}] 连接未建立，订阅请求已排队: ${topic}`);
       this.subscriptions.set(topic, callback);
       return false;
     }
 
-    this.client.subscribe(topic, (err) => {
+    this.client.subscribe(topic, { qos: 0 }, (err) => {
       if (err) {
         debugLogger.error(`[MQTTClient-${this.clientId}]`, '订阅失败:', topic, err);
+        console.error(`[MQTT] ✗ 订阅失败: ${topic}`, err);
       } else {
-        debugLogger.mqtt(`[MQTTClient-${this.clientId}]`, '订阅成功:', topic);
+        debugLogger.mqtt(`[MQTTClient-${this.clientId}]`, '✓ 订阅成功:', topic);
+        console.log(`[MQTT] ✓ ${this.clientId} 订阅成功: ${topic}`);
         this.subscriptions.set(topic, callback);
       }
     });
     return true;
   }
 
-  async publish(topic, message) {
+  async publish(topic, message, options = {}) {
     const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+    const qos = options.qos !== undefined ? options.qos : 1;  // 默认QoS=1（与Python一致）
 
     if (!this.isConnected) {
-      this.messageQueue.push({ topic, message: messageStr });
+      this.messageQueue.push({ topic, message: messageStr, qos });
       debugLogger.warn(`[${this.clientId}] 连接未建立，消息已排队: ${topic}`);
       return false;
     }
 
     return new Promise((resolve) => {
-      this.client.publish(topic, messageStr, (err) => {
+      this.client.publish(topic, messageStr, { qos }, (err) => {
         if (err) {
           debugLogger.error(`[${this.clientId}] 发布失败: ${topic}`, err);
           resolve(false);
         } else {
-          debugLogger.mqtt(`[${this.clientId}] 发布成功: ${topic}`);
+          debugLogger.mqtt(`[${this.clientId}] 发布成功: ${topic} (QoS=${qos})`);
           resolve(true);
         }
       });
@@ -167,25 +224,16 @@ class MQTTClientWrapper {
 
   _processMessageQueue() {
     while (this.messageQueue.length > 0) {
-      const { topic, message } = this.messageQueue.shift();
-      this.publish(topic, message);
+      const { topic, message, qos } = this.messageQueue.shift();
+      this.publish(topic, message, { qos: qos || 1 });
     }
   }
 
-  _scheduleReconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      debugLogger.error(`[${this.clientId}] 重连次数超限，停止重连`);
-      return;
-    }
-
-    setTimeout(() => {
-      this.reconnectAttempts++;
-      debugLogger.info(`[${this.clientId}] 尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      this.connect();
-    }, this.reconnectInterval);
-  }
+  // 已移除手动重连逻辑，使用MQTT.js内置的自动重连
+  // MQTT.js会在连接断开时自动重连，无需手动管理
 
   disconnect() {
+    this.manualDisconnect = true; // 标记为手动断开
     if (this.client) {
       this.client.end();
       this.client = null;
