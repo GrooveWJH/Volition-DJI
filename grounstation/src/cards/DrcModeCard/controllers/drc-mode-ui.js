@@ -4,6 +4,7 @@
  */
 
 import { deviceContext, cardStateManager } from '#lib/state.js';
+import { topicServiceManager } from '#lib/services.js';
 import { DrcStateManager } from './drc-state-manager.js';
 import { LogManager } from './log-manager.js';
 import debugLogger from '#lib/debug.js';
@@ -184,27 +185,48 @@ export class DrcModeUI {
     this.addLog('信息', `开始进入 DRC 模式 (设备: ${sn})`);
 
     try {
-      const mqttHost = this.stateManager.mqttBrokerConfig.address.split(':')[0] || '192.168.31.73';
-      this.addLog('调试', `MQTT配置: ws://${mqttHost}:8083/mqtt`);
+      // 构建DRC进入参数
+      const mqttBrokerParams = {
+        mqtt_broker: {
+          address: this.stateManager.mqttBrokerConfig.address,
+          client_id: `drc-${sn}`, // 告诉设备用这个ID回传数据
+          username: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.username,
+          password: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.password,
+          enable_tls: this.stateManager.mqttBrokerConfig.enable_tls,
+          expire_time: Math.floor(Date.now() / 1000) + 3600,
+        },
+        osd_frequency: this.stateManager.osdFrequency,
+        hsi_frequency: this.stateManager.hsiFrequency,
+      };
 
-      // 调用API
-      const result = await this.callDrcAPI('enter', {
-        sn,
-        mqttHost,
-        mqttPort: 8083,
-        username: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.username,
-        password: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.password,
-        osdFreq: this.stateManager.osdFrequency,
-        hsiFreq: this.stateManager.hsiFrequency,
-        enableTls: this.stateManager.mqttBrokerConfig.enable_tls,
-      });
+      this.addLog('调试', `使用服务层API发送DRC进入请求`);
+
+      // 使用服务层API（自动处理连接和回复）
+      const result = await topicServiceManager.callService(sn, 'drc_mode_enter', mqttBrokerParams);
 
       if (!result.success) {
         this.drcStatus = 'error';
-        this.addLog('错误', `进入DRC失败: ${result.error || 'Unknown error'}`);
+        this.addLog('错误', `进入DRC失败: ${result.error?.message || '未知错误'}`);
+        if (result.error?.type === 'no_connection') {
+          this.addLog('提示', '请先点击设备建立MQTT连接');
+        }
         this.updateUI();
         return;
       }
+
+      this.addLog('成功', '✓ DRC服务请求成功');
+
+      // 建立心跳专用连接
+      this.addLog('调试', '正在建立心跳专用连接...');
+      const heartbeatConnection = await window.mqttManager.ensureHeartbeatConnection(sn);
+      if (!heartbeatConnection) {
+        this.drcStatus = 'error';
+        this.addLog('错误', '心跳连接建立失败');
+        this.updateUI();
+        return;
+      }
+
+      this.addLog('成功', `✓ 心跳连接已建立 (heart-${sn})`);
 
       this.stateManager.setDrcActive();
       this.drcStatus = 'active';
@@ -231,20 +253,14 @@ export class DrcModeUI {
     this.addLog('信息', `开始退出 DRC 模式 (设备: ${sn})`);
 
     try {
-      const mqttHost = this.stateManager.mqttBrokerConfig.address.split(':')[0] || '192.168.31.73';
+      this.addLog('调试', `使用服务层API发送DRC退出请求`);
 
-      // 调用API
-      const result = await this.callDrcAPI('exit', {
-        sn,
-        mqttHost,
-        mqttPort: 8083,
-        username: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.username,
-        password: this.stateManager.mqttBrokerConfig.anonymous ? '' : this.stateManager.mqttBrokerConfig.password,
-      });
+      // 使用服务层API（自动处理连接和回复）
+      const result = await topicServiceManager.callService(sn, 'drc_mode_exit', {});
 
       if (!result.success) {
         this.drcStatus = 'error';
-        this.addLog('错误', `退出DRC失败: ${result.error || 'Unknown error'}`);
+        this.addLog('错误', `退出DRC失败: ${result.error?.message || '未知错误'}`);
         this.updateUI();
         return;
       }
@@ -277,6 +293,14 @@ export class DrcModeUI {
     }
     this.heartbeatActive = false;
     this.addLog('心跳', '心跳发送已停止');
+
+    // 仅断开心跳连接，保留主连接
+    const sn = deviceContext.getCurrentDevice();
+    if (sn && typeof window !== 'undefined' && window.mqttManager) {
+      window.mqttManager.disconnectHeartbeat(sn);
+      this.addLog('调试', '心跳连接已断开');
+    }
+
     this.updateUI();
   }
 
@@ -285,13 +309,13 @@ export class DrcModeUI {
     if (!sn || !this.heartbeatActive) return;
 
     try {
-      // 使用长连接发送心跳，不创建临时连接
+      // 使用独立的心跳连接（heart-{sn}）发送心跳
       if (typeof window !== 'undefined' && window.mqttManager) {
-        const connection = window.mqttManager.getConnection(sn);
+        const connection = window.mqttManager.getHeartbeatConnection(sn);
 
         if (!connection || !connection.isConnected) {
-          debugLogger.warn('[DRC] 长连接未建立，跳过心跳');
-          this.addLog('警告', '长连接断开，心跳发送失败');
+          debugLogger.warn('[DRC] 心跳连接未建立，跳过心跳');
+          this.addLog('警告', '心跳连接断开，心跳发送失败');
           return;
         }
 
@@ -368,25 +392,6 @@ export class DrcModeUI {
       this.elements.heartbeatStatus.classList.remove('text-green-600');
       this.elements.heartbeatStatus.classList.add('text-gray-600');
     }
-  }
-
-  async callDrcAPI(action, params) {
-    const response = await fetch('/api/drc', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action,
-        ...params,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status} ${response.statusText}`);
-    }
-
-    return await response.json();
   }
 
   addLog(type, message) {

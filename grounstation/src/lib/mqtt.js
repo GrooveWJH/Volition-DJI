@@ -20,6 +20,27 @@ class MQTTClientWrapper {
   async connect() {
     if (this.isConnected || this.isReconnecting) return true;
 
+    // ✅ 如果 MQTT.js 客户端已存在，说明正在自动重连，不要重复创建
+    if (this.client) {
+      debugLogger.mqtt(`[${this.clientId}] MQTT客户端已存在，等待自动重连...`);
+      // 等待现有客户端重连成功
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve(false);
+        }, 10000);
+
+        this.client.once('connect', () => {
+          clearTimeout(timeout);
+          resolve(true);
+        });
+
+        this.client.once('error', () => {
+          clearTimeout(timeout);
+          resolve(false);
+        });
+      });
+    }
+
     this.isReconnecting = true;
 
     try {
@@ -257,6 +278,7 @@ class MQTTClientWrapper {
 class MQTTConnectionManager {
   constructor() {
     this.connections = new Map();
+    this.heartbeatConnections = new Map(); // 心跳专用连接
     this.brokerConfig = this._getDefaultConfig();
     this.deviceContext = null;
     this._initDeviceContext();
@@ -313,11 +335,28 @@ class MQTTConnectionManager {
   async ensureConnection(sn) {
     if (!sn) return null;
 
+    // Check if connection object already exists in Map
     if (this.connections.has(sn)) {
       const connection = this.connections.get(sn);
+
+      // If connected, return directly
       if (connection.isConnected) return connection;
+
+      // ✅ KEY FIX: If disconnected, REUSE the same object and reconnect
+      // This prevents creating duplicate client_id and causing broker conflicts
+      debugLogger.mqtt(`[MQTTConnectionManager]`, `设备 ${sn} 连接已断开，复用现有Wrapper重连...`);
+      const success = await connection.connect();
+      if (success) {
+        debugLogger.mqtt(`[MQTTConnectionManager]`, `设备 ${sn} MQTT连接已重建立`);
+        this._subscribeDefaultTopics(connection, sn);
+        return connection;
+      } else {
+        debugLogger.error(`设备 ${sn} MQTT重连失败`);
+        return null;
+      }
     }
 
+    // Create new connection object only on first connection
     const clientId = `station-${sn}`;
     const connection = new MQTTClientWrapper(clientId, this.brokerConfig);
 
@@ -352,6 +391,58 @@ class MQTTConnectionManager {
     return this.connections.get(sn);
   }
 
+  /**
+   * 获取或创建心跳专用连接
+   * 使用 heart-{sn} 作为 client_id，与长连接分离
+   */
+  async ensureHeartbeatConnection(sn) {
+    if (!sn) return null;
+
+    // Check if heartbeat connection object already exists in Map
+    if (this.heartbeatConnections.has(sn)) {
+      const connection = this.heartbeatConnections.get(sn);
+
+      // If connected, return directly
+      if (connection.isConnected) return connection;
+
+      // ✅ REUSE existing object and reconnect
+      debugLogger.mqtt(`[MQTTConnectionManager]`, `设备 ${sn} 心跳连接已断开，复用现有Wrapper重连...`);
+      const success = await connection.connect();
+      if (success) {
+        debugLogger.mqtt(`[MQTTConnectionManager]`, `设备 ${sn} 心跳连接已重建立 (${connection.clientId})`);
+        connection.subscribe(`thing/product/${sn}/drc/up`);
+        return connection;
+      } else {
+        debugLogger.error(`设备 ${sn} 心跳连接重连失败`);
+        return null;
+      }
+    }
+
+    // Create new connection object only on first connection
+    const clientId = `heart-${sn}`;
+    const connection = new MQTTClientWrapper(clientId, this.brokerConfig);
+
+    const success = await connection.connect();
+    if (success) {
+      this.heartbeatConnections.set(sn, connection);
+      debugLogger.mqtt(`[MQTTConnectionManager]`, `设备 ${sn} 心跳连接已建立 (${clientId})`);
+
+      // 心跳连接订阅心跳回复topic
+      connection.subscribe(`thing/product/${sn}/drc/up`);
+      return connection;
+    } else {
+      debugLogger.error(`设备 ${sn} 心跳连接失败`);
+      return null;
+    }
+  }
+
+  /**
+   * 获取心跳连接（不自动创建）
+   */
+  getHeartbeatConnection(sn) {
+    return this.heartbeatConnections.get(sn);
+  }
+
   async publish(sn, topic, message) {
     const connection = await this.ensureConnection(sn);
     return connection ? connection.publish(topic, message) : false;
@@ -363,19 +454,48 @@ class MQTTConnectionManager {
   }
 
   disconnectDevice(sn) {
+    // 断开主连接
     const connection = this.connections.get(sn);
     if (connection) {
       connection.disconnect();
       this.connections.delete(sn);
       debugLogger.mqtt(`设备 ${sn} MQTT连接已断开`);
     }
+
+    // 断开心跳连接
+    const heartbeatConnection = this.heartbeatConnections.get(sn);
+    if (heartbeatConnection) {
+      heartbeatConnection.disconnect();
+      this.heartbeatConnections.delete(sn);
+      debugLogger.mqtt(`设备 ${sn} 心跳连接已断开`);
+    }
+  }
+
+  /**
+   * 仅断开心跳连接，保留主连接
+   */
+  disconnectHeartbeat(sn) {
+    const heartbeatConnection = this.heartbeatConnections.get(sn);
+    if (heartbeatConnection) {
+      heartbeatConnection.disconnect();
+      this.heartbeatConnections.delete(sn);
+      debugLogger.mqtt(`设备 ${sn} 心跳连接已断开`);
+    }
   }
 
   disconnectAll() {
+    // 断开所有主连接
     for (const [, connection] of this.connections) {
       connection.disconnect();
     }
     this.connections.clear();
+
+    // 断开所有心跳连接
+    for (const [, connection] of this.heartbeatConnections) {
+      connection.disconnect();
+    }
+    this.heartbeatConnections.clear();
+
     debugLogger.mqtt('所有MQTT连接已断开');
   }
 

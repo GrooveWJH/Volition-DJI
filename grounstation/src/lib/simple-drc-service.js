@@ -177,11 +177,12 @@ export async function exitDrc(sn, brokerConfig) {
 
 /**
  * 发送心跳（简化版，不等待回复）
+ * 使用 heart-{sn} 作为client_id
  */
 export async function sendHeartbeat(sn, brokerConfig) {
   const { host, port, username, password } = brokerConfig;
   const brokerUrl = `ws://${host}:${port}/mqtt`;
-  const clientId = `hb-${Date.now()}`;
+  const clientId = `heart-${sn}`; // 心跳专用client_id
 
   const client = mqtt.connect(brokerUrl, {
     clientId,
