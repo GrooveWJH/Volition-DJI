@@ -3,19 +3,35 @@
  * 负责请求和释放无人机云端飞行控制权
  */
 
-import { deviceContext, cardStateManager } from '@/lib/state.js';
-import { topicServiceManager, messageRouter } from '@/lib/services.js';
+import { deviceContext, cardStateManager } from '#lib/state.js';
+import { topicServiceManager, messageRouter } from '#lib/services.js';
+import { AuthStateManager } from './auth-state-manager.js';
+import { ErrorHandler } from './error-handler.js';
+import { LogManager } from './log-manager.js';
+import { UIUpdater } from './ui-updater.js';
+import debugLogger from '#lib/debug.js';
 
 export class CloudControlCardUI {
   constructor() {
     this.elements = {};
 
+    // 初始化模块
+    this.authStateManager = new AuthStateManager();
+    this.logManager = new LogManager();
+    this.errorHandler = new ErrorHandler(this.logManager);
+    this.uiUpdater = new UIUpdater();
+
     // 状态属性（将被代理管理）
-    this.authStatus = 'unauthorized';  // unauthorized, requesting, authorized
+    this.authStatus = 'unauthorized';
     this.controlKeys = [];
-    this.logsHTML = '<div class="text-gray-500">[系统] 云端控制授权卡片已初始化</div>';
+    this.logsHTML = '<div class="text-gray-500" data-log-type="系统">[系统] 云端控制授权卡片已初始化</div>';
     this.userId = 'cloud_user_001';
     this.userCallsign = 'CloudPilot';
+    this.authStartTime = null;
+    this.authTimeout = null;
+    this.currentRequestTid = null;
+    this.authorizedAt = null;
+    this.authorizedUser = null;
 
     this.init();
 
@@ -26,12 +42,20 @@ export class CloudControlCardUI {
   }
 
   init() {
-    this.bindElements();
-    this.bindEvents();
-    this.setupDeviceContextListener();
-    this.setupMqttListener();
-    this.setupStateRestoreListener();
-    this.updateUI();
+    // 加载用户配置
+    this.authStateManager.loadUserConfig();
+    this.userId = this.authStateManager.userId;
+    this.userCallsign = this.authStateManager.userCallsign;
+
+    // 只在浏览器环境初始化DOM相关功能
+    if (typeof document !== 'undefined') {
+      this.bindElements();
+      this.bindEvents();
+      this.setupDeviceContextListener();
+      this.setupMqttListener();
+      this.setupStateRestoreListener();
+      this.updateUI();
+    }
   }
 
   bindElements() {
@@ -40,56 +64,77 @@ export class CloudControlCardUI {
       userIdInput: document.querySelector('[data-config="user-id"]'),
       userCallsignInput: document.querySelector('[data-config="user-callsign"]'),
       requestBtn: document.getElementById('request-auth-btn'),
-      releaseBtn: document.getElementById('release-control-btn'),
+      requestBtnSpinner: document.getElementById('request-btn-spinner'),
+      requestBtnIcon: document.getElementById('request-btn-icon'),
+      requestBtnText: document.getElementById('request-btn-text'),
+      confirmBtn: document.getElementById('confirm-auth-btn'),
       clearLogsBtn: document.getElementById('clear-cloud-logs-btn'),
+      logFilter: document.getElementById('log-filter'),
       cloudStatus: document.getElementById('cloud-status'),
+      statusText: document.querySelector('#cloud-status .status-text'),
+      statusSpinner: document.getElementById('status-spinner'),
       controlKeysDisplay: document.getElementById('control-keys'),
       mqttStatus: document.getElementById('mqtt-status'),
       logs: document.getElementById('cloud-logs')
     };
+
+    // 设置模块元素引用
+    this.logManager.setElements(this.elements);
+    this.uiUpdater.setElements(this.elements);
   }
 
   bindEvents() {
     this.elements.userIdInput?.addEventListener('input', (e) => {
       this.userId = e.target.value;
+      this.authStateManager.updateUserConfig(this.userId, this.userCallsign);
     });
 
     this.elements.userCallsignInput?.addEventListener('input', (e) => {
       this.userCallsign = e.target.value;
+      this.authStateManager.updateUserConfig(this.userId, this.userCallsign);
     });
 
     this.elements.requestBtn?.addEventListener('click', () => this.requestAuth());
-    this.elements.releaseBtn?.addEventListener('click', () => this.releaseControl());
-    this.elements.clearLogsBtn?.addEventListener('click', () => this.clearLogs());
+    this.elements.confirmBtn?.addEventListener('click', () => this.confirmAuth());
+    this.elements.clearLogsBtn?.addEventListener('click', () => this.logManager.clearLogs());
+    this.elements.logFilter?.addEventListener('change', (e) => this.logManager.filterLogs(e.target.value));
   }
 
   setupDeviceContextListener() {
     if (typeof window !== 'undefined') {
       window.addEventListener('device-changed', (event) => {
         const currentSN = event.detail?.currentSN;
-        if (this.elements.serialInput) {
-          this.elements.serialInput.value = currentSN || '';
-        }
-        this.updateMqttStatus();
+        this.uiUpdater.updateDeviceSerial(currentSN);
+        this.uiUpdater.updateMqttStatus();
       });
 
       // 初始化时设置当前设备
       const currentDevice = deviceContext.getCurrentDevice();
-      if (currentDevice && this.elements.serialInput) {
-        this.elements.serialInput.value = currentDevice;
-      }
+      this.uiUpdater.updateDeviceSerial(currentDevice);
     }
   }
 
   setupMqttListener() {
     if (typeof window !== 'undefined') {
       // 监听MQTT连接状态变化
-      window.addEventListener('mqtt-connection-changed', () => {
-        this.updateMqttStatus();
+      window.addEventListener('mqtt-connection-changed', (event) => {
+        this.uiUpdater.updateMqttStatus();
+        this.handleMqttConnectionChange(event.detail);
       });
 
       // 使用MessageRouter注册服务回复处理
       this.registerServiceHandlers();
+    }
+  }
+
+  /**
+   * 处理MQTT连接状态变化
+   */
+  handleMqttConnectionChange(connectionInfo) {
+    const result = this.errorHandler.handleMqttConnectionChange(connectionInfo, this.authStateManager);
+    if (result.shouldUpdateUI) {
+      this.syncFromAuthState();
+      this.updateUI();
     }
   }
 
@@ -102,22 +147,47 @@ export class CloudControlCardUI {
       this.handleAuthRequestReply(message);
     });
 
-    messageRouter.registerServiceRoute('cloud_control_release', (message) => {
-      this.handleReleaseReply(message);
-    });
-
-    this.addLog('信息', '已注册云端控制服务消息处理器');
+    this.logManager.addLog('信息', '已注册云端控制服务消息处理器');
   }
 
   setupStateRestoreListener() {
     if (typeof window !== 'undefined') {
       window.addEventListener('card-state-restored', () => {
         console.log('[CloudControlCard] 状态已恢复，更新UI');
+        this.syncToAuthState();
         this.updateUI();
-        this.restoreLogsFromState();
-        this.restoreInputsFromState();
+        this.logManager.restoreLogsFromState();
+        this.uiUpdater.restoreInputsFromState(this.authStateManager);
       });
     }
+  }
+
+  /**
+   * 同步状态到AuthStateManager
+   */
+  syncToAuthState() {
+    this.authStateManager.authStatus = this.authStatus;
+    this.authStateManager.controlKeys = this.controlKeys;
+    this.authStateManager.userId = this.userId;
+    this.authStateManager.userCallsign = this.userCallsign;
+    this.authStateManager.authStartTime = this.authStartTime;
+    this.authStateManager.currentRequestTid = this.currentRequestTid;
+    this.authStateManager.authorizedAt = this.authorizedAt;
+    this.authStateManager.authorizedUser = this.authorizedUser;
+  }
+
+  /**
+   * 从AuthStateManager同步状态
+   */
+  syncFromAuthState() {
+    this.authStatus = this.authStateManager.authStatus;
+    this.controlKeys = this.authStateManager.controlKeys;
+    this.userId = this.authStateManager.userId;
+    this.userCallsign = this.authStateManager.userCallsign;
+    this.authStartTime = this.authStateManager.authStartTime;
+    this.currentRequestTid = this.authStateManager.currentRequestTid;
+    this.authorizedAt = this.authStateManager.authorizedAt;
+    this.authorizedUser = this.authStateManager.authorizedUser;
   }
 
   /**
@@ -125,131 +195,93 @@ export class CloudControlCardUI {
    */
   async requestAuth() {
     const currentSN = deviceContext.getCurrentDevice();
-    if (!currentSN) {
-      this.addLog('错误', '未选择设备');
+
+    // 验证授权请求参数
+    const validation = this.errorHandler.validateAuthRequest(this.userId, this.userCallsign, currentSN);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => {
+        this.logManager.addLog('错误', error.message);
+        this.errorHandler.showErrorAdvice(error.type);
+      });
       return;
     }
 
-    if (!this.userId || !this.userCallsign) {
-      this.addLog('错误', '请填写用户ID和用户呼号');
+    // 防止重复请求
+    if (this.authStatus === 'requesting') {
+      this.logManager.addLog('警告', '授权请求进行中，请勿重复发送');
       return;
     }
 
-    this.addLog('信息', `发送授权请求 (设备: ${currentSN})`);
-    this.authStatus = 'requesting';
+    this.logManager.addLog('信息', `发送授权请求 (设备: ${currentSN})`);
+    this.authStateManager.startAuthRequest(null);
+    this.authStateManager.setAuthTimeout(30000, () => {
+      this.logManager.addLog('警告', '授权请求超时，已自动取消');
+      this.syncFromAuthState();
+      this.updateUI();
+      this.errorHandler.showErrorAdvice('timeout');
+    });
+
+    this.syncFromAuthState();
     this.updateUI();
 
     try {
-      const result = await topicServiceManager.callService(currentSN, 'cloud_control_auth_request', {
+      const requestData = {
         user_id: this.userId,
         user_callsign: this.userCallsign,
         control_keys: ['flight']
+      };
+
+      debugLogger.service('发送云端控制授权请求', {
+        topic: 'cloud_control_auth_request',
+        data: requestData
+      });
+
+      const result = await topicServiceManager.callService(currentSN, 'cloud_control_auth_request', requestData);
+
+      debugLogger.service('云端控制授权回复', {
+        topic: 'cloud_control_auth_request_reply',
+        result: result
       });
 
       if (result.success) {
-        this.addLog('成功', `已发送授权请求 (用户: ${this.userCallsign})`);
-        this.addLog('调试', `TID: ${result.data?.tid || 'N/A'}`);
+        this.authStateManager.currentRequestTid = result.data?.tid;
+        this.logManager.addLog('成功', `已发送授权请求 (用户: ${this.userCallsign})`);
+        this.logManager.addLog('调试', `TID: ${result.data?.tid || 'N/A'}`);
       } else {
-        this.addLog('错误', `发送失败: ${result.error?.message || '未知错误'}`);
-        this.authStatus = 'unauthorized';
+        this.errorHandler.handleServiceError(null, result);
+        this.authStateManager.resetAuth();
+        this.syncFromAuthState();
         this.updateUI();
       }
     } catch (error) {
-      this.addLog('错误', `请求异常: ${error.message}`);
-      this.authStatus = 'unauthorized';
+      this.errorHandler.handleServiceError(error, null);
+      this.authStateManager.resetAuth();
+      this.syncFromAuthState();
       this.updateUI();
     }
   }
 
   /**
-   * 释放云端控制
+   * 手动确认授权已在遥控器上完成
    */
-  async releaseControl() {
-    const currentSN = deviceContext.getCurrentDevice();
-    if (!currentSN) {
-      this.addLog('错误', '未选择设备');
-      return;
-    }
-
-    this.addLog('信息', `发送释放控制请求 (设备: ${currentSN})`);
-
-    try {
-      const result = await topicServiceManager.callService(currentSN, 'cloud_control_release', {
-        control_keys: ['flight']
-      });
-
-      if (result.success) {
-        this.addLog('成功', '已发送释放控制请求');
-        this.addLog('调试', `TID: ${result.data?.tid || 'N/A'}`);
-      } else {
-        this.addLog('错误', `发送失败: ${result.error?.message || '未知错误'}`);
-      }
-    } catch (error) {
-      this.addLog('错误', `请求异常: ${error.message}`);
-    }
+  confirmAuth() {
+    this.authStateManager.setAuthorized();
+    const authDuration = this.authStateManager.getAuthDuration();
+    this.logManager.addLog('成功', '✓ 已手动确认云端控制授权');
+    this.logManager.addLog('信息', `授权用户: ${this.userCallsign} (耗时: ${authDuration}秒)`);
+    this.logManager.addLog('信息', '现在可以使用云端控制功能');
+    this.syncFromAuthState();
+    this.updateUI();
   }
 
   /**
    * 处理授权请求回复
    */
   handleAuthRequestReply(msg) {
-    const result = msg.data?.result;
-    const status = msg.data?.output?.status;
-
-    if (result === 0 && status === 'ok') {
-      this.authStatus = 'authorized';
-      this.controlKeys = ['flight'];
-      this.addLog('成功', '✓ 云端控制授权已批准');
-    } else {
-      this.authStatus = 'unauthorized';
-      this.controlKeys = [];
-      this.addLog('错误', `授权请求被拒绝 (result: ${result})`);
-    }
-
-    this.updateUI();
-  }
-
-  /**
-   * 处理释放控制回复
-   */
-  handleReleaseReply(msg) {
-    const result = msg.data?.result;
-    const status = msg.data?.output?.status;
-
-    if (result === 0 && status === 'ok') {
-      this.authStatus = 'unauthorized';
-      this.controlKeys = [];
-      this.addLog('成功', '✓ 云端控制已释放');
-    } else {
-      this.addLog('错误', `释放控制失败 (result: ${result})`);
-    }
-
-    this.updateUI();
-  }
-
-  /**
-   * 更新MQTT连接状态显示
-   */
-  updateMqttStatus() {
-    if (!this.elements.mqttStatus) return;
-
-    const currentSN = deviceContext.getCurrentDevice();
-    if (!currentSN) {
-      this.elements.mqttStatus.textContent = '未选择设备';
-      this.elements.mqttStatus.classList.remove('text-green-600');
-      this.elements.mqttStatus.classList.add('text-gray-600');
-      return;
-    }
-
-    const connection = window.mqttManager?.getConnection(currentSN);
-    if (connection && connection.isConnected) {
-      this.elements.mqttStatus.textContent = '已连接';
-      this.elements.mqttStatus.classList.add('text-green-600');
-      this.elements.mqttStatus.classList.remove('text-gray-600');
-    } else {
-      this.elements.mqttStatus.textContent = '未连接';
-      this.elements.mqttStatus.classList.add('text-gray-600');
-      this.elements.mqttStatus.classList.remove('text-green-600');
+    const result = this.errorHandler.handleAuthReply(msg, this.authStateManager);
+    if (result.shouldUpdateUI) {
+      this.syncFromAuthState();
+      this.updateUI();
     }
   }
 
@@ -257,111 +289,27 @@ export class CloudControlCardUI {
    * 更新UI显示
    */
   updateUI() {
-    // 更新状态显示
-    if (this.elements.cloudStatus) {
-      const statusText = {
-        'unauthorized': '未授权',
-        'requesting': '请求中...',
-        'authorized': '已授权'
-      };
-      this.elements.cloudStatus.textContent = statusText[this.authStatus] || this.authStatus;
+    this.syncToAuthState();
+    this.uiUpdater.updateUI(this.authStateManager);
 
-      // 更新颜色
-      this.elements.cloudStatus.classList.remove('text-gray-600', 'text-yellow-600', 'text-green-600');
-      if (this.authStatus === 'authorized') {
-        this.elements.cloudStatus.classList.add('text-green-600');
-      } else if (this.authStatus === 'requesting') {
-        this.elements.cloudStatus.classList.add('text-yellow-600');
-      } else {
-        this.elements.cloudStatus.classList.add('text-gray-600');
-      }
+    // 发出全局状态变化事件，通知其他组件
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cloud-control-status-changed', {
+        detail: {
+          authStatus: this.authStatus,
+          controlKeys: this.controlKeys,
+          authorizedUser: this.authorizedUser
+        }
+      }));
     }
-
-    // 更新控制权显示
-    if (this.elements.controlKeysDisplay) {
-      this.elements.controlKeysDisplay.textContent =
-        this.controlKeys.length > 0 ? this.controlKeys.join(', ') : '-';
-    }
-
-    // 更新按钮显示
-    if (this.authStatus === 'authorized') {
-      this.elements.requestBtn?.classList.add('hidden');
-      this.elements.releaseBtn?.classList.remove('hidden');
-    } else {
-      this.elements.requestBtn?.classList.remove('hidden');
-      this.elements.releaseBtn?.classList.add('hidden');
-    }
-
-    // 禁用/启用请求按钮
-    if (this.elements.requestBtn) {
-      this.elements.requestBtn.disabled = (this.authStatus === 'requesting');
-    }
-
-    this.updateMqttStatus();
   }
 
   /**
    * 添加日志
    */
   addLog(type, message) {
-    const timestamp = new Date().toLocaleTimeString();
-    const logClass = type === '成功' ? 'text-green-400' :
-                    type === '错误' ? 'text-red-400' :
-                    type === '警告' ? 'text-yellow-400' : 'text-blue-400';
-
-    const logEntry = `<div class="${logClass}">[${timestamp}] [${type}] ${message}</div>`;
-
-    // 更新状态属性（自动保存）
-    this.logsHTML = (this.logsHTML || '') + logEntry;
-
-    // 同时更新DOM
-    if (this.elements.logs) {
-      this.elements.logs.innerHTML = this.logsHTML;
-      this.elements.logs.scrollTop = this.elements.logs.scrollHeight;
-    }
-  }
-
-  /**
-   * 清空日志
-   */
-  clearLogs() {
-    this.logsHTML = '<div class="text-gray-500">[系统] 日志已清空</div>';
-    if (this.elements.logs) {
-      this.elements.logs.innerHTML = this.logsHTML;
-    }
-  }
-
-  /**
-   * 从状态恢复日志显示
-   */
-  restoreLogsFromState() {
-    if (this.elements.logs && this.logsHTML) {
-      this.elements.logs.innerHTML = this.logsHTML;
-      this.elements.logs.scrollTop = this.elements.logs.scrollHeight;
-    }
-  }
-
-  /**
-   * 从状态恢复输入框
-   */
-  restoreInputsFromState() {
-    if (this.elements.userIdInput && this.userId) {
-      this.elements.userIdInput.value = this.userId;
-    }
-    if (this.elements.userCallsignInput && this.userCallsign) {
-      this.elements.userCallsignInput.value = this.userCallsign;
-    }
-  }
-
-  /**
-   * 生成UUID
-   */
-  generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    this.logManager.addLog(type, message);
+    this.logsHTML = this.logManager.getLogsHTML();
   }
 }
 

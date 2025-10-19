@@ -25,196 +25,160 @@
 
 ```plantuml
 @startuml
-!define RECTANGLE class
+!theme plain
+title DJI Ground Station 系统架构 - UI/Controller分离设计
 
-package "DJI Ground Station Web System" {
-
-  package "Frontend Layer" {
-    RECTANGLE "Device Switcher" as DS {
-      + 设备选择器
-      + 状态指示灯
-      + 设备别名管理
-    }
-
-    RECTANGLE "DRC Control Card" as DRC {
-      + 控制权申请
-      + DRC 模式管理
-      + 操作日志
-    }
-
-    RECTANGLE "Streaming Card" as SC {
-      + 视频流播放
-      + 流媒体控制
-      + 录制功能
-    }
-
-    RECTANGLE "Cloud Control Card" as CC {
-      + 云端控制授权
-      + 权限管理
-      + 状态监控
-    }
-
-    RECTANGLE "Debug Console" as DC_WEB {
-      + Web端日志查看器
-      + 实时日志流
-      + 过滤和搜索功能
-    }
+package "UI层 (薄适配器)" {
+  component "DroneDeviceSwitcher" as DS {
+    🔘 设备选择器
+    🔘 状态指示灯
+    🔘 设备别名管理
   }
 
-  package "Service Abstraction Layer" as SAL {
-    RECTANGLE "Topic Service Manager" as TSM {
-      + callService(sn, service, data)
-      + callCloudControlAuth()
-      + callCameraService()
-      + callDrcService()
-    }
-
-    RECTANGLE "Topic Template Manager" as TTM {
-      + getServiceTopic(sn, service)
-      + buildMessage(method, data)
-      + validateMessage(message)
-    }
-
-    RECTANGLE "Message Router" as MR {
-      + routeMessage(message, topic)
-      + registerServiceRoute()
-      + registerTopicRoute()
-    }
+  component "DrcModeCardUI" as DRC_UI {
+    ⚠️ DOM绑定
+    ⚠️ 事件处理
+    ⚠️ 委托业务逻辑
   }
 
-  package "State Management" as SM {
-    RECTANGLE "Global State Store" as GSS {
-      + getMultiDeviceState(devices, cardId)
-      + subscribeToMultiDevice()
-      + getAggregatedCardState()
-    }
-
-    RECTANGLE "Cross Page State Sync" as CPSS {
-      + broadcastStateChange()
-      + handleRemoteStateChange()
-      + BroadcastChannel 通信
-    }
-
-    RECTANGLE "Multi Device State Viewer" as MDSV {
-      + createDashboardView()
-      + subscribeToAllDevices()
-      + getDeviceViewData()
-    }
+  component "CloudControlCardUI" as CC_UI {
+    ⚠️ 云端控制界面
+    ⚠️ 授权请求UI
+    ⚠️ 状态显示
   }
 
-  package "Core Management Layer" {
-    RECTANGLE "Device Context" as DC {
-      + 当前设备 SN 管理
-      + 设备切换事件
-      + 设备列表维护
-    }
-
-    RECTANGLE "Card State Manager" as CSM {
-      + 统一状态管理入口
-      + 卡片注册与注销
-      + 功能集成
-    }
-
-    RECTANGLE "MQTT Connection Manager" as MCM {
-      + 连接池管理
-      + 自动连接/断开
-      + Topic 服务层集成
-    }
-  }
-
-  package "State Layer" {
-    RECTANGLE "Card State Proxy" as CSP {
-      + JavaScript Proxy 拦截
-      + 属性读写代理
-      + 设备状态隔离
-    }
-
-    RECTANGLE "Device State Manager" as DSM {
-      + 多设备状态存储
-      + localStorage 持久化
-      + 状态 CRUD 操作
-    }
-  }
-
-  package "Communication Layer" {
-    RECTANGLE "MQTT Client Wrapper" as MCW {
-      + 单设备 MQTT 客户端
-      + 连接状态管理
-      + 消息发布/订阅
-      + MessageRouter 集成
-    }
-
-    RECTANGLE "Device Manager" as DM {
-      + 设备发现 (EMQX API)
-      + 在线状态监控
-      + 设备列表更新
-    }
-  }
-
-  package "Debug System" {
-    RECTANGLE "Debug Logger" as DL {
-      + 集中日志收集
-      + Console 拦截
-      + 实时日志推送
-      + 日志持久化
-    }
+  component "Debug Console" as DC {
+    🐛 Web端日志查看器
+    🐛 实时日志流
+    🐛 过滤搜索
   }
 }
 
-package "External Systems" {
-  RECTANGLE "EMQX MQTT Broker" as EMQX {
-    + WebSocket 接口
-    + 消息路由
-    + 客户端管理 API
+package "Controller层 (纯业务逻辑)" {
+  component "DrcModeController" as DRC_CTRL {
+    ✅ 无DOM依赖
+    ✅ 环境无关
+    ✅ 可直接测试
+    --
+    + enterDrcMode()
+    + sendHeartbeat()
+    + handleReply()
   }
 
-  RECTANGLE "DJI Drones" as DRONES {
-    + RC 遥控器
-    + 无人机本体
-    + MQTT 客户端
+  component "CloudControlController" as CC_CTRL {
+    ✅ 纯业务逻辑
+    ✅ 跨环境运行
+    --
+    + requestAuth()
+    + confirmAuth()
+    + validateRequest()
   }
 }
 
-' 连接关系 - Frontend Layer
-DS --> DC : 设备切换
-DRC --> TSM : 服务调用
-CC --> TSM : 服务调用
-SC --> TSM : 服务调用
-DC_WEB --> DL : 日志查看
+package "核心服务层 (#lib/*)" {
+  component "services.js" as SERVICES {
+    🔧 TopicServiceManager
+    🔧 MessageRouter
+    🔧 TemplateManager
+    --
+    统一服务调用API
+  }
 
-' 连接关系 - Service Layer
-TSM --> TTM : 模板管理
-TSM --> MCM : MQTT 通信
-MR --> TSM : 消息路由
-MCW --> MR : 消息分发
+  component "state.js" as STATE {
+    📊 CardStateManager
+    📊 DeviceContext
+    📊 StateProxy
+    --
+    状态管理与隔离
+  }
 
-' 连接关系 - State Management
-DC --> CSM : 设备变更事件
-DC --> MCM : 设备变更事件
-CSM --> GSS : 多设备状态
-CSM --> CPSS : 跨页面同步
-CSM --> MDSV : Dashboard 视图
-CPSS --> GSS : 状态同步
+  component "mqtt.js" as MQTT {
+    📡 ConnectionManager
+    📡 ClientWrapper
+    📡 连接池管理
+    --
+    MQTT通信层
+  }
 
-' 连接关系 - Core Layer
-CSM --> CSP : 创建代理
-CSP --> DSM : 状态读写
-GSS --> DSM : 扩展访问
+  component "debug.js" as DEBUG {
+    🐛 DebugLogger
+    🐛 Console拦截
+    🐛 日志持久化
+    --
+    集中调试系统
+  }
+}
 
-' 连接关系 - Communication Layer
-MCM --> MCW : 管理连接
-MCW --> EMQX : WebSocket 连接
-DM --> EMQX : HTTP API 查询
-DM --> DC : 设备列表更新
+package "配置层 (#config/*)" {
+  component "topic-templates.json" as TEMPLATES {
+    📋 DJI服务定义
+    📋 主题模板
+    📋 参数验证
+  }
 
-' 连接关系 - Debug System
-TSM --> DL : 日志记录
-CSM --> DL : 日志记录
-MCM --> DL : 日志记录
-DM --> DL : 日志记录
+  component "index.js" as CONFIG {
+    ⚙️ 统一配置管理
+    ⚙️ MQTT配置
+    ⚙️ 应用配置
+  }
+}
+
+package "测试层" {
+  component "IntegrationTest" as TEST {
+    🧪 直接调用Controller
+    🧪 Node.js环境
+    🧪 无DOM模拟
+    --
+    真实业务代码测试
+  }
+}
+
+package "外部系统" {
+  database "EMQX MQTT Broker" as EMQX {
+    📡 WebSocket接口
+    📡 消息路由
+    📡 客户端管理API
+  }
+
+  component "DJI Drones" as DRONES {
+    🚁 RC遥控器
+    🚁 无人机本体
+    🚁 MQTT客户端
+  }
+}
+
+' UI/Controller关系 (组合模式)
+DRC_UI --> DRC_CTRL : 组合模式\n委托业务调用
+CC_UI --> CC_CTRL : 组合模式\n委托业务调用
+
+' Controller -> 服务层
+DRC_CTRL --> SERVICES : topicServiceManager.callService()
+CC_CTRL --> SERVICES : messageRouter.addHandler()
+DRC_CTRL --> STATE : cardStateManager.register()
+CC_CTRL --> STATE : deviceContext.getCurrentDevice()
+
+' 服务层内部依赖
+SERVICES --> MQTT : mqttManager.getConnection()
+SERVICES --> TEMPLATES : 模板解析
+STATE --> CONFIG : 配置读取
+MQTT --> CONFIG : 连接配置
+
+' 调试系统集成
+SERVICES --> DEBUG : debugLogger.service()
+STATE --> DEBUG : debugLogger.state()
+MQTT --> DEBUG : debugLogger.mqtt()
+
+' 测试关系
+TEST --> DRC_CTRL : 直接测试业务逻辑
+TEST --> CC_CTRL : 直接测试业务逻辑
 
 ' 外部连接
-EMQX <--> DRONES : MQTT 通信
+MQTT --> EMQX : WebSocket连接
+EMQX <--> DRONES : MQTT通信
+
+' UI组件关系
+DS --> STATE : 设备切换
+DC --> DEBUG : 日志查看
 
 @enduml
 ```
@@ -223,125 +187,210 @@ EMQX <--> DRONES : MQTT 通信
 
 ```plantuml
 @startuml
-!define RECTANGLE class
+!theme plain
+title DJI Ground Station 文件架构 - UI/Controller分离模式
 
-package "DJI Ground Station Web System" {
+package "grounstation/ (项目根目录)" {
 
-  package "Core Library (lib/)" as LIB {
-    RECTANGLE "state.js" as STATE_LIB {
-      + DeviceContext
-      + DeviceStateManager
-      + CardStateManager
-      + CardStateProxy
+  package "#lib/* (核心库)" as LIB {
+    class "state.js" as STATE_LIB {
+      📊 DeviceContext
+      📊 DeviceStateManager
+      📊 CardStateManager
+      📊 CardStateProxy
+      --
+      349行 - 状态管理统一入口
     }
 
-    RECTANGLE "services.js" as SERVICES_LIB {
-      + TopicServiceManager
-      + TopicTemplateManager
-      + MessageRouter
-      + JSON配置解析
+    class "services.js" as SERVICES_LIB {
+      🔧 TopicServiceManager
+      🔧 TopicTemplateManager
+      🔧 MessageRouter
+      --
+      546行 - 服务调用统一入口
     }
 
-    RECTANGLE "mqtt.js" as MQTT_LIB {
-      + MQTTConnectionManager
-      + MQTTClientWrapper
-      + 连接池管理
+    class "mqtt.js" as MQTT_LIB {
+      📡 MQTTConnectionManager
+      📡 MQTTClientWrapper
+      📡 连接池管理
+      --
+      390行 - MQTT通信管理
     }
 
-    RECTANGLE "devices.js" as DEVICES_LIB {
-      + DeviceManager
-      + DeviceScanner
-      + EMQX API集成
+    class "devices.js" as DEVICES_LIB {
+      🔍 DeviceManager
+      🔍 DeviceScanner
+      🔍 EMQX API集成
+      --
+      326行 - 设备发现管理
     }
 
-    RECTANGLE "utils.js" as UTILS_LIB {
-      + EventManager
-      + Validator
-      + 通用工具函数
+    class "debug.js" as DEBUG_LIB {
+      🐛 DebugLogger
+      🐛 Console拦截
+      🐛 日志持久化
+      --
+      250行 - 集中调试系统
     }
 
-    RECTANGLE "debug.js" as DEBUG_LIB {
-      + DebugLogger
-      + Console拦截
-      + 日志持久化
-    }
-  }
-
-  package "Configuration (config/)" as CONFIG {
-    RECTANGLE "index.js" as CONFIG_INDEX {
-      + 统一配置管理
-      + APP_CONFIG
-      + CARD_CONFIG
-      + MQTT_CONFIG
-    }
-
-    RECTANGLE "topic-templates.json" as TEMPLATES {
-      + JSON格式服务定义
-      + 主题模板
-      + 参数验证规则
+    class "utils.js" as UTILS_LIB {
+      ⚙️ EventManager
+      ⚙️ Validator
+      ⚙️ 通用工具函数
+      --
+      461行 - 工具函数库
     }
   }
 
-  package "Frontend Components" {
-    RECTANGLE "cards/" as CARDS {
-      + CloudControlCard/
-      + StreamingCard/
-      + controllers/
+  package "#config/* (统一配置)" as CONFIG {
+    class "index.js" as CONFIG_INDEX {
+      🗃️ APP_CONFIG
+      🗃️ CARD_CONFIG
+      🗃️ MQTT_CONFIG
+      --
+      280行 - 配置管理中心
     }
 
-    RECTANGLE "components/" as COMPONENTS {
-      + CollapsibleCard.astro
-      + DroneDeviceSwitcher.astro
+    class "topic-templates.json" as TEMPLATES {
+      📋 DJI服务定义
+      📋 主题模板
+      📋 参数验证规则
+      --
+      JSON配置驱动
+    }
+  }
+
+  package "#cards/* (UI/Controller分离)" as CARDS {
+    package "DrcModeCard/" {
+      class "controllers/drc-mode-controller.js" as DRC_CTRL {
+        ✅ 纯业务逻辑
+        ✅ 无DOM依赖
+        ✅ 可Node.js测试
+        --
+        278行 Controller
+      }
+
+      class "DrcModeCard.astro" as DRC_UI {
+        ⚠️ 薄UI适配器
+        ⚠️ 组合模式
+        ⚠️ DOM绑定
+        --
+        95行 UI Adapter
+      }
     }
 
-    RECTANGLE "pages/" as PAGES {
-      + index.astro (主页面)
-      + debug.astro (调试控制台)
-      + api/emqx-clients.js
+    package "CloudControlCard/" {
+      class "controllers/cloud-control-ui.js" as CLOUD_CTRL {
+        ✅ 业务逻辑控制
+        ✅ 环境无关
+        ✅ 直接测试
+        --
+        318行 Controller
+      }
+
+      class "CloudControlCard.astro" as CLOUD_UI {
+        ⚠️ DOM操作
+        ⚠️ 事件绑定
+        ⚠️ UI更新
+        --
+        Astro UI Component
+      }
+    }
+  }
+
+  package "#components/* (UI组件)" as COMPONENTS {
+    class "DroneDeviceSwitcher.astro" as SWITCHER {
+      🔘 设备选择器
+      🔘 状态指示灯
+      🔘 别名管理
+    }
+
+    class "GlobalStatusBar.astro" as STATUS_BAR {
+      📊 全局状态显示
+      📊 设备信息
+      📊 连接状态
+    }
+  }
+
+  package "pages/ (页面路由)" as PAGES {
+    class "index.astro" as HOME {
+      🏠 主控制面板
+      🏠 卡片集成
+      🏠 设备管理
+    }
+
+    class "debug.astro" as DEBUG_PAGE {
+      🐛 调试控制台
+      🐛 实时日志
+      🐛 系统监控
+    }
+  }
+
+  package "tests/ (测试套件)" as TESTS {
+    class "integration/drc-full-workflow.test.js" as INT_TEST {
+      🧪 直接调用Controller
+      🧪 Node.js环境
+      🧪 无DOM模拟
+      --
+      真实业务代码测试
     }
   }
 }
 
-package "External Systems" {
-  RECTANGLE "EMQX MQTT Broker" as EMQX {
-    + WebSocket 接口
-    + 消息路由
-    + 客户端管理 API
-  }
-
-  RECTANGLE "DJI Drones" as DRONES {
-    + RC 遥控器
-    + 无人机本体
-    + MQTT 客户端
+package "package.json配置" as PKG {
+  class "Path Aliases" as ALIASES {
+    "#lib/*": "./src/lib/*"
+    "#cards/*": "./src/cards/*"
+    "#components/*": "./src/components/*"
+    "#config/*": "./src/config/*"
+    --
+    统一路径管理
   }
 }
 
-' 连接关系 - Frontend
-CARDS --> SERVICES_LIB : 服务调用
-CARDS --> STATE_LIB : 状态管理
-PAGES --> DEBUG_LIB : 日志查看
+' 依赖关系 - 核心库
+DRC_CTRL --> STATE_LIB : import { deviceContext }
+DRC_CTRL --> SERVICES_LIB : import { topicServiceManager }
+DRC_CTRL --> DEBUG_LIB : import debugLogger
+CLOUD_CTRL --> STATE_LIB : import { cardStateManager }
+CLOUD_CTRL --> SERVICES_LIB : import { messageRouter }
 
-' 连接关系 - Core Library
-STATE_LIB --> DEBUG_LIB : 日志记录
-SERVICES_LIB --> DEBUG_LIB : 日志记录
-MQTT_LIB --> DEBUG_LIB : 日志记录
-DEVICES_LIB --> DEBUG_LIB : 日志记录
+' UI/Controller关系
+DRC_UI --> DRC_CTRL : 组合模式 new Controller()
+CLOUD_UI --> CLOUD_CTRL : 组合模式 new Controller()
+
+' 测试关系
+INT_TEST --> DRC_CTRL : 直接导入测试
+INT_TEST --> CLOUD_CTRL : 直接导入测试
 
 ' 配置关系
 SERVICES_LIB --> TEMPLATES : JSON配置解析
 STATE_LIB --> CONFIG_INDEX : 配置读取
 MQTT_LIB --> CONFIG_INDEX : 配置读取
 
-' 核心库依赖关系
-SERVICES_LIB --> MQTT_LIB : MQTT连接
-SERVICES_LIB --> STATE_LIB : 状态管理
-DEVICES_LIB --> MQTT_LIB : 连接管理
-MQTT_LIB --> STATE_LIB : 设备上下文
+' 路径别名
+ALIASES --> LIB : 路径映射
+ALIASES --> CARDS : 路径映射
+ALIASES --> COMPONENTS : 路径映射
+ALIASES --> CONFIG : 路径映射
 
-' 外部连接
-MQTT_LIB --> EMQX : WebSocket 连接
-DEVICES_LIB --> EMQX : HTTP API 查询
-EMQX <--> DRONES : MQTT 通信
+' 样式
+skinparam package {
+  BackgroundColor<<Core>> LightGreen
+  BackgroundColor<<Config>> LightBlue
+  BackgroundColor<<UI>> LightYellow
+  BackgroundColor<<Test>> Pink
+}
+
+LIB <<Core>>
+CONFIG <<Config>>
+CARDS <<UI>>
+TESTS <<Test>>
+
+note bottom of DRC_CTRL : UI/Controller完全分离\n支持跨环境运行
+note bottom of INT_TEST : 测试生产代码\n保证行为一致性
+note bottom of ALIASES : 拒绝相对路径\n统一#别名管理
 
 @enduml
 ```
@@ -351,47 +400,83 @@ EMQX <--> DRONES : MQTT 通信
 ```plantuml
 @startuml
 !theme plain
+title DJI Ground Station 数据流 - UI/Controller分离架构
 
-participant "User" as U
-participant "Card UI" as Card
+participant "用户操作" as User
+participant "UI适配器" as UI
+participant "Controller" as CTRL
 participant "services.js" as SERVICES
 participant "mqtt.js" as MQTT
 participant "state.js" as STATE
 participant "debug.js" as DEBUG
 
-== 重构后的服务调用流程 ==
-U -> Card : 用户操作 (如请求云端控制)
-Card -> SERVICES : topicServiceManager.callService(sn, 'cloud_control_auth', params)
+== UI/Controller分离的服务调用流程 ==
+User -> UI : 用户点击进入DRC
+UI -> CTRL : controller.enterDrcMode()
+note right : 🔧 薄UI层委托业务逻辑
+
+CTRL -> CTRL : 构建MQTT Broker消息
+CTRL -> SERVICES : topicServiceManager.callService(sn, 'drc_mode_enter', data)
+note right : 📤 使用统一服务API
+
 SERVICES -> SERVICES : templateManager.buildServiceMessage()
 SERVICES -> MQTT : mqttManager.getConnection(sn)
-MQTT -> SERVICES : 返回 MQTT 连接
+MQTT -> SERVICES : 返回连接池中的连接
+
 SERVICES -> MQTT : connection.publish(topic, message)
-SERVICES -> DEBUG : debugLogger.service('服务调用成功')
-SERVICES -> Card : 返回调用结果
+SERVICES -> DEBUG : debugLogger.service('DRC进入请求', data)
+note right : 🐛 集中日志记录
 
-== 消息接收流程 ==
+SERVICES -> CTRL : 返回Promise结果
+CTRL -> UI : 返回业务数据
+UI -> UI : updateUI(result)
+UI -> User : 显示操作结果
+
+== 直接Controller测试流程 ==
+participant "集成测试" as TEST
+
+TEST -> CTRL : new DrcModeController()
+note right : 🧪 Node.js环境直接实例化
+
+TEST -> CTRL : controller.enterDrcMode()
+note right : 🧪 直接调用业务方法
+
+CTRL -> SERVICES : topicServiceManager.callService()
+note right : 🧪 调用真实生产代码
+
+SERVICES -> DEBUG : debugLogger.service('测试日志')
+SERVICES -> CTRL : 返回真实业务结果
+CTRL -> TEST : 验证业务逻辑结果
+
+note over TEST : 🎯 无DOM模拟需求\n测试真实业务代码
+
+== 消息接收与路由流程 ==
 MQTT -> SERVICES : messageRouter.routeMessage(message, topic, sn)
-SERVICES -> SERVICES : 匹配路由规则
-SERVICES -> SERVICES : 回调服务响应处理器
-SERVICES -> Card : 触发响应回调
-SERVICES -> DEBUG : debugLogger.mqtt('消息路由成功')
+SERVICES -> SERVICES : 正则匹配路由规则
 
-== 设备切换与状态同步 ==
-U -> Card : 切换设备 SN-2
-Card -> STATE : deviceContext.setCurrentDevice('SN-2')
+alt DRC回复消息
+  SERVICES -> CTRL : handleDrcEnterReply(message)
+  CTRL -> CTRL : 更新业务状态 (this.drcStatus = 'active')
+  CTRL -> UI : 触发状态变化事件
+  UI -> UI : updateUI()
+end
+
+SERVICES -> DEBUG : debugLogger.mqtt('消息路由', routeInfo)
+
+== 设备切换与状态隔离 ==
+User -> UI : 切换设备 SN-2
+UI -> STATE : deviceContext.setCurrentDevice('SN-2')
+
 STATE -> STATE : cardStateManager._handleDeviceChanged()
-STATE -> STATE : 保存 SN-1 状态快照
-STATE -> STATE : 加载 SN-2 状态
-STATE -> Card : 触发 'card-state-restored' 事件
-Card -> Card : updateUI()
-STATE -> DEBUG : debugLogger.state('设备切换完成')
+note right : 🔄 Proxy状态管理
 
-== Web调试控制台流程 ==
-DEBUG -> DEBUG : 拦截所有console调用
-DEBUG -> DEBUG : 存储到logs数组
-DEBUG -> "Debug Page" : 实时推送日志
-"Debug Page" -> DEBUG : 过滤和搜索请求
-DEBUG -> "Debug Page" : 返回过滤结果
+STATE -> STATE : 保存 SN-1 Controller状态
+STATE -> STATE : 加载 SN-2 Controller状态
+STATE -> CTRL : 恢复Controller业务状态
+STATE -> UI : 触发 'card-state-restored' 事件
+UI -> UI : updateUI()
+
+STATE -> DEBUG : debugLogger.state('设备切换完成', deviceInfo)
 
 @enduml
 ```
@@ -955,6 +1040,364 @@ debugLogger.getLogs().length
 - **消息路由分析器**：Message Router 路由路径分析
 - **日志系统**：分级日志输出，支持过滤和搜索
 - **性能分析**：状态读写性能统计和 API 调用耗时
+
+## 🔄 UI/Controller分离架构重构
+
+### 重构动机
+
+在系统演进过程中，我们发现原有的卡片架构存在测试性和维护性问题：
+- **DOM依赖混合**：业务逻辑和UI代码耦合在一起，无法在Node.js环境中测试
+- **测试困难**：集成测试需要模拟整个DOM环境，复杂且不可靠
+- **环境依赖**：业务代码无法在浏览器之外的环境运行
+- **关注点混乱**：单个类承担了业务逻辑、状态管理、DOM操作多重职责
+
+### 分离架构设计
+
+#### 架构原理图
+
+```plantuml
+@startuml
+!theme plain
+title UI/Controller分离架构设计原则
+
+package "纯业务层 (Controller)" {
+  class DrcModeController {
+    + status: string
+    + config: object
+    + heartbeatActive: boolean
+    --
+    + enterDrcMode(): Promise<result>
+    + exitDrcMode(): Promise<result>
+    + sendHeartbeat(): Promise<void>
+    + updateConfig(config): void
+    --
+    ✅ 无DOM依赖
+    ✅ 环境无关 (Node.js/Browser)
+    ✅ 可直接测试
+  }
+
+  class CloudControlController {
+    + authStatus: string
+    + userId: string
+    + userCallsign: string
+    --
+    + requestAuth(): Promise<result>
+    + confirmAuth(): void
+    + validateRequest(): boolean
+    --
+    ✅ 纯业务逻辑
+    ✅ 跨环境运行
+  }
+}
+
+package "UI适配层 (Thin Adapter)" {
+  class DrcModeCardUI {
+    - controller: DrcModeController
+    - elements: DOMElements
+    --
+    + constructor(): Proxy
+    + bindElements(): void
+    + onEnterClick(): void
+    + updateUI(): void
+    --
+    ⚠️ 仅DOM操作
+    ⚠️ 委托所有业务逻辑
+  }
+
+  class CloudControlCardUI {
+    - controller: CloudControlController
+    - elements: DOMElements
+    --
+    + constructor(): Proxy
+    + bindEvents(): void
+    + requestAuth(): void
+    + updateUI(): void
+    --
+    ⚠️ 薄UI层
+    ⚠️ 组合模式
+  }
+}
+
+package "测试层 (Direct Testing)" {
+  class IntegrationTest {
+    - drcController: DrcModeController
+    - cloudController: CloudControlController
+    --
+    + testDrcWorkflow(): void
+    + testCloudControlAuth(): void
+    + testHeartbeat(): void
+    --
+    ✅ 直接调用Controller
+    ✅ Node.js环境运行
+    ✅ 无DOM模拟需求
+  }
+}
+
+' 关系定义
+DrcModeCardUI --> DrcModeController : 组合模式\n委托业务调用
+CloudControlCardUI --> CloudControlController : 组合模式\n委托业务调用
+IntegrationTest --> DrcModeController : 直接测试\n真实业务代码
+IntegrationTest --> CloudControlController : 直接测试\n真实业务代码
+
+' 样式定义
+skinparam class {
+  BackgroundColor<<Controller>> LightGreen
+  BackgroundColor<<UI>> LightBlue
+  BackgroundColor<<Test>> LightYellow
+  BorderColor Black
+}
+
+DrcModeController <<Controller>>
+CloudControlController <<Controller>>
+DrcModeCardUI <<UI>>
+CloudControlCardUI <<UI>>
+IntegrationTest <<Test>>
+
+note bottom of DrcModeController : 278行纯业务逻辑\n可在任何环境运行
+note bottom of CloudControlController : 业务逻辑与DOM完全分离\n支持跨框架复用
+note bottom of DrcModeCardUI : 95行薄适配器\n只处理DOM交互
+note bottom of IntegrationTest : 测试生产代码\n保证行为一致性
+
+@enduml
+```
+
+#### 实现模式
+
+##### 传统混合架构（❌ 避免）
+```javascript
+export class BadCardUI {
+  constructor() {
+    this.elements = {};
+    this.status = 'idle';
+
+    // BAD: DOM和业务逻辑混合
+    this.bindElements();  // DOM代码
+    this.connectMQTT();   // 业务逻辑
+    this.init();          // 更多混合关注点
+  }
+
+  async enterDrcMode() {
+    // BAD: 业务逻辑直接访问DOM
+    const config = this.elements.configInput.value;
+    const result = await apiCall(config);
+    this.elements.statusText.textContent = result.status;
+  }
+}
+```
+
+##### 现代分离架构（✅ 要求）
+```javascript
+// 纯业务逻辑 - 无DOM依赖
+export class DrcModeController {
+  constructor() {
+    this.status = 'idle';
+    this.config = {};
+    // GOOD: 只有业务状态和逻辑
+  }
+
+  async enterDrcMode() {
+    // GOOD: 纯业务逻辑，返回数据
+    const result = await topicServiceManager.callService(sn, 'drc_mode_enter', this.config);
+    this.status = result.success ? 'active' : 'error';
+    return result;  // 无直接UI更新
+  }
+}
+
+// 薄DOM适配器 - 委托所有业务逻辑
+export class DrcModeCardUI {
+  constructor() {
+    this.controller = new DrcModeController();  // GOOD: 组合模式
+
+    if (typeof document !== 'undefined') {
+      this.bindElements();  // GOOD: 只有DOM代码
+    }
+
+    return cardStateManager.register(this.controller, 'cardId');
+  }
+
+  async onEnterClick() {
+    // GOOD: UI调用控制器，然后更新显示
+    const result = await this.controller.enterDrcMode();
+    this.updateUI(result);  // 分离的UI更新
+  }
+}
+```
+
+### 实现规则
+
+#### 1. 控制器要求
+- **MUST be pure business logic**：无`document`、`window`或DOM引用
+- **MUST be environment independent**：可在浏览器、Node.js、测试环境运行
+- **MUST use environment detection**：`if (typeof document !== 'undefined')`用于环境检测
+- **MUST return data**：方法返回数据而非直接更新UI
+
+#### 2. UI类要求
+- **MUST be thin adapters**：所有业务逻辑委托给控制器
+- **MUST only handle DOM**：只处理DOM绑定、事件、显示更新
+- **MUST use controller composition**：`this.controller = new BusinessController()`
+- **MUST separate concerns**：清晰分离UI逻辑和业务逻辑
+
+#### 3. 测试策略
+- **Integration tests import Controllers directly**：集成测试直接导入控制器
+- **Unit tests run in Node.js**：单元测试在Node.js环境运行，无DOM模拟
+- **Business logic fully testable**：业务逻辑与UI完全独立测试
+
+### 重构成果
+
+#### 代码分离示例
+
+**DrcModeController（纯业务逻辑）**
+```javascript
+// 278行纯业务代码
+export class DrcModeController {
+  async enterDrcMode() {
+    const requestData = this.buildMqttBrokerMessage();
+
+    debugLogger.service('发送DRC模式进入请求', {
+      topic: 'drc_mode_enter',
+      data: requestData
+    });
+
+    const result = await topicServiceManager.callService(currentSN, 'drc_mode_enter', requestData);
+
+    if (!result.success) {
+      throw new Error(result.error || 'DRC模式进入失败');
+    }
+
+    return { success: true, data: result.data };
+  }
+
+  async sendHeartbeat() {
+    // 纯业务逻辑，无DOM访问
+  }
+}
+```
+
+**DrcModeCardUI（薄UI适配器）**
+```javascript
+// 95行DOM适配代码
+export class DrcModeCardUI {
+  constructor() {
+    this.controller = new DrcModeController();
+
+    if (typeof document !== 'undefined') {
+      this.bindElements();
+      this.bindEvents();
+    }
+
+    return cardStateManager.register(this.controller, 'drcMode');
+  }
+
+  async onEnterDrcClick() {
+    try {
+      await this.controller.enterDrcMode();
+      this.updateUI();
+      this.uiUpdater.showOperationResult(true, 'DRC模式进入请求已发送');
+    } catch (error) {
+      this.updateUI();
+      this.uiUpdater.showOperationResult(false, `进入失败: ${error.message}`);
+    }
+  }
+}
+```
+
+#### 集成测试简化
+
+**重构前（复杂DOM模拟）**
+```javascript
+// 需要创建复杂的DOM环境模拟
+global.document = {
+  getElementById: () => null,
+  createElement: () => ({ classList: { add(){}, remove(){} } }),
+  addEventListener() {}
+};
+global.window = { addEventListener() {}, dispatchEvent() {} };
+
+const drcCard = new DrcModeCardUI();  // 仍然包含DOM依赖
+```
+
+**重构后（直接业务测试）**
+```javascript
+// 直接测试业务逻辑，无DOM依赖
+import { DrcModeController } from '#cards/DrcModeCard/controllers/drc-mode-controller.js';
+
+const drcController = new DrcModeController();  // 纯业务逻辑
+const result = await drcController.enterDrcMode();  // 直接调用真实业务代码
+```
+
+### 架构优势
+
+#### 1. 测试性提升
+- **Node.js直接测试**：控制器可在Node.js环境直接运行
+- **真实业务逻辑**：测试调用的是生产环境完全相同的代码
+- **无DOM模拟**：消除了复杂的DOM环境模拟需求
+- **测试一致性**：保证测试结果与页面运行完全一致
+
+#### 2. 环境独立性
+- **跨环境运行**：业务逻辑可在浏览器、Node.js、测试环境运行
+- **部署灵活性**：控制器可用于不同的前端框架
+- **服务端渲染**：支持SSR环境中的业务逻辑执行
+
+#### 3. 维护性改善
+- **关注点分离**：业务逻辑与UI逻辑清晰分离
+- **单一职责**：每个类只负责一种关注点
+- **代码复用**：控制器可被不同UI框架复用
+- **调试简化**：业务逻辑错误与UI错误分离
+
+#### 4. 可扩展性
+- **UI框架无关**：控制器不依赖特定UI框架
+- **组合模式**：易于扩展和组合不同功能
+- **接口标准化**：控制器提供标准的业务接口
+
+### 迁移指南
+
+#### 现有卡片重构步骤
+
+1. **提取业务逻辑**：从现有UI类中提取所有业务方法到新的Controller类
+2. **移除DOM依赖**：确保Controller类不包含任何DOM访问代码
+3. **实现组合模式**：UI类通过组合模式使用Controller
+4. **环境检测**：添加环境检测逻辑，只在浏览器环境初始化DOM
+5. **更新测试**：修改测试代码直接使用Controller进行业务逻辑测试
+
+#### 新卡片开发规范
+
+```javascript
+// 标准的分离架构模板
+export class NewFeatureController {
+  constructor() {
+    // 只包含业务状态和逻辑初始化
+    this.init();
+  }
+
+  init() {
+    // 业务逻辑初始化，无DOM依赖
+    this.registerServiceHandlers();
+  }
+
+  async businessMethod() {
+    // 纯业务逻辑实现
+    return result;
+  }
+}
+
+export class NewFeatureCardUI {
+  constructor() {
+    this.controller = new NewFeatureController();
+
+    if (typeof document !== 'undefined') {
+      this.bindElements();
+      this.bindEvents();
+    }
+
+    return cardStateManager.register(this.controller, 'newFeature');
+  }
+
+  async onButtonClick() {
+    const result = await this.controller.businessMethod();
+    this.updateUI(result);
+  }
+}
+```
 
 ## 🔄 代码架构重构
 

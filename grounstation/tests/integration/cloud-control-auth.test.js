@@ -126,7 +126,7 @@ function buildAuthRequestMessage(config) {
 }
 
 // 构建释放控制消息
-function buildReleaseMessage(config) {
+function buildReleaseMessage() {
   return {
     method: 'cloud_control_release',
     data: {
@@ -211,7 +211,7 @@ async function runTest(config) {
         const serviceTopic = `thing/product/${config.sn}/services`;
 
         if (config.release) {
-          requestMessage = buildReleaseMessage(config);
+          requestMessage = buildReleaseMessage();
           logger.info('发送释放控制消息:');
         } else {
           requestMessage = buildAuthRequestMessage(config);
@@ -237,18 +237,21 @@ async function runTest(config) {
     });
 
     // 步骤5: 处理回复消息
+    let messageCount = 0;
     client.on('message', (topic, message) => {
       try {
+        messageCount++;
         const reply = JSON.parse(message.toString());
 
-        logger.section('步骤5: 收到回复消息');
+        logger.section(`步骤5: 收到回复消息 #${messageCount}`);
         logger.info(`来自主题: ${topic}`);
         logger.info('回复内容:');
         logger.info(JSON.stringify(reply, null, 2));
 
         // 验证 TID 匹配
         if (reply.tid !== requestMessage.tid) {
-          logger.warn(`TID 不匹配: ${reply.tid} !== ${requestMessage.tid}`);
+          logger.warn(`TID 不匹配: 期望=${requestMessage.tid}, 实际=${reply.tid}`);
+          logger.warn('这可能是其他请求的回复，继续等待...');
           return;
         }
 
@@ -261,14 +264,14 @@ async function runTest(config) {
         logger.section('步骤6: 分析结果');
 
         if (result === 0 && status === 'ok') {
-          logger.success('✓ 授权请求成功');
+          logger.success('✓ 授权请求成功 (收到确认)');
           logger.success(`  Result: ${result}`);
           logger.success(`  Status: ${status}`);
 
           if (!config.release) {
             logger.info('');
             logger.info('🎉 云端控制授权已获批准！');
-            logger.info('   遥控器应该已经显示授权确认弹窗并批准了请求');
+            logger.info('   遥控器操作员已在设备上确认了授权请求');
             logger.info('   您现在拥有 flight 控制权');
           } else {
             logger.info('');
@@ -279,6 +282,31 @@ async function runTest(config) {
           clearTimeout(timeoutId);
           client.end();
           resolve({ success: true, reply });
+
+        } else if (result === 0 && status === 'in_progress') {
+          logger.success('✓ 授权请求已发送成功');
+          logger.success(`  Result: ${result}`);
+          logger.success(`  Status: ${status}`);
+          logger.info('');
+          logger.info('📱 遥控器授权弹窗已显示：');
+          logger.info('   ✓ 授权请求已成功发送到遥控器');
+          logger.info('   ✓ 遥控器屏幕应该已显示"请求授权"弹窗');
+          logger.info('');
+          logger.info('⚠️  遥控器版本限制：');
+          logger.info('   • 当前遥控器版本不会发送授权确认消息');
+          logger.info('   • 无法自动检测用户是否已点击"同意"');
+          logger.info('   • 请手动在遥控器上点击"同意"按钮');
+          logger.info('');
+          logger.info('✅ 测试结果：授权请求发送成功');
+          logger.info('   如果遥控器上显示了授权弹窗，说明MQTT通信正常');
+
+          clearTimeout(timeoutId);
+          client.end();
+          resolve({
+            success: true,
+            reply,
+            note: 'Authorization request sent successfully. Manual confirmation required on RC.'
+          });
 
         } else {
           logger.error('✗ 授权请求失败');
@@ -291,11 +319,12 @@ async function runTest(config) {
             logger.error('  1. 遥控器用户拒绝了授权请求');
             logger.error('  2. 设备不支持云端控制功能');
             logger.error('  3. 设备当前状态不允许授权');
+            logger.error('  4. MQTT连接或消息格式错误');
           }
 
           clearTimeout(timeoutId);
           client.end();
-          reject(new Error(`Authorization failed: result=${result}`));
+          reject(new Error(`Authorization failed: result=${result}, status=${status}`));
         }
 
       } catch (error) {

@@ -10,24 +10,6 @@ export const APP_CONFIG = {
     author: 'DJI Team'
   },
 
-  // DRC控制配置
-  drc: {
-    defaultFrequency: 50,
-    maxRetryAttempts: 3,
-    connectionTimeout: 5000,
-    controlModes: {
-      MANUAL: 'manual',
-      AUTO: 'auto',
-      GUIDED: 'guided'
-    },
-    stepConfigs: {
-      takeoff: { timeout: 30000, description: '起飞' },
-      land: { timeout: 30000, description: '降落' },
-      hover: { timeout: 5000, description: '悬停' },
-      move: { timeout: 10000, description: '移动' }
-    }
-  },
-
   // RTMP视频流配置
   rtmp: {
     defaultHost: '127.0.0.1',
@@ -59,6 +41,14 @@ export const APP_CONFIG = {
 
 // 卡片配置
 export const CARD_CONFIG = {
+  drcMode: {
+    id: 'drc-mode',
+    collapsed: false,
+    title: 'DRC模式管理',
+    description: '指令飞行控制模式配置',
+    order: 2
+  },
+
   drcControl: {
     id: 'drc-control',
     collapsed: false,
@@ -111,13 +101,22 @@ export const MQTT_CONFIG = {
     clean: true
   },
 
-  // 默认broker设置
+  // 默认broker设置 (测试客户端连接)
   broker: {
-    host: '127.0.0.1',
+    host: '192.168.18.130',
     port: 8083,
     protocol: 'ws',
-    username: '',
-    password: ''
+    username: 'admin',
+    password: '302811055wjhhz'
+  },
+
+  // DRC模式broker设置 (与测试保持一致)
+  drcBroker: {
+    host: '192.168.18.130',
+    port: 1883,
+    username: 'admin',
+    password: '302811055wjhhz',
+    expire_time: 1700000000
   },
 
   // 订阅配置
@@ -222,8 +221,10 @@ export const VIDEO_CONFIG = {
 // EMQX API配置
 export const EMQX_CONFIG = {
   api: {
-    defaultHost: '127.0.0.1',
+    defaultHost: '192.168.18.130',
     defaultPort: '18083',
+    defaultApiKey: '9b8799abe2c3d581',
+    defaultSecretKey: '8AotAV126dc9B7E8eMhfnbSlC6pTxtl0eLS29AWMi2DrC',
     basePath: '/api/v5',
     timeout: 10000
   },

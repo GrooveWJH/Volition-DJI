@@ -15,8 +15,8 @@
 
 const EMQX_CONFIG = {
   // EMQX API 认证信息 (必须填写)
-  apiKey: 'ce9de7b674acfed7',
-  secretKey: 'XaG9CEa2AserrayKx13MjlWPTJ29AYPdfB7KeXORhiVqP',
+  apiKey: '9b8799abe2c3d581',
+  secretKey: '8AotAV126dc9B7E8eMhfnbSlC6pTxtl0eLS29AWMi2DrC',
 
   // EMQX API 地址
   apiUrl: 'http://192.168.31.209:18083/api/v5/clients',

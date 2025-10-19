@@ -23,7 +23,7 @@ MQTT_HOST = "127.0.0.1"
 MQTT_PORT = 1883
 MQTT_USERNAME = "admin"
 MQTT_PASSWORD = "302811055wjhhz"
-GATEWAY_SN = "9N9CN8400164WH"
+GATEWAY_SN = "9N9CN2J0012CXY"
 # ================================================
 
 TOPIC_UP = f"thing/product/{GATEWAY_SN}/drc/up"

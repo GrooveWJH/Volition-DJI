@@ -5,8 +5,6 @@
  * 用于诊断浏览器请求是否到达服务器
  */
 
-const http = require('http');
-
 const colors = {
   reset: '\x1b[0m',
   bright: '\x1b[1m',

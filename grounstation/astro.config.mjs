@@ -24,6 +24,13 @@ export default defineConfig({
         'Pragma': 'no-cache',
         'Expires': '0'
       }
+    },
+    optimizeDeps: {
+      include: ['mqtt'],
+      force: true
+    },
+    define: {
+      global: 'globalThis',
     }
   }
 });

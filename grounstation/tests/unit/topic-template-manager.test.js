@@ -5,12 +5,6 @@
 
 import { TestRunner, Assert, mockBrowserEnvironment, cleanupBrowserEnvironment } from '../helpers/mock-helpers.js';
 import { createLogger } from '../helpers/logger.js';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const logger = createLogger('[TopicTemplateManager单元测试]');
 const runner = new TestRunner('TopicTemplateManager 单元测试');
@@ -33,7 +27,7 @@ const mockTemplates = {
 runner.beforeEach(async () => {
   mockBrowserEnvironment();
   // Mock fetch for template loading
-  global.fetch = async (url) => ({
+  global.fetch = async () => ({
     ok: true,
     json: async () => mockTemplates
   });

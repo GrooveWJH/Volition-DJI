@@ -28,9 +28,8 @@ runner.test('应该成功注册路由规则', async () => {
   const { MessageRouter, ROUTE_TYPES } = await import('../../src/lib/services.js');
   const router = new MessageRouter();
 
-  let called = false;
   const ruleId = router.registerRoute('test-rule', { type: ROUTE_TYPES.EXACT, topic: 'test/topic' }, () => {
-    called = true;
+    // Test callback
   });
 
   Assert.equal(ruleId, 'test-rule', '应该返回正确的规则ID');
@@ -52,7 +51,7 @@ runner.test('EXACT 类型规则应该精确匹配主题', async () => {
   const router = new MessageRouter();
 
   let matchedTopic = null;
-  router.registerRoute('exact-rule', { type: ROUTE_TYPES.EXACT, topic: 'thing/product/SN123/services' }, (msg, topic) => {
+  router.registerRoute('exact-rule', { type: ROUTE_TYPES.EXACT, topic: 'thing/product/SN123/services' }, (_msg, topic) => {
     matchedTopic = topic;
   });
 
@@ -81,7 +80,7 @@ runner.test('PREFIX 类型规则应该匹配前缀', async () => {
 });
 
 runner.test('SERVICE 类型规则应该匹配服务回复', async () => {
-  const { MessageRouter, ROUTE_TYPES, MESSAGE_TYPES } = await import('../../src/lib/services.js');
+  const { MessageRouter } = await import('../../src/lib/services.js');
   const router = new MessageRouter();
 
   let receivedMethod = null;

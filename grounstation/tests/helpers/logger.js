@@ -30,7 +30,14 @@ class TestLogger {
   _format(level, color, message, ...args) {
     const timestamp = this._timestamp();
     const prefix = `${color}${this.prefix} [${level}]${colors.reset}`;
-    console.log(`${timestamp} ${prefix}`, message, ...args);
+    if (global.console && global.console.log) {
+      global.console.log(`${timestamp} ${prefix}`, message, ...args);
+    } else if (typeof console !== 'undefined' && console.log) {
+      console.log(`${timestamp} ${prefix}`, message, ...args);
+    } else {
+      // Fallback for environments without console
+      process.stdout.write(`${timestamp} ${prefix} ${message}\n`);
+    }
   }
 
   info(message, ...args) {
@@ -55,13 +62,27 @@ class TestLogger {
 
   header(message) {
     const line = '='.repeat(60);
-    console.log(`\n${colors.cyan}${line}`);
-    console.log(`  ${message}`);
-    console.log(`${line}${colors.reset}\n`);
+    if (global.console && global.console.log) {
+      global.console.log(`\n${colors.cyan}${line}`);
+      global.console.log(`  ${message}`);
+      global.console.log(`${line}${colors.reset}\n`);
+    } else if (typeof console !== 'undefined' && console.log) {
+      console.log(`\n${colors.cyan}${line}`);
+      console.log(`  ${message}`);
+      console.log(`${line}${colors.reset}\n`);
+    } else {
+      process.stdout.write(`\n${colors.cyan}${line}\n  ${message}\n${line}${colors.reset}\n\n`);
+    }
   }
 
   section(message) {
-    console.log(`\n${colors.magenta}▶ ${message}${colors.reset}`);
+    if (global.console && global.console.log) {
+      global.console.log(`\n${colors.magenta}▶ ${message}${colors.reset}`);
+    } else if (typeof console !== 'undefined' && console.log) {
+      console.log(`\n${colors.magenta}▶ ${message}${colors.reset}`);
+    } else {
+      process.stdout.write(`\n${colors.magenta}▶ ${message}${colors.reset}\n`);
+    }
   }
 
   result(passed, message) {
@@ -73,7 +94,13 @@ class TestLogger {
   }
 
   table(data) {
-    console.table(data);
+    if (global.console && global.console.table) {
+      global.console.table(data);
+    } else if (typeof console !== 'undefined' && console.table) {
+      console.table(data);
+    } else {
+      process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+    }
   }
 }
 

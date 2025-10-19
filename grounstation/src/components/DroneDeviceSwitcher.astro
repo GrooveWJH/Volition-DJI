@@ -4,6 +4,31 @@
 
 <link rel="stylesheet" href="/node_modules/tippy.js/dist/tippy.css">
 
+<style>
+  /* 自定义MQTT连接提示样式 */
+  .tippy-box[data-theme~='mqtt-success'] {
+    background-color: #10b981;
+    color: white;
+    font-weight: 500;
+  }
+
+  .tippy-box[data-theme~='mqtt-success'][data-placement^='top'] > .tippy-arrow::before {
+    border-top-color: #10b981;
+  }
+
+  .tippy-box[data-theme~='mqtt-success'][data-placement^='bottom'] > .tippy-arrow::before {
+    border-bottom-color: #10b981;
+  }
+
+  .tippy-box[data-theme~='mqtt-success'][data-placement^='left'] > .tippy-arrow::before {
+    border-left-color: #10b981;
+  }
+
+  .tippy-box[data-theme~='mqtt-success'][data-placement^='right'] > .tippy-arrow::before {
+    border-right-color: #10b981;
+  }
+</style>
+
 <div id="device-switcher" class="device-switcher device-switcher-container">
   <div id="device-list" class="device-list"></div>
   <button id="refresh-btn" class="device-refresh-btn" title="刷新">
@@ -127,6 +152,7 @@
   import { deviceManager } from '/src/lib/devices.js';
   import { deviceContext } from '/src/lib/state.js';
   import { mqttManager } from '/src/lib/mqtt.js';
+  import debugLogger from '/src/lib/debug.js';
   import tippy from '/node_modules/tippy.js/dist/tippy.esm.js';
 
   const deviceList = document.getElementById('device-list');
@@ -192,6 +218,15 @@
       const mqttConnection = mqttManager.getConnection(dev.sn);
       const mqttClass = (mqttConnection && mqttConnection.isConnected) ? 'mqtt-connected' : '';
 
+      // 调试信息
+      if (dev.sn === current) {
+        debugLogger.state(`当前设备 ${dev.sn} MQTT状态:`, {
+          connection: mqttConnection ? 'EXISTS' : 'NULL',
+          isConnected: mqttConnection ? mqttConnection.isConnected : false,
+          mqttClass: mqttClass
+        });
+      }
+
       return `
       <div class="device-item ${isOnline ? 'online' : 'offline'} ${dev.sn === current ? 'active' : ''} ${mqttClass}"
            data-sn="${dev.sn}">
@@ -231,18 +266,73 @@
         if (e.target.closest('.device-alias-btn')) return;
 
         const sn = el.dataset.sn;
-        console.log('[DroneDeviceSwitcher]', '设备点击:', sn);
+        debugLogger.info('设备点击:', sn);
 
         // 设置当前设备
         deviceContext.setCurrentDevice(sn);
 
         // 确保MQTT连接 - 使用现有接口
+        debugLogger.mqtt('开始建立MQTT连接:', sn);
+        debugLogger.mqtt('当前MQTT配置:', mqttManager.getBrokerConfig());
         mqttManager.ensureConnection(sn).then(connection => {
+          debugLogger.mqtt('MQTT连接结果:', connection ? 'SUCCESS' : 'FAILED');
           if (connection) {
-            console.log('[DroneDeviceSwitcher]', 'MQTT连接已建立:', `station-${sn}`);
+            debugLogger.mqtt('MQTT连接已建立:', `station-${sn}`);
+
+            // 显示连接成功提示
+            const deviceElement = el.querySelector('.device-display');
+            if (deviceElement) {
+              // 创建临时tippy提示
+              const tempTippy = tippy(deviceElement, {
+                content: '✅ MQTT连接已建立',
+                placement: 'top',
+                arrow: true,
+                theme: 'mqtt-success',
+                showOnCreate: true,
+                duration: [300, 1500],
+                onHidden() {
+                  // 销毁临时tippy实例
+                  tempTippy.destroy();
+                }
+              });
+
+              // 2秒后自动隐藏
+              setTimeout(() => {
+                if (tempTippy.state.isVisible) {
+                  tempTippy.hide();
+                }
+              }, 2000);
+            }
+
             // 重新渲染以更新蓝色指示灯
             render();
+          } else {
+            debugLogger.error('MQTT连接失败:', sn);
+
+            // 显示连接失败提示
+            const deviceElement = el.querySelector('.device-display');
+            if (deviceElement) {
+              const tempTippy = tippy(deviceElement, {
+                content: '❌ MQTT连接失败',
+                placement: 'top',
+                arrow: true,
+                theme: 'light-border',
+                showOnCreate: true,
+                duration: [300, 2000],
+                onHidden() {
+                  tempTippy.destroy();
+                }
+              });
+
+              setTimeout(() => {
+                if (tempTippy.state.isVisible) {
+                  tempTippy.hide();
+                }
+              }, 3000);
+            }
           }
+        }).catch(error => {
+          debugLogger.error('MQTT连接异常:', error);
         });
       });
     });
@@ -254,7 +344,7 @@
         const sn = btn.dataset.sn;
 
         if (confirm(`删除离线设备 ${sn}?`)) {
-          console.log('[DroneDeviceSwitcher]', '移除离线设备:', sn);
+          debugLogger.info('移除离线设备:', sn);
 
           // 断开MQTT连接
           mqttManager.disconnectDevice(sn);
@@ -312,7 +402,7 @@
 
   // 保存配置
   function save() {
-    console.log('[DroneDeviceSwitcher]', '========== 开始保存配置 ==========');
+    debugLogger.info('========== 开始保存配置 ==========');
 
     // 保存 EMQX 配置（服务器地址共用）
     const host = inputHost.value.trim();
@@ -323,7 +413,7 @@
       secretKey: inputSecret.value.trim()
     };
 
-    console.log('[DroneDeviceSwitcher]', 'EMQX配置:', config);
+    debugLogger.info('EMQX配置:', config);
 
     // 保存到localStorage以便下次自动补全
     localStorage.setItem('emqx_host', config.host);
@@ -333,7 +423,7 @@
 
     // 更新deviceManager配置
     deviceManager.updateEmqxConfig(config);
-    console.log('[DroneDeviceSwitcher]', 'DeviceManager配置已更新，当前配置:', deviceManager.getEmqxConfig());
+    debugLogger.info('DeviceManager配置已更新，当前配置:', deviceManager.getEmqxConfig());
 
     // 保存 MQTT Broker 配置（使用同一服务器地址）
     const mqttConfig = {
@@ -343,7 +433,7 @@
       password: inputMqttPassword.value.trim()
     };
 
-    console.log('[DroneDeviceSwitcher]', 'MQTT配置:', {
+    debugLogger.info('MQTT配置:', {
       host: mqttConfig.host,
       port: mqttConfig.port,
       username: mqttConfig.username,
@@ -358,13 +448,13 @@
 
     // 更新MQTT管理器配置
     mqttManager.updateBrokerConfig(mqttConfig);
-    console.log('[DroneDeviceSwitcher]', 'MQTT管理器配置已更新，当前配置:', mqttManager.getBrokerConfig());
+    debugLogger.info('MQTT管理器配置已更新，当前配置:', mqttManager.getBrokerConfig());
 
     // 保存视频配置
     localStorage.setItem('video_host', inputVideoHost.value.trim());
     localStorage.setItem('video_rtmp_url', inputRtmpUrl.value.trim());
 
-    console.log('[DroneDeviceSwitcher]', '视频配置已保存:', {
+    debugLogger.info('视频配置已保存:', {
       host: inputVideoHost.value.trim(),
       rtmpUrl: inputRtmpUrl.value.trim()
     });
@@ -378,10 +468,10 @@
     }));
 
     showStatus('保存成功', 'success');
-    console.log('[DroneDeviceSwitcher]', '========== 配置保存完成 ==========');
+    debugLogger.info('========== 配置保存完成 ==========');
 
     setTimeout(() => {
-      console.log('[DroneDeviceSwitcher]', '开始扫描设备...');
+      debugLogger.info('开始扫描设备...');
       deviceManager.scan();
       settingsPanel.classList.add('hidden');
     }, 1000);
@@ -425,28 +515,28 @@
   // 监听设备变化
   deviceManager.addListener((eventType, data) => {
     try {
-      console.log('[DroneDeviceSwitcher]', 'DeviceManager事件:', eventType, data);
+      debugLogger.info('DeviceManager事件:', eventType, typeof data === 'object' ? JSON.stringify(data) : data);
       if (eventType === 'devices-updated' || eventType === 'device-alias-changed') {
         render();
       }
     } catch (error) {
-      console.error('[DroneDeviceSwitcher]', 'DeviceManager事件处理错误:', error);
+      debugLogger.error('DeviceManager事件处理错误:', error.message || error.toString());
     }
   });
   deviceContext.addListener((eventType, data) => {
     try {
-      console.log('[DroneDeviceSwitcher]', 'DeviceContext事件:', eventType, data);
+      debugLogger.info('DeviceContext事件:', eventType, typeof data === 'object' ? JSON.stringify(data) : data);
       if (eventType === 'device-changed') {
         render();
       }
     } catch (error) {
-      console.error('[DroneDeviceSwitcher]', 'DeviceContext事件处理错误:', error);
+      debugLogger.error('DeviceContext事件处理错误:', error.message || error.toString());
     }
   });
 
   // 监听MQTT连接状态变化
   window.addEventListener('mqtt-connection-changed', (event) => {
-    console.log('[DroneDeviceSwitcher]', 'MQTT连接状态变化:', event.detail);
+    debugLogger.mqtt('MQTT连接状态变化:', event.detail);
     render(); // 重新渲染以更新指示灯颜色
   });
 
@@ -538,24 +628,8 @@
   render();
   deviceManager.startScanning();
 
-  // 为当前设备建立MQTT连接（仅当设备存在时）
-  const currentDevice = deviceContext.getCurrentDevice();
-  if (currentDevice) {
-    // ✅ 验证设备是否存在于 DeviceManager 中
-    const device = deviceManager.getDevice(currentDevice);
-    if (device) {
-      console.log('[DroneDeviceSwitcher]', '为当前设备建立MQTT连接:', currentDevice);
-      mqttManager.ensureConnection(currentDevice).then(connection => {
-        if (connection) {
-          console.log('[DroneDeviceSwitcher]', '当前设备MQTT连接已建立:', `station-${currentDevice}`);
-          render(); // 重新渲染以显示蓝色指示灯
-        }
-      });
-    } else {
-      console.warn('[DroneDeviceSwitcher]', `设备 ${currentDevice} 不存在于 DeviceManager 中，清除选择`);
-      deviceContext.setCurrentDevice(null);  // 清除无效的设备选择
-    }
-  }
+  // 初次进入页面不自动选择设备，等待用户主动点击建立连接
+  debugLogger.info('初始化完成，等待用户选择设备建立MQTT连接');
 
   // 清理 - 延迟1秒断开连接（刷新保护）
   window.addEventListener('beforeunload', () => {

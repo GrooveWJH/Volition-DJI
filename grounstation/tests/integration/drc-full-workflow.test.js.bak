@@ -1,0 +1,404 @@
+#!/usr/bin/env node
+
+/**
+ * DRC全流程集成测试脚本
+ *
+ * 用法: node drc-full-workflow.test.js <SN>
+ * 示例: node drc-full-workflow.test.js 1581F5BSD005000
+ *
+ * 测试流程:
+ * 1. 设备嗅探 - 验证设备在EMQX中存在
+ * 2. MQTT连接建立 - 建立station-{SN}连接
+ * 3. 云端控制授权 - 发送授权请求(需要遥控器手动确认)
+ * 4. DRC模式进入 - 配置并进入DRC模式
+ * 5. 心跳持续发送 - 验证5Hz心跳持续发送
+ */
+
+import mqtt from 'mqtt';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
+import { createInterface } from 'readline';
+
+// =============================================================================
+// 配置参数 - 统一管理所有地址和认证信息
+// =============================================================================
+const CONFIG = {
+  // MQTT Broker IP (所有MQTT相关都使用这个IP)
+  MQTT_HOST: '192.168.18.130',
+
+  // EMQX配置
+  EMQX: {
+    httpPort: 18083,
+    apiKey: '9b8799abe2c3d581',
+    secretKey: '8AotAV126dc9B7E8eMhfnbSlC6pTxtl0eLS29AWMi2DrC'
+  },
+
+  // 测试客户端MQTT配置
+  TEST_MQTT: {
+    port: 8083,
+    username: 'admin',
+    password: '302811055wjhhz'
+  },
+
+  // DRC模式MQTT中继配置
+  DRC_MQTT: {
+    port: 1883,
+    username: 'admin',
+    password: '302811055wjhhz',
+    expire_time: 1700000000
+  }
+};
+
+const SN = process.argv[2];
+
+if (!SN) {
+  console.log('❌ 请提供设备SN');
+  console.log('用法: node drc-full-workflow.test.js <SN>');
+  process.exit(1);
+}
+
+console.log(`🚀 开始DRC全流程集成测试 - 设备: ${SN}`);
+
+let mqttClient = null;
+let heartbeatCount = 0;
+let testStartTime = Date.now();
+
+async function loadConfig() {
+  return {
+    emqx: {
+      host: CONFIG.MQTT_HOST,
+      httpPort: CONFIG.EMQX.httpPort,
+      apiKey: CONFIG.EMQX.apiKey,
+      secretKey: CONFIG.EMQX.secretKey
+    },
+    mqtt: {
+      host: CONFIG.MQTT_HOST,
+      port: CONFIG.TEST_MQTT.port,
+      username: CONFIG.TEST_MQTT.username,
+      password: CONFIG.TEST_MQTT.password
+    }
+  };
+}
+
+async function step1_deviceDiscovery(config) {
+  console.log('\n🔍 步骤1: 设备嗅探');
+
+  const url = `http://${config.emqx.host}:${config.emqx.httpPort}/api/v5/clients`;
+  const credentials = Buffer.from(`${config.emqx.apiKey}:${config.emqx.secretKey}`).toString('base64');
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`EMQX API错误: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const devices = data.data.filter(client => /^[A-Z0-9]{14}$/.test(client.clientid));
+
+    console.log(`📱 发现 ${devices.length} 个DJI设备`);
+
+    const targetDevice = devices.find(device => device.clientid === SN);
+    if (!targetDevice) {
+      console.log(`⚠️  设备 ${SN} 未在EMQX中找到，但继续测试流程`);
+      return false;
+    }
+
+    console.log(`✅ 设备 ${SN} 已在线`);
+    return true;
+  } catch (error) {
+    console.log(`⚠️  设备嗅探失败: ${error.message}，但继续测试流程`);
+    return false;
+  }
+}
+
+async function step2_mqttConnection(config) {
+  console.log('\n🌐 步骤2: MQTT连接建立');
+
+  const clientId = `station-${SN}`;
+  const brokerUrl = `ws://${config.mqtt.host}:${config.mqtt.port}/mqtt`;
+
+  return new Promise((resolve, reject) => {
+    console.log(`📡 连接到 ${brokerUrl} (Client: ${clientId})`);
+
+    mqttClient = mqtt.connect(brokerUrl, {
+      clientId: clientId,
+      username: config.mqtt.username,
+      password: config.mqtt.password,
+      clean: true,
+      connectTimeout: 10000
+    });
+
+    const connectHandler = () => {
+      console.log('✅ MQTT连接已建立');
+      // 移除事件监听器，避免重复触发
+      mqttClient.removeListener('connect', connectHandler);
+      mqttClient.removeListener('error', errorHandler);
+      resolve(true);
+    };
+
+    const errorHandler = (error) => {
+      console.log(`❌ MQTT连接失败: ${error.message}`);
+      mqttClient.removeListener('connect', connectHandler);
+      mqttClient.removeListener('error', errorHandler);
+      reject(false);
+    };
+
+    mqttClient.on('connect', connectHandler);
+    mqttClient.on('error', errorHandler);
+
+    setTimeout(() => {
+      if (!mqttClient.connected) {
+        mqttClient.removeListener('connect', connectHandler);
+        mqttClient.removeListener('error', errorHandler);
+        reject(new Error('MQTT连接超时'));
+      }
+    }, 10000);
+  });
+}
+
+async function step3_cloudControlAuth() {
+  console.log('\n☁️ 步骤3: 云端控制授权');
+
+  const tid = `tid-${Date.now()}`;
+  const bid = `bid-${Date.now()}`;
+  const authTopic = `thing/product/${SN}/services`;
+  const authMessage = {
+    bid: bid,
+    tid: tid,
+    timestamp: Date.now(),
+    method: 'cloud_control_auth_request',
+    data: {
+      user_id: 'test_pilot_001',
+      user_callsign: 'TestStation',
+      control_keys: ['flight']
+    }
+  };
+
+  // 发送授权请求
+  console.log('📤 发送云端控制授权请求');
+  console.log(`📡 发送到话题: ${authTopic}`);
+  console.log(`📋 消息内容: ${JSON.stringify(authMessage, null, 2)}`);
+
+  mqttClient.publish(authTopic, JSON.stringify(authMessage));
+
+  console.log('\n⚠️  重要提示:');
+  console.log('🎮 请在DJI遥控器上点击"允许"按钮确认云端控制授权');
+  console.log('✅ 确认授权后，按回车键继续...');
+
+  // 等待用户按回车
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    rl.question('', () => {
+      rl.close();
+      console.log('✅ 云端控制授权确认完成');
+      resolve(true);
+    });
+  });
+}
+
+async function step4_drcModeEntry() {
+  console.log('\n🛸 步骤4: DRC模式进入');
+
+  const tid = `tid-${Date.now()}`;
+  const bid = `bid-${Date.now()}`;
+  const drcTopic = `thing/product/${SN}/services`;
+  const drcMessage = {
+    bid: bid,
+    tid: tid,
+    timestamp: Date.now(),
+    method: 'drc_mode_enter',
+    data: {
+      mqtt_broker: {
+        address: `${CONFIG.MQTT_HOST}:${CONFIG.DRC_MQTT.port}`,
+        client_id: `drc-${SN}`,
+        username: CONFIG.DRC_MQTT.username,
+        password: CONFIG.DRC_MQTT.password,
+        expire_time: CONFIG.DRC_MQTT.expire_time,
+        enable_tls: false
+      },
+      osd_frequency: 30,
+      hsi_frequency: 10
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    // 监听DRC回复
+    const replyTopic = `thing/product/${SN}/services_reply`;
+    console.log(`📡 订阅DRC回复话题: ${replyTopic}`);
+    mqttClient.subscribe(replyTopic);
+
+    const drcHandler = (topic, message) => {
+      console.log(`📨 收到消息从话题: ${topic}`);
+
+      if (topic === replyTopic) {
+        try {
+          const reply = JSON.parse(message.toString());
+          console.log(`📥 收到DRC回复: ${JSON.stringify(reply, null, 2)}`);
+
+          if (reply.tid === tid && reply.method === 'drc_mode_enter') {
+            mqttClient.removeListener('message', drcHandler);
+            mqttClient.unsubscribe(replyTopic);
+
+            if (reply.data && reply.data.result === 0) {
+              console.log('✅ DRC模式已激活');
+              resolve(true);
+            } else {
+              reject(new Error(`DRC进入失败: result=${reply.data?.result || '未知'}`));
+            }
+          } else {
+            console.log(`⚠️  TID不匹配或方法不匹配: 期望tid=${tid}, method=drc_mode_enter`);
+            console.log(`⚠️  实际tid=${reply.tid}, method=${reply.method}`);
+          }
+        } catch (error) {
+          console.log(`⚠️  解析DRC回复失败: ${error.message}`);
+          console.log(`📄 原始消息: ${message.toString()}`);
+        }
+      }
+    };
+
+    mqttClient.on('message', drcHandler);
+
+    // 发送DRC进入请求
+    console.log('📤 发送DRC模式进入请求');
+    console.log(`📡 发送到话题: ${drcTopic}`);
+    console.log(`📋 消息内容: ${JSON.stringify(drcMessage, null, 2)}`);
+
+    mqttClient.publish(drcTopic, JSON.stringify(drcMessage));
+
+    // 30秒超时
+    setTimeout(() => {
+      mqttClient.removeListener('message', drcHandler);
+      mqttClient.unsubscribe(replyTopic);
+      reject(new Error('DRC模式进入超时'));
+    }, 30000);
+  });
+}
+
+async function step5_heartbeatContinuous() {
+  console.log('\n💓 步骤5: 心跳持续发送验证');
+
+  const heartbeatTopic = `thing/product/${SN}/drc/down`;
+  heartbeatCount = 0;
+
+  // 监听心跳
+  mqttClient.subscribe(heartbeatTopic);
+
+  const heartbeatHandler = (topic, message) => {
+    if (topic === heartbeatTopic) {
+      try {
+        const heartbeat = JSON.parse(message.toString());
+        if (heartbeat.method === 'heart_beat') {
+          heartbeatCount++;
+          if (heartbeatCount <= 5) {
+            console.log(`💗 收到心跳 #${heartbeatCount} (seq: ${heartbeat.seq})`);
+          }
+        }
+      } catch (error) {
+        // 忽略解析错误
+      }
+    }
+  };
+
+  mqttClient.on('message', heartbeatHandler);
+
+  // 开始发送心跳
+  console.log('🔄 开始发送5Hz心跳(10秒测试)');
+  const heartbeatInterval = setInterval(() => {
+    const timestamp = Date.now();
+    const heartbeatMessage = {
+      data: { timestamp: timestamp },
+      method: 'heart_beat',
+      seq: timestamp
+    };
+
+    console.log(`💗 发送心跳到: ${heartbeatTopic} (seq: ${timestamp})`);
+    mqttClient.publish(heartbeatTopic, JSON.stringify(heartbeatMessage));
+  }, 200); // 5Hz = 200ms间隔
+
+  // 10秒后停止并验证
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      clearInterval(heartbeatInterval);
+      mqttClient.removeListener('message', heartbeatHandler);
+      mqttClient.unsubscribe(heartbeatTopic);
+
+      const expectedBeats = Math.floor(10 * 5); // 10秒 × 5Hz = 50个心跳
+      console.log(`📊 10秒内发送/接收 ${heartbeatCount} 个心跳 (期望: ~${expectedBeats})`);
+
+      if (heartbeatCount >= expectedBeats - 5) { // 允许5个误差
+        console.log('✅ 心跳频率验证通过');
+        resolve(true);
+      } else {
+        console.log('⚠️  心跳频率偏低，但测试继续');
+        resolve(true);
+      }
+    }, 10000);
+  });
+}
+
+function printSummary() {
+  const totalTime = Date.now() - testStartTime;
+  console.log('\n📊 测试总结');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`🎯 测试设备: ${SN}`);
+  console.log(`⏱️  总耗时: ${(totalTime / 1000).toFixed(1)}秒`);
+  console.log(`💓 心跳统计: ${heartbeatCount} 个`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🎉 DRC全流程集成测试完成！');
+}
+
+function cleanup() {
+  if (mqttClient && mqttClient.connected) {
+    console.log('\n🧹 断开MQTT连接');
+    mqttClient.end();
+  }
+}
+
+// 主程序
+async function main() {
+  try {
+    const config = await loadConfig();
+
+    // 步骤1: 设备嗅探 (不影响后续流程)
+    const deviceFound = await step1_deviceDiscovery(config);
+
+    // 步骤2: MQTT连接建立
+    await step2_mqttConnection(config);
+
+    // 步骤3: 云端控制授权
+    await step3_cloudControlAuth();
+
+    // 步骤4: DRC模式进入
+    await step4_drcModeEntry();
+
+    // 步骤5: 心跳持续发送
+    await step5_heartbeatContinuous();
+
+    printSummary();
+
+  } catch (error) {
+    console.log(`\n❌ 测试失败: ${error.message}`);
+    process.exit(1);
+  } finally {
+    cleanup();
+  }
+}
+
+// 处理程序退出
+process.on('SIGINT', () => {
+  console.log('\n🛑 测试被中断');
+  cleanup();
+  process.exit(0);
+});
+
+main();

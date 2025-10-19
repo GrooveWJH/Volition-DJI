@@ -11,7 +11,7 @@ const { collapsed = false } = Astro.props;
 <CollapsibleCard
   id="cloud-control-card"
   title="云端控制授权"
-  description="请求和释放无人机云端飞行控制权"
+  description="请求无人机云端飞行控制权"
   icon="cloud_sync"
   collapsed={collapsed}
 >
@@ -68,30 +68,7 @@ const { collapsed = false } = Astro.props;
       </div>
     </div>
 
-    <!-- 2. 状态显示 -->
-    <div class="bg-gray-50 rounded-lg p-4">
-      <div class="flex items-center space-x-2 mb-3">
-        <span class="material-symbols-outlined text-gray-600 text-lg">info</span>
-        <span class="font-medium text-sm text-gray-900">授权状态</span>
-      </div>
-
-      <div class="text-xs text-gray-600 space-y-2">
-        <div class="flex justify-between">
-          <span>当前状态:</span>
-          <span id="cloud-status" class="font-medium">未授权</span>
-        </div>
-        <div class="flex justify-between">
-          <span>控制权:</span>
-          <span id="control-keys" class="font-medium">-</span>
-        </div>
-        <div class="flex justify-between">
-          <span>MQTT连接:</span>
-          <span id="mqtt-status" class="font-medium">未连接</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 3. 控制操作 -->
+    <!-- 2. 控制操作 -->
     <div class="bg-gray-50 rounded-lg p-4">
       <div class="flex items-center space-x-2 mb-4">
         <span class="material-symbols-outlined text-purple-600 text-lg">flight_takeoff</span>
@@ -101,35 +78,50 @@ const { collapsed = false } = Astro.props;
       <div class="space-y-3">
         <button
           id="request-auth-btn"
-          class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
+          class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center space-x-2"
         >
-          <span class="material-symbols-outlined text-base">lock_open</span>
-          <span>请求云端控制授权</span>
+          <span id="request-btn-spinner" class="hidden">
+            <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </span>
+          <span class="material-symbols-outlined text-base" id="request-btn-icon">lock_open</span>
+          <span id="request-btn-text">请求云端控制授权</span>
         </button>
 
         <button
-          id="release-control-btn"
-          class="w-full bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center space-x-2 hidden"
+          id="confirm-auth-btn"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center space-x-2 hidden"
         >
-          <span class="material-symbols-outlined text-base">lock</span>
-          <span>释放云端控制</span>
+          <span class="material-symbols-outlined text-base">check_circle</span>
+          <span>确认已在遥控器上授权</span>
         </button>
       </div>
     </div>
 
-    <!-- 4. 日志终端 -->
+    <!-- 3. 日志终端 -->
     <div class="bg-gray-50 rounded-lg p-4">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center space-x-2">
           <span class="material-symbols-outlined text-gray-600 text-lg">terminal</span>
           <span class="font-medium text-sm text-gray-900">操作日志</span>
         </div>
-        <button
-          id="clear-cloud-logs-btn"
-          class="text-xs text-gray-500 hover:text-gray-700 underline"
-        >
-          清空日志
-        </button>
+        <div class="flex items-center space-x-2">
+          <select id="log-filter" class="text-xs border border-gray-300 rounded px-2 py-1 bg-white">
+            <option value="all">所有日志</option>
+            <option value="错误">仅错误</option>
+            <option value="警告">仅警告</option>
+            <option value="成功">仅成功</option>
+            <option value="信息">仅信息</option>
+          </select>
+          <button
+            id="clear-cloud-logs-btn"
+            class="text-xs text-gray-500 hover:text-gray-700 underline"
+          >
+            清空日志
+          </button>
+        </div>
       </div>
 
       <div

@@ -1,0 +1,151 @@
+---
+// 全局状态显示条 - 显示当前设备、授权状态、MQTT连接状态
+---
+
+<div id="global-status-bar" class="bg-white border-b border-gray-200 shadow-sm">
+  <div class="w-full px-6 py-3">
+    <div class="flex items-center justify-between">
+      <!-- 左侧：设备信息 -->
+      <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-2">
+          <span class="material-symbols-outlined text-gray-600 text-lg">devices</span>
+          <span class="text-sm text-gray-600">当前设备:</span>
+          <span id="global-device-sn" class="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-gray-800">未选择</span>
+        </div>
+      </div>
+
+      <!-- 右侧：状态指示器 -->
+      <div class="flex items-center space-x-6">
+        <!-- 云端授权状态 -->
+        <div class="flex items-center space-x-2">
+          <span class="material-symbols-outlined text-gray-600 text-lg">cloud</span>
+          <span class="text-sm text-gray-600">云端授权:</span>
+          <div id="global-cloud-status" class="flex items-center space-x-1">
+            <div class="w-2 h-2 rounded-full bg-gray-400"></div>
+            <span class="text-sm text-gray-700">未授权</span>
+          </div>
+        </div>
+
+        <!-- DRC模式状态 -->
+        <div class="flex items-center space-x-2">
+          <span class="material-symbols-outlined text-gray-600 text-lg">settings_remote</span>
+          <span class="text-sm text-gray-600">DRC模式:</span>
+          <div id="global-drc-status" class="flex items-center space-x-1">
+            <div class="w-2 h-2 rounded-full bg-gray-400"></div>
+            <span class="text-sm text-gray-700">空闲</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  class GlobalStatusManager {
+    constructor() {
+      this.elements = {
+        deviceSN: document.getElementById('global-device-sn'),
+        cloudStatus: document.getElementById('global-cloud-status'),
+        drcStatus: document.getElementById('global-drc-status')
+      };
+
+      this.init();
+    }
+
+    init() {
+      this.setupEventListeners();
+      this.updateDeviceStatus();
+      this.updateCloudStatus();
+      this.updateDrcStatus();
+    }
+
+    setupEventListeners() {
+      // 监听设备切换
+      window.addEventListener('device-changed', (event) => {
+        this.updateDeviceStatus(event.detail?.currentSN);
+      });
+
+      // 监听云端授权状态变化
+      window.addEventListener('cloud-control-status-changed', (event) => {
+        this.updateCloudStatus(event.detail?.authStatus);
+      });
+
+      // 监听DRC状态变化
+      window.addEventListener('drc-status-changed', (event) => {
+        this.updateDrcStatus(event.detail?.drcStatus);
+      });
+    }
+
+    updateDeviceStatus(deviceSN = null) {
+      if (!deviceSN && window.deviceContext) {
+        deviceSN = window.deviceContext.getCurrentDevice();
+      }
+
+      if (this.elements.deviceSN) {
+        this.elements.deviceSN.textContent = deviceSN || '未选择';
+      }
+    }
+
+    updateCloudStatus(authStatus = null) {
+      if (!authStatus && window.deviceContext && window.deviceStateManager) {
+        const currentSN = window.deviceContext.getCurrentDevice();
+        if (currentSN) {
+          const cloudState = window.deviceStateManager.getState(currentSN, 'cloudControl');
+          authStatus = cloudState?.authStatus;
+        }
+      }
+
+      if (this.elements.cloudStatus) {
+        const indicator = this.elements.cloudStatus.querySelector('div');
+        const text = this.elements.cloudStatus.querySelector('span');
+
+        if (authStatus === 'authorized') {
+          indicator.className = 'w-2 h-2 rounded-full bg-green-500';
+          text.textContent = '已授权';
+          text.className = 'text-sm text-green-700';
+        } else {
+          indicator.className = 'w-2 h-2 rounded-full bg-gray-400';
+          text.textContent = '未授权';
+          text.className = 'text-sm text-gray-700';
+        }
+      }
+    }
+
+    updateDrcStatus(drcStatus = null) {
+      if (!drcStatus && window.deviceContext && window.deviceStateManager) {
+        const currentSN = window.deviceContext.getCurrentDevice();
+        if (currentSN) {
+          const drcState = window.deviceStateManager.getState(currentSN, 'drcMode');
+          drcStatus = drcState?.drcStatus;
+        }
+      }
+
+      if (this.elements.drcStatus) {
+        const indicator = this.elements.drcStatus.querySelector('div');
+        const text = this.elements.drcStatus.querySelector('span');
+
+        const statusMap = {
+          'idle': { color: 'bg-gray-400', text: '空闲', textColor: 'text-gray-700' },
+          'checking': { color: 'bg-blue-500', text: '检查中', textColor: 'text-blue-700' },
+          'configuring': { color: 'bg-blue-500', text: '配置中', textColor: 'text-blue-700' },
+          'entering': { color: 'bg-yellow-500', text: '进入中', textColor: 'text-yellow-700' },
+          'active': { color: 'bg-green-500', text: '已激活', textColor: 'text-green-700' },
+          'exiting': { color: 'bg-yellow-500', text: '退出中', textColor: 'text-yellow-700' },
+          'error': { color: 'bg-red-500', text: '错误', textColor: 'text-red-700' }
+        };
+
+        const status = statusMap[drcStatus || 'idle'] || statusMap['idle'];
+        if (indicator) indicator.className = `w-2 h-2 rounded-full ${status.color}`;
+        if (text) {
+          text.textContent = status.text;
+          text.className = `text-sm ${status.textColor}`;
+        }
+      }
+    }
+  }
+
+  // 等待DOM加载完成后初始化
+  document.addEventListener('DOMContentLoaded', () => {
+    window.globalStatusManager = new GlobalStatusManager();
+  });
+</script>

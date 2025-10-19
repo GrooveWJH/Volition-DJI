@@ -22,7 +22,21 @@ class MQTTClientWrapper {
     this.isReconnecting = true;
 
     try {
-      const mqtt = (await import('mqtt')).default;
+      // 确保在浏览器环境中加载MQTT库
+      let mqtt;
+
+      if (typeof window !== 'undefined') {
+        // 浏览器环境：直接从全局对象获取或动态加载
+        if (window.mqtt) {
+          mqtt = window.mqtt;
+        } else {
+          // 动态加载MQTT库
+          mqtt = (await import('mqtt')).default;
+        }
+      } else {
+        // Node.js环境
+        mqtt = (await import('mqtt')).default;
+      }
       const brokerUrl = `ws://${this.brokerConfig.host}:${this.brokerConfig.port}/mqtt`;
 
       this.client = mqtt.connect(brokerUrl, {

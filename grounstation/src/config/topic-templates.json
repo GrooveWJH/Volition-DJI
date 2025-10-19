@@ -25,23 +25,24 @@
       }
     },
     "drc_mode_enter": {
-      "topic_template": "thing/product/{sn}/drc/down",
-      "response_topic": "thing/product/{sn}/drc/up",
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
       "method": "drc_mode_enter",
-      "description": "进入DRC模式",
-      "timeout": 5000,
-      "required_params": ["type"],
+      "description": "进入指令飞行控制模式",
+      "timeout": 15000,
+      "required_params": ["mqtt_broker", "osd_frequency", "hsi_frequency"],
       "optional_params": [],
       "default_values": {
-        "type": "a"
+        "osd_frequency": 30,
+        "hsi_frequency": 10
       }
     },
     "drc_mode_exit": {
-      "topic_template": "thing/product/{sn}/drc/down",
-      "response_topic": "thing/product/{sn}/drc/up",
+      "topic_template": "thing/product/{sn}/services",
+      "response_topic": "thing/product/{sn}/services_reply",
       "method": "drc_mode_exit",
-      "description": "退出DRC模式",
-      "timeout": 5000,
+      "description": "退出指令飞行控制模式",
+      "timeout": 10000,
       "required_params": [],
       "optional_params": [],
       "default_values": {}
