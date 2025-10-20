@@ -358,15 +358,19 @@ class TopicServiceManager {
       return this._error(SERVICE_RESULT.INVALID_PARAMS, `未知服务: ${serviceName}`);
     }
 
-    let connection = this.mqttManager?.getConnection(sn);
-    if (!connection || !connection.isConnected) {
-      debugLogger.service(`[${sn}] 未找到现有MQTT连接或连接已断开，尝试自动建立`);
-      connection = await this.mqttManager?.ensureConnection(sn);
+    // ✅ 直接获取连接，信任 MQTT.js 的消息队列机制
+    const client = this.mqttManager?.getConnection(sn);
+
+    if (!client) {
+      debugLogger.service(`[${sn}] 无法获取MQTT客户端`);
+      return this._error(SERVICE_RESULT.NO_CONNECTION, `设备 ${sn} 无法创建连接`);
     }
 
-    if (!connection || !connection.isConnected) {
-      return this._error(SERVICE_RESULT.NO_CONNECTION, `设备 ${sn} 未连接`);
-    }
+    // 记录连接状态（仅用于调试）
+    debugLogger.service(`[${sn}] 发送服务请求: ${serviceName}`, {
+      connected: client.connected,
+      reconnecting: client.reconnecting
+    });
 
     try {
       const message = this.templateManager.buildServiceMessage(serviceName, params, options);
@@ -382,13 +386,15 @@ class TopicServiceManager {
 
       const responsePromise = this._setupResponseHandler(serviceName, message.tid, timeout);
 
-      const success = await connection.publish(topic, serializedMessage);
-      if (!success) {
-        this._cleanupResponseHandler(message.tid);
-        return this._error(SERVICE_RESULT.ERROR, '消息发送失败', { request: requestContext });
-      }
-
-      debugLogger.service(`[${sn}] 服务调用成功: ${serviceName}`, message);
+      // 直接发布，MQTT.js 会自动处理队列
+      client.publish(topic, serializedMessage, { qos: 1 }, (err) => {
+        if (err) {
+          debugLogger.error(`[${sn}] 发布失败: ${topic}`, err);
+          this._cleanupResponseHandler(message.tid);
+        } else {
+          debugLogger.service(`[${sn}] 服务调用成功: ${serviceName}`, message);
+        }
+      });
 
       if (options.noWait) {
         this._cleanupResponseHandler(message.tid);

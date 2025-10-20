@@ -81,3 +81,5 @@ pnpm-debug.log*
 .vscode/
 
 venv/
+
+private/
