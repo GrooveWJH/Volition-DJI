@@ -83,3 +83,7 @@ pnpm-debug.log*
 venv/
 
 private/
+
+*.pyc
+
+*.bak

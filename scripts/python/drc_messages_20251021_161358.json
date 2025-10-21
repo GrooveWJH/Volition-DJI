@@ -1,0 +1,399 @@
+{
+  "metadata": {
+    "gateway_sn": "9N9CN180011TJN",
+    "capture_time": "2025-10-21T16:14:21.935038",
+    "runtime_seconds": 15.80286717414856,
+    "total_message_types": 13,
+    "total_messages": 1880
+  },
+  "statistics": {
+    "delay_info_push": {
+      "count": 47,
+      "frequency_hz": 3.0015944678732227,
+      "first_time": "2025-10-21T16:14:06.495841",
+      "last_time": "2025-10-21T16:14:21.821029"
+    },
+    "drc_ai_info_push": {
+      "count": 1,
+      "frequency_hz": 0.0,
+      "first_time": "2025-10-21T16:14:06.165099",
+      "last_time": "2025-10-21T16:14:06.165099"
+    },
+    "drc_batteries_info_push": {
+      "count": 47,
+      "frequency_hz": 3.0022258935150354,
+      "first_time": "2025-10-21T16:14:06.498954",
+      "last_time": "2025-10-21T16:14:21.820919"
+    },
+    "drc_camera_osd_info_push": {
+      "count": 47,
+      "frequency_hz": 3.002264528441922,
+      "first_time": "2025-10-21T16:14:06.498836",
+      "last_time": "2025-10-21T16:14:21.820604"
+    },
+    "drc_camera_state_push": {
+      "count": 1,
+      "frequency_hz": 0.0,
+      "first_time": "2025-10-21T16:14:06.153575",
+      "last_time": "2025-10-21T16:14:06.153575"
+    },
+    "drc_count_down_info_push": {
+      "count": 1,
+      "frequency_hz": 0.0,
+      "first_time": "2025-10-21T16:14:06.165397",
+      "last_time": "2025-10-21T16:14:06.165397"
+    },
+    "drc_drone_state_push": {
+      "count": 2,
+      "frequency_hz": 18558.867256637168,
+      "first_time": "2025-10-21T16:14:06.164996",
+      "last_time": "2025-10-21T16:14:06.165050"
+    },
+    "drc_geo_connect_info_push": {
+      "count": 47,
+      "frequency_hz": 3.0033443259416366,
+      "first_time": "2025-10-21T16:14:06.496551",
+      "last_time": "2025-10-21T16:14:21.812810"
+    },
+    "drc_live_video_info_push": {
+      "count": 1,
+      "frequency_hz": 0.0,
+      "first_time": "2025-10-21T16:14:06.153515",
+      "last_time": "2025-10-21T16:14:06.153515"
+    },
+    "drc_multi_gimbals_sync_info": {
+      "count": 1,
+      "frequency_hz": 0.0,
+      "first_time": "2025-10-21T16:14:06.165487",
+      "last_time": "2025-10-21T16:14:06.165487"
+    },
+    "heart_beat": {
+      "count": 79,
+      "frequency_hz": 4.999449435979038,
+      "first_time": "2025-10-21T16:14:06.153473",
+      "last_time": "2025-10-21T16:14:21.755191"
+    },
+    "hsi_info_push": {
+      "count": 31,
+      "frequency_hz": 2.0016127865630664,
+      "first_time": "2025-10-21T16:14:06.671720",
+      "last_time": "2025-10-21T16:14:21.659634"
+    },
+    "osd_info_push": {
+      "count": 1575,
+      "frequency_hz": 99.92801273104504,
+      "first_time": "2025-10-21T16:14:06.173034",
+      "last_time": "2025-10-21T16:14:21.924373"
+    }
+  },
+  "latest_messages": {
+    "heart_beat": {
+      "seq": 1761034461732,
+      "method": "heart_beat",
+      "data": {
+        "timestamp": 1761034461732
+      },
+      "timestamp": 1761034464633
+    },
+    "drc_live_video_info_push": {
+      "data": {
+        "payload_index": "88-0-0",
+        "switchable_video_types": [
+          "zoom",
+          "wide"
+        ],
+        "video_index": "normal-0",
+        "video_type": "wide"
+      },
+      "method": "drc_live_video_info_push",
+      "seq": 21098,
+      "timestamp": 1761034449037
+    },
+    "drc_camera_state_push": {
+      "data": {
+        "algorithm_dehaze_info": {
+          "is_working": false,
+          "level": 0,
+          "mode": 0
+        },
+        "camera_capability": {
+          "aperture_range": {
+            "max": 280,
+            "min": 1100
+          },
+          "interval_param_range": [
+            0.5,
+            0.7,
+            1,
+            2,
+            3,
+            5,
+            7,
+            10,
+            15,
+            20,
+            30,
+            60
+          ],
+          "iso_range": {
+            "max": 11,
+            "min": 0
+          },
+          "resolution_and_frame_rate": [
+            {
+              "frame_rate": 3,
+              "resolution": 0
+            },
+            {
+              "frame_rate": 3,
+              "resolution": 1
+            }
+          ],
+          "shutter_range": {
+            "max": 51,
+            "min": 0
+          }
+        },
+        "camera_state": {
+          "camera_mode": 0,
+          "camera_watermark_settings": {
+            "datetime_enable": 0,
+            "drone_sn_enable": 0,
+            "drone_type_enable": 0,
+            "global_enable": 0,
+            "gps_enable": 0,
+            "layout": 0,
+            "manufacturer_enable": 0,
+            "user_custom_string": "",
+            "user_custom_string_enable": 0
+          },
+          "interval_photo_interval": 10,
+          "night_mode_settings": {
+            "denoise_level": 0,
+            "infrared_fill_light_enable": false,
+            "is_working": 0,
+            "night_mode": 0,
+            "night_scene_mode_suggestion": 0,
+            "night_vision_enable": false
+          },
+          "photo_format": 1,
+          "photo_size": 0,
+          "photo_state": 0,
+          "record_time": 0,
+          "recording_state": 0,
+          "remain_photo_num": 9503,
+          "remain_record_duration": 0,
+          "storage": {
+            "total": 60382000,
+            "used": 27000
+          },
+          "video_resolution": 1
+        },
+        "media_storage": {},
+        "payload_index": "88-0-0",
+        "pre_recorded_info": {}
+      },
+      "method": "drc_camera_state_push",
+      "seq": 21099,
+      "timestamp": 1761034449039
+    },
+    "drc_drone_state_push": {
+      "data": {
+        "is_in_fixed_speed": false,
+        "is_near_distance_limit": 0,
+        "is_near_height_limit": 0,
+        "limit": {
+          "distance_limit": 5000,
+          "distance_limit_state": 0,
+          "height_limit": 120
+        },
+        "mode_code": 0,
+        "night_lights_state": 0,
+        "rth_altitude": 100,
+        "stealth_state": 0
+      },
+      "method": "drc_drone_state_push",
+      "seq": 21101,
+      "timestamp": 1761034449041
+    },
+    "drc_ai_info_push": {
+      "data": {
+        "ai_model_list": [],
+        "ai_spotlight_zoom": {},
+        "identify_on": 0,
+        "selected_ai_model": {
+          "digital_effect": [],
+          "image_source": [],
+          "index": 0,
+          "labels": []
+        }
+      },
+      "method": "drc_ai_info_push",
+      "seq": 21102,
+      "timestamp": 1761034449042
+    },
+    "drc_count_down_info_push": {
+      "data": {},
+      "method": "drc_count_down_info_push",
+      "seq": 21103,
+      "timestamp": 1761034449042
+    },
+    "drc_multi_gimbals_sync_info": {
+      "data": {},
+      "method": "drc_multi_gimbals_sync_info",
+      "seq": 21104,
+      "timestamp": 1761034449043
+    },
+    "osd_info_push": {
+      "data": {
+        "attitude_head": -176.4,
+        "elevation": 0,
+        "height": -173.38134765625,
+        "home_distance": -1,
+        "horizontal_speed": 0,
+        "speed_x": 0,
+        "speed_y": 0,
+        "speed_z": 0,
+        "ultrasonic_height": -1,
+        "vertical_speed": 0,
+        "wind_direction": 0,
+        "wind_speed": 0
+      },
+      "method": "osd_info_push",
+      "seq": 22898,
+      "timestamp": 1761034464809
+    },
+    "delay_info_push": {
+      "data": {},
+      "method": "delay_info_push",
+      "seq": 22886,
+      "timestamp": 1761034464700
+    },
+    "drc_geo_connect_info_push": {
+      "data": {
+        "gps": {
+          "gps_number": 0,
+          "is_fixed": 0,
+          "quality": 0,
+          "rtk_number": 0
+        },
+        "wireless_link": {
+          "4g_freq_band": 5.8,
+          "4g_gnd_quality": 0,
+          "4g_link_state": 0,
+          "4g_quality": 0,
+          "4g_uav_quality": 0,
+          "dongle_number": 0,
+          "link_workmode": 0,
+          "sdr_freq_band": 2.4,
+          "sdr_link_state": 1,
+          "sdr_quality": 5
+        }
+      },
+      "method": "drc_geo_connect_info_push",
+      "seq": 22883,
+      "timestamp": 1761034464698
+    },
+    "drc_camera_osd_info_push": {
+      "data": {
+        "gimbal_pitch": 0,
+        "gimbal_roll": 0,
+        "gimbal_yaw": -176.4,
+        "ir_lense": {},
+        "ir_thermometry": {},
+        "liveview": {
+          "liveview_world_region": {
+            "bottom": 0.559145450592041,
+            "left": 0.4387604296207428,
+            "right": 0.564268708229065,
+            "top": 0.4317513108253479
+          }
+        },
+        "measure_target": {
+          "measure_target_altitude": 0,
+          "measure_target_distance": 6.700000286102295,
+          "measure_target_error_state": 3,
+          "measure_target_latitude": 0,
+          "measure_target_longitude": 0
+        },
+        "payload_index": "88-0-0",
+        "wide_lense": {
+          "wide_aperture_value": 280,
+          "wide_calibrate_farthest_focus_value": 25,
+          "wide_calibrate_nearest_focus_value": 74,
+          "wide_dewarping_state": 1,
+          "wide_exposure_mode": 1,
+          "wide_exposure_value": 16,
+          "wide_focus_mode": 2,
+          "wide_focus_state": 0,
+          "wide_focus_value": 30,
+          "wide_fov_info": {
+            "focal_length": 12290,
+            "height": 13054,
+            "image_ratio": 0,
+            "width": 17424
+          },
+          "wide_iso": 1180,
+          "wide_max_focus_value": 87,
+          "wide_mechanical_shutter_state": 0,
+          "wide_min_focus_value": 12,
+          "wide_shutter_speed": 21
+        },
+        "zoom_lense": {
+          "zoom_aperture_value": 280,
+          "zoom_calibrate_farthest_focus_value": 25,
+          "zoom_calibrate_nearest_focus_value": 74,
+          "zoom_exposure_mode": 1,
+          "zoom_exposure_value": 16,
+          "zoom_factor": 7,
+          "zoom_focus_mode": 2,
+          "zoom_focus_state": 0,
+          "zoom_focus_value": 30,
+          "zoom_fov_info": {
+            "focal_length": 12290,
+            "height": 13054,
+            "image_ratio": 0,
+            "width": 17424
+          },
+          "zoom_iso": 1180,
+          "zoom_max_focus_value": 87,
+          "zoom_min_focus_value": 12,
+          "zoom_shutter_speed": 21
+        }
+      },
+      "method": "drc_camera_osd_info_push",
+      "seq": 22884,
+      "timestamp": 1761034464699
+    },
+    "drc_batteries_info_push": {
+      "data": {
+        "batteries": [
+          {
+            "capacity_percent": 70,
+            "firmware_version": "29.02.01.41",
+            "index": 0,
+            "loop_times": 0,
+            "sn": "7PAPMC7CA001A1",
+            "temperature": 33.4,
+            "voltage": 15747
+          }
+        ],
+        "capacity_percent": 64,
+        "landing_power": 0,
+        "low_battery_warning_threshold": 25,
+        "remain_flight_time": 0,
+        "return_home_power": 0,
+        "serious_low_battery_warning_threshold": 10
+      },
+      "method": "drc_batteries_info_push",
+      "seq": 22885,
+      "timestamp": 1761034464700
+    },
+    "hsi_info_push": {
+      "data": {},
+      "method": "hsi_info_push",
+      "seq": 22867,
+      "timestamp": 1761034464544
+    }
+  }
+}
