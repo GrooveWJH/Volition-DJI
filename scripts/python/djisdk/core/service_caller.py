@@ -37,5 +37,5 @@ class ServiceCaller:
             return result
         except TimeoutError:
             # 清理超时的请求，避免资源泄漏
-            self.mqtt.pending_requests.pop(tid, None)
+            self.mqtt.cleanup_request(tid)
             raise TimeoutError(f"服务调用超时: {method}")

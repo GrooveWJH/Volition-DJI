@@ -43,6 +43,11 @@ class MQTTClient:
             self.client.disconnect()
             console.print("[yellow]MQTT 连接已断开[/yellow]")
 
+    def cleanup_request(self, tid: str):
+        """清理挂起的请求（用于超时处理）"""
+        with self.lock:
+            self.pending_requests.pop(tid, None)
+
     def publish(self, method: str, data: Dict[str, Any], tid: str) -> Future:
         """
         发布消息并返回 Future 等待响应

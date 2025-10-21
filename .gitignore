@@ -1,17 +1,72 @@
-# OS files
+# -----------------------------
+# OS artifacts
+# -----------------------------
 .DS_Store
 Thumbs.db
 
-# Editors and IDEs
+# -----------------------------
+# Editors / IDE settings
+# -----------------------------
 .idea/
 .vscode/
 *.code-workspace
+*.sublime-*
+*.iml
 *.user
 *.swp
 *~
 .#*
 
-# Logs and runtime files
+# -----------------------------
+# Python caches / virtual envs
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyd
+.Python
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+coverage.*
+htmlcov/
+.coverage
+.coverage.*
+.dmypy.json
+pip-wheel-metadata/
+pip-log.txt
+*.egg-info/
+*.egg
+eggs/
+develop-eggs/
+dist/
+build/
+wheels/
+.venv/
+venv/
+env/
+env.*/
+
+# -----------------------------
+# Node / front-end artifacts
+# -----------------------------
+node_modules/
+.pnpm-store/
+.pnpm/
+.pnp.*
+.npm/
+.parcel-cache/
+.cache/
+.vite/
+.astro/
+.svelte-kit/
+.next/
+out/
+.vercel/
+
+# -----------------------------
+# Logs / runtime files
+# -----------------------------
 logs/
 !docs/logs/
 !docs/logs/**/*.md
@@ -24,66 +79,19 @@ yarn-error.log*
 pnpm-debug.log*
 .pnpm-debug.log*
 
-# Environment and local overrides
+# -----------------------------
+# Environment configs
+# -----------------------------
 .env
 .env.*
 .env.*.local
 *.local
+.python-version
 
-# Build outputs
-dist/
-build/
-coverage/
-.cache/
-.astro/
-.vercel/
-.vite/
-.svelte-kit/
-.next/
-out/
-
-# Node.js dependencies and package manager caches
-node_modules/
-.pnpm-store/
-.pnpm/
-.pnp.*
-.npm/
-
-# Misc
-*.iml
-
-
-# build output
-dist/
-# generated types
-.astro/
-
-# dependencies
-node_modules/
-
-# logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-
-# environment variables
-.env
-.env.production
-
-# macOS-specific files
-.DS_Store
-
-# jetbrains setting folder
-.idea/
-
-.vscode/
-
-venv/
-
-private/
-
-*.pyc
-
+# -----------------------------
+# Miscellaneous
+# -----------------------------
 *.bak
+private/
+*.sqlite
+*.db

@@ -1,10 +1,7 @@
 """
-DJI DRC Python SDK
-
-简洁实用的 DJI 无人机远程控制工具包
+DJI 服务模块
 """
-from .core import MQTTClient, ServiceCaller
-from .services import (
+from .commands import (
     request_control_auth,
     release_control_auth,
     enter_drc_mode,
@@ -13,23 +10,22 @@ from .services import (
     set_live_quality,
     start_live_push,
     stop_live_push,
-    HeartbeatKeeper,
 )
-
-__version__ = '1.0.0'
+from .heartbeat import start_heartbeat, stop_heartbeat
 
 __all__ = [
-    # Core
-    'MQTTClient',
-    'ServiceCaller',
-    # Services
+    # 控制权
     'request_control_auth',
     'release_control_auth',
+    # DRC 模式
     'enter_drc_mode',
     'exit_drc_mode',
+    # 直播
     'change_live_lens',
     'set_live_quality',
     'start_live_push',
     'stop_live_push',
-    'HeartbeatKeeper',
+    # 心跳
+    'start_heartbeat',
+    'stop_heartbeat',
 ]
