@@ -10,6 +10,9 @@ from .commands import (
     set_live_quality,
     start_live_push,
     stop_live_push,
+    send_stick_control,
+    setup_drc_connection,
+    setup_multiple_drc_connections,
 )
 from .heartbeat import start_heartbeat, stop_heartbeat
 
@@ -28,4 +31,9 @@ __all__ = [
     # 心跳
     'start_heartbeat',
     'stop_heartbeat',
+    # DRC 杆量控制
+    'send_stick_control',
+    # DRC 连接设置
+    'setup_drc_connection',
+    'setup_multiple_drc_connections',
 ]

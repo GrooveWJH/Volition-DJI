@@ -15,6 +15,9 @@ from .services import (
     stop_live_push,
     start_heartbeat,
     stop_heartbeat,
+    send_stick_control,
+    setup_drc_connection,
+    setup_multiple_drc_connections,
 )
 
 __version__ = '1.0.0'
@@ -34,4 +37,7 @@ __all__ = [
     'stop_live_push',
     'start_heartbeat',
     'stop_heartbeat',
+    'send_stick_control',
+    'setup_drc_connection',
+    'setup_multiple_drc_connections',
 ]
