@@ -47,15 +47,15 @@ from rich.columns import Columns
 from djisdk import MQTTClient, ServiceCaller, request_control_auth, enter_drc_mode, start_heartbeat, stop_heartbeat
 
 # ======== 配置 ========
-MQTT_CONFIG = {'host': '172.20.10.2', 'port': 1883, 'username': 'admin', 'password': '302811055wjhhz'}
-GATEWAY_SN = "9N9CN180011TJN"  # 9N9CN2J0012CXY (001) | 9N9CN180011TJN (003)
+MQTT_CONFIG = {'host': '81.70.222.38', 'port': 1883, 'username': 'dji', 'password': 'lab605605'}
+GATEWAY_SN = "9N9CN2J0012CXY"  # 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
 USER_ID, USER_CALLSIGN = "groove", "吴建豪"
 # DRC 模式参数
 MQTT_BROKER_CONFIG = {
     'address': f"{MQTT_CONFIG['host']}:{MQTT_CONFIG['port']}", 'client_id': f"drc-{GATEWAY_SN}",
     'username': 'admin', 'password': '302811055wjhhz', 'expire_time': 1_700_000_000, 'enable_tls': False,
 }
-OSD_FREQUENCY, HSI_FREQUENCY, HEARTBEAT_INTERVAL = 100, 2, 0.2  # Hz, Hz, 秒
+OSD_FREQUENCY, HSI_FREQUENCY, HEARTBEAT_INTERVAL = 100, 30, 0.2  # Hz, Hz, 秒
 # 嗅探配置
 ENABLE_DRC_MODE = True  # 是否自动进入 DRC 模式
 SNIFF_TOPICS = [
