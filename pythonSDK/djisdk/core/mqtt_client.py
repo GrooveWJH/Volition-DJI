@@ -20,6 +20,15 @@ class MQTTClient:
         self.client: Optional[mqtt.Client] = None
         self.pending_requests: Dict[str, Future] = {}
         self.lock = threading.Lock()
+        # OSD 数据缓存
+        self.osd_data = {
+            'latitude': None, 'longitude': None, 'height': None, 'attitude_head': None,
+            'horizontal_speed': None, 'speed_x': None, 'speed_y': None, 'speed_z': None,
+            'down_distance': None, 'down_enable': None, 'down_work': None,
+            'battery_percent': None
+        }
+        # 起飞点高度（第一次读取到的全局高度）
+        self.takeoff_height = None
 
     def connect(self):
         """建立 MQTT 连接"""
@@ -36,6 +45,11 @@ class MQTTClient:
         self.client.subscribe(reply_topic, qos=1)
         console.print(f"[green]✓[/green] 已订阅: {reply_topic}")
 
+        # 订阅 DRC 上行主题（接收 OSD/HSI 数据）
+        drc_up_topic = f"thing/product/{self.gateway_sn}/drc/up"
+        self.client.subscribe(drc_up_topic, qos=0)
+        console.print(f"[green]✓[/green] 已订阅: {drc_up_topic}")
+
     def disconnect(self):
         """断开连接"""
         if self.client:
@@ -47,6 +61,63 @@ class MQTTClient:
         """清理挂起的请求（用于超时处理）"""
         with self.lock:
             self.pending_requests.pop(tid, None)
+
+    def get_latitude(self) -> Optional[float]:
+        """获取最新纬度（无卫星信号时返回 None）"""
+        with self.lock:
+            return self.osd_data['latitude']
+
+    def get_longitude(self) -> Optional[float]:
+        """获取最新经度（无卫星信号时返回 None）"""
+        with self.lock:
+            return self.osd_data['longitude']
+
+    def get_height(self) -> Optional[float]:
+        """获取最新全局高度（GPS高度，无卫星信号时返回 None）"""
+        with self.lock:
+            return self.osd_data['height']
+
+    def get_relative_height(self) -> Optional[float]:
+        """获取距起飞点高度（当前高度 - 起飞点高度，无数据时返回 None）"""
+        with self.lock:
+            if self.osd_data['height'] is not None and self.takeoff_height is not None:
+                return self.osd_data['height'] - self.takeoff_height
+            return None
+
+    def get_attitude_head(self) -> Optional[float]:
+        """获取最新航向角（无数据时返回 None）"""
+        with self.lock:
+            return self.osd_data['attitude_head']
+
+    def get_speed(self) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+        """获取速度数据 (水平速度, X轴速度, Y轴速度, Z轴速度)"""
+        with self.lock:
+            return (
+                self.osd_data['horizontal_speed'],
+                self.osd_data['speed_x'],
+                self.osd_data['speed_y'],
+                self.osd_data['speed_z']
+            )
+
+    def get_battery_percent(self) -> Optional[int]:
+        """获取电池电量百分比（无数据时返回 None）"""
+        with self.lock:
+            return self.osd_data['battery_percent']
+
+    def get_local_height(self) -> Optional[float]:
+        """获取HSI高度/下视距离（无数据时返回 None）"""
+        with self.lock:
+            return self.osd_data['down_distance']
+
+    def is_local_height_ok(self) -> bool:
+        """判断 HSI 高度数据是否有效（down_enable 和 down_work 都为 True）"""
+        with self.lock:
+            return self.osd_data['down_enable'] is True and self.osd_data['down_work'] is True
+
+    def get_position(self) -> tuple[Optional[float], Optional[float], Optional[float]]:
+        """获取最新位置 (纬度, 经度, 高度)，无卫星信号时返回 (None, None, None)"""
+        with self.lock:
+            return (self.osd_data['latitude'], self.osd_data['longitude'], self.osd_data['height'])
 
     def publish(self, method: str, data: Dict[str, Any], tid: str) -> Future:
         """
@@ -87,8 +158,43 @@ class MQTTClient:
         """处理收到的消息"""
         try:
             payload = json.loads(msg.payload.decode())
-            tid = payload.get('tid')
 
+            # 处理 OSD 数据推送
+            if payload.get('method') == 'osd_info_push':
+                data = payload.get('data', {})
+                with self.lock:
+                    self.osd_data['latitude'] = data.get('latitude')
+                    self.osd_data['longitude'] = data.get('longitude')
+                    height = data.get('height')
+                    self.osd_data['height'] = height
+                    # 记录起飞点高度（第一次读取到有效高度时）
+                    if height is not None and self.takeoff_height is None:
+                        self.takeoff_height = height
+                    self.osd_data['attitude_head'] = data.get('attitude_head')
+                    self.osd_data['horizontal_speed'] = data.get('horizontal_speed')
+                    self.osd_data['speed_x'] = data.get('speed_x')
+                    self.osd_data['speed_y'] = data.get('speed_y')
+                    self.osd_data['speed_z'] = data.get('speed_z')
+                return
+
+            # 处理 HSI 数据推送
+            if payload.get('method') == 'hsi_info_push':
+                data = payload.get('data', {})
+                with self.lock:
+                    self.osd_data['down_distance'] = data.get('down_distance')
+                    self.osd_data['down_enable'] = data.get('down_enable')
+                    self.osd_data['down_work'] = data.get('down_work')
+                return
+
+            # 处理电池信息推送
+            if payload.get('method') == 'drc_batteries_info_push':
+                data = payload.get('data', {})
+                with self.lock:
+                    self.osd_data['battery_percent'] = data.get('capacity_percent')
+                return
+
+            # 处理服务响应
+            tid = payload.get('tid')
             if not tid:
                 return
 
