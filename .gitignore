@@ -95,3 +95,6 @@ pnpm-debug.log*
 private/
 *.sqlite
 *.db
+
+
+COMMIT_PLAN.md
