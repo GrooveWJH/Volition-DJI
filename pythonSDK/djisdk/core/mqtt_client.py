@@ -27,6 +27,17 @@ class MQTTClient:
             'down_distance': None, 'down_enable': None, 'down_work': None,
             'battery_percent': None
         }
+        # 无人机状态数据
+        self.drone_state = {
+            'mode_code': None,
+            'rth_altitude': None,
+            'distance_limit': None,
+            'height_limit': None,
+            'is_in_fixed_speed': None,
+            'night_lights_state': None,
+        }
+        # 拓扑数据（update_topo）- 保存完整的 data 字段
+        self.topo_data = None  # 完整的 update_topo data 对象
         # 起飞点高度（第一次读取到的全局高度）
         self.takeoff_height = None
 
@@ -49,6 +60,11 @@ class MQTTClient:
         drc_up_topic = f"thing/product/{self.gateway_sn}/drc/up"
         self.client.subscribe(drc_up_topic, qos=0)
         console.print(f"[green]✓[/green] 已订阅: {drc_up_topic}")
+
+        # 订阅设备状态主题（接收 update_topo 数据）
+        status_topic = f"sys/product/{self.gateway_sn}/status"
+        self.client.subscribe(status_topic, qos=0)
+        console.print(f"[green]✓[/green] 已订阅: {status_topic}")
 
     def disconnect(self):
         """断开连接"""
@@ -118,6 +134,46 @@ class MQTTClient:
         """获取最新位置 (纬度, 经度, 高度)，无卫星信号时返回 (None, None, None)"""
         with self.lock:
             return (self.osd_data['latitude'], self.osd_data['longitude'], self.osd_data['height'])
+
+    def get_flight_mode(self) -> Optional[int]:
+        """获取飞行模式代码（mode_code）"""
+        with self.lock:
+            return self.drone_state['mode_code']
+
+    def get_flight_mode_name(self) -> str:
+        """获取飞行模式名称（中文）"""
+        mode_names = {
+            0: "待机", 1: "起飞准备", 2: "起飞准备完毕", 3: "手动飞行",
+            4: "自动起飞", 5: "航线飞行", 6: "全景拍照", 7: "智能跟随",
+            8: "ADS-B 躲避", 9: "自动返航", 10: "自动降落", 11: "强制降落",
+            12: "三桨叶降落", 13: "升级中", 14: "未连接", 15: "APAS",
+            16: "虚拟摇杆状态", 17: "指令飞行"
+        }
+        with self.lock:
+            mode_code = self.drone_state['mode_code']
+            if mode_code is None:
+                return "未知"
+            return mode_names.get(mode_code, f"未知模式({mode_code})")
+
+    def get_drone_state(self) -> Dict[str, Any]:
+        """获取完整的无人机状态数据"""
+        with self.lock:
+            return self.drone_state.copy()
+
+    def get_aircraft_sn(self) -> Optional[str]:
+        """获取无人机序列号（从 update_topo 消息的 sub_devices[0].sn 中获取）"""
+        with self.lock:
+            if self.topo_data and 'sub_devices' in self.topo_data:
+                sub_devices = self.topo_data.get('sub_devices', [])
+                if sub_devices and len(sub_devices) > 0:
+                    return sub_devices[0].get('sn')
+            return None
+
+    def get_topo_data(self) -> Optional[Dict[str, Any]]:
+        """获取完整的 update_topo data 数据"""
+        with self.lock:
+            return self.topo_data.copy() if self.topo_data else None
+
 
     def publish(self, method: str, data: Dict[str, Any], tid: str) -> Future:
         """
@@ -191,6 +247,26 @@ class MQTTClient:
                 data = payload.get('data', {})
                 with self.lock:
                     self.osd_data['battery_percent'] = data.get('capacity_percent')
+                return
+
+            # 处理无人机状态推送
+            if payload.get('method') == 'drc_drone_state_push':
+                data = payload.get('data', {})
+                limit = data.get('limit', {})
+                with self.lock:
+                    self.drone_state['mode_code'] = data.get('mode_code')
+                    self.drone_state['rth_altitude'] = data.get('rth_altitude')
+                    self.drone_state['distance_limit'] = limit.get('distance_limit')
+                    self.drone_state['height_limit'] = limit.get('height_limit')
+                    self.drone_state['is_in_fixed_speed'] = data.get('is_in_fixed_speed')
+                    self.drone_state['night_lights_state'] = data.get('night_lights_state')
+                return
+
+            # 处理拓扑更新推送（保存完整的 data 字段）
+            if payload.get('method') == 'update_topo':
+                data = payload.get('data', {})
+                with self.lock:
+                    self.topo_data = data  # 保存完整的 data 对象
                 return
 
             # 处理服务响应

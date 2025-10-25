@@ -2,27 +2,26 @@
 """
 DJI MQTT 嗅探器 - 多 Topic 监听和消息捕获工具
 
-基于 djisdk 重构后的架构，使用统一的服务调用接口。
+基于 djisdk 统一的 DRC 连接函数，简化连接流程。
 
 功能：
 1. 支持同时监听多个 MQTT topic
-2. 自动进入 DRC 模式（可选）
+2. 使用 setup_drc_connection 自动完成 DRC 模式设置
 3. 实时显示各 topic 消息统计（类型、数量、频率）
 4. 按 topic 分类保存消息到独立 JSON 文件
 5. 输出到规范的目录结构
 
 使用方法：
     # 从任意位置运行
-    python scripts/python/utils/mqtt_sniffer.py
-
-    # 或从 scripts/python 目录运行
     python utils/mqtt_sniffer.py
 
+    # 或从项目根目录运行
+    python pythonSDK/utils/mqtt_sniffer.py
+
 架构说明：
-    - 使用 djisdk.MQTTClient 进行连接管理
-    - 使用 djisdk.ServiceCaller 进行服务调用
-    - 使用 djisdk 提供的纯函数服务（request_control_auth, enter_drc_mode 等）
-    - 所有错误处理由 djisdk._call_service() 统一管理
+    - 使用 djisdk.setup_drc_connection() 一键建立 DRC 连接
+    - 自动处理：MQTT 连接、控制权请求、DRC 模式进入、心跳启动
+    - 所有错误处理由 djisdk 统一管理
 """
 import sys
 import time
@@ -43,27 +42,27 @@ from rich.table import Table
 from rich.live import Live
 from rich.panel import Panel
 from rich.columns import Columns
-# 导入重构后的 djisdk - 2 个核心类 + 纯函数服务
-from djisdk import MQTTClient, ServiceCaller, request_control_auth, enter_drc_mode, start_heartbeat, stop_heartbeat
+# 导入重构后的 djisdk - 使用统一的 DRC 连接函数
+from djisdk import MQTTClient, setup_drc_connection, stop_heartbeat
 
 # ======== 配置 ========
 MQTT_CONFIG = {'host': '81.70.222.38', 'port': 1883, 'username': 'dji', 'password': 'lab605605'}
 GATEWAY_SN = "9N9CN2J0012CXY"  # 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
 USER_ID, USER_CALLSIGN = "groove", "吴建豪"
+
 # DRC 模式参数
-MQTT_BROKER_CONFIG = {
-    'address': f"{MQTT_CONFIG['host']}:{MQTT_CONFIG['port']}", 'client_id': f"drc-{GATEWAY_SN}",
-    'username': 'admin', 'password': '302811055wjhhz', 'expire_time': 1_700_000_000, 'enable_tls': False,
-}
-OSD_FREQUENCY, HSI_FREQUENCY, HEARTBEAT_INTERVAL = 100, 30, 0.2  # Hz, Hz, 秒
+OSD_FREQUENCY, HSI_FREQUENCY = 1, 1  # Hz
+HEARTBEAT_INTERVAL = 1.0  # 秒
+
 # 嗅探配置
 ENABLE_DRC_MODE = True  # 是否自动进入 DRC 模式
 SNIFF_TOPICS = [
     f"sys/product/{GATEWAY_SN}/status",         # 设备状态
     f"thing/product/{GATEWAY_SN}/events_reply", # 事件回复
     f"thing/product/{GATEWAY_SN}/drc/up",       # DRC 上行数据
+    f"sys/product/{GATEWAY_SN}/network/probe",       # DRC 上行数据
 ]
-OUTPUT_BASE_DIR = "sniffed_data"  # 输出根目录
+OUTPUT_BASE_DIR = "data/sniffed_data"  # 输出根目录
 # ======== 配置结束 ========
 
 
@@ -224,64 +223,74 @@ class TopicSniffer:
 
 
 def main() -> int:
-    """主函数 - 演示 djisdk 重构后的简洁架构"""
+    """主函数 - 使用 setup_drc_connection 简化连接流程"""
     console = Console()
-    # ========== 1. 连接 MQTT ==========
-    console.rule("[bold cyan]连接 MQTT[/bold cyan]")
-    mqtt = MQTTClient(GATEWAY_SN, MQTT_CONFIG)
-    mqtt.connect()
-    caller = ServiceCaller(mqtt, timeout=10)
-    heartbeat_thread = None
-    # ========== 2. 可选：进入 DRC 模式 ==========
-    if ENABLE_DRC_MODE:
-        console.rule("[bold cyan]请求控制权[/bold cyan]")
-        try:
-            request_control_auth(caller, user_id=USER_ID, user_callsign=USER_CALLSIGN)
-        except Exception as e:
-            console.print(f"[red]✗ 控制权请求失败: {e}[/red]")
-            mqtt.disconnect()
-            return 1
-        console.print("\n[bold green]控制权请求已发送，请在遥控器上点击确认授权。完成后在此处按回车继续...[/bold green]")
-        try:
-            input()
-        except KeyboardInterrupt:
-            console.print("[yellow]检测到中断，退出。[/yellow]")
-            mqtt.disconnect()
-            return 1
-        console.rule("[bold cyan]进入 DRC 模式[/bold cyan]")
-        try:
-            enter_drc_mode(caller, mqtt_broker=MQTT_BROKER_CONFIG, osd_frequency=OSD_FREQUENCY, hsi_frequency=HSI_FREQUENCY)
-        except Exception as e:
-            console.print(f"[red]✗ 进入 DRC 模式失败: {e}[/red]")
-            mqtt.disconnect()
-            return 1
-        heartbeat_thread = start_heartbeat(mqtt, interval=HEARTBEAT_INTERVAL)
-    # ========== 3. 启动嗅探器 ==========
-    console.rule("[bold cyan]启动 MQTT 嗅探器[/bold cyan]")
-    console.print(f"[bold green]正在监听 {len(SNIFF_TOPICS)} 个 topic...[/bold green]\n[bold yellow]按 Ctrl+C 停止嗅探、保存数据并退出。[/bold yellow]\n")
-    sniffer = TopicSniffer(mqtt, SNIFF_TOPICS)
-    # ========== 4. 实时显示监控面板 ==========
+    mqtt, heartbeat = None, None
+
     try:
+        # ========== 1. 建立 DRC 连接（或仅 MQTT 连接）==========
+        console.rule("[bold cyan]建立连接[/bold cyan]")
+
+        if ENABLE_DRC_MODE:
+            # 使用统一的 DRC 连接函数（自动完成：连接 MQTT、请求控制权、进入 DRC、启动心跳）
+            mqtt, _, heartbeat = setup_drc_connection(
+                gateway_sn=GATEWAY_SN,
+                mqtt_config=MQTT_CONFIG,
+                user_id=USER_ID,
+                user_callsign=USER_CALLSIGN,
+                osd_frequency=OSD_FREQUENCY,
+                hsi_frequency=HSI_FREQUENCY,
+                heartbeat_interval=HEARTBEAT_INTERVAL,
+                wait_for_user=True  # 等待用户在 DJI Pilot 上授权
+            )
+        else:
+            # 仅连接 MQTT，不进入 DRC 模式
+            console.print("[yellow]跳过 DRC 模式，仅连接 MQTT[/yellow]")
+            mqtt = MQTTClient(GATEWAY_SN, MQTT_CONFIG)
+            mqtt.connect()
+
+        # ========== 2. 启动嗅探器 ==========
+        console.rule("[bold cyan]启动 MQTT 嗅探器[/bold cyan]")
+        console.print(f"[bold green]正在监听 {len(SNIFF_TOPICS)} 个 topic...[/bold green]")
+        console.print("[bold yellow]按 Ctrl+C 停止嗅探、保存数据并退出。[/bold yellow]\n")
+        sniffer = TopicSniffer(mqtt, SNIFF_TOPICS)
+
+        # ========== 3. 实时显示监控面板 ==========
         with Live(sniffer.render_status(), refresh_per_second=2, console=console) as live:
             while True:
                 time.sleep(0.5)
                 live.update(sniffer.render_status())
+
     except KeyboardInterrupt:
         console.print("\n[yellow]检测到中断，正在停止...[/yellow]")
+
+    except Exception as e:
+        console.print(f"\n[bold red]✗ 错误: {e}[/bold red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        return 1
+
     finally:
-        # ========== 5. 清理资源 ==========
-        if heartbeat_thread:
-            stop_heartbeat(heartbeat_thread)
-        console.print(f"[cyan]正在保存消息数据到 {OUTPUT_BASE_DIR}/...[/cyan]")
-        output_dir = sniffer.save_to_directory(OUTPUT_BASE_DIR)
-        console.print(f"[green]✓ 数据已保存到 {output_dir}/[/green]")
-        saved_files = list(output_dir.glob("*.json"))
-        if saved_files:
-            console.print("\n[bold cyan]已保存文件：[/bold cyan]")
-            for file in sorted(saved_files):
-                size = file.stat().st_size
-                console.print(f"  [green]→[/green] {file.name} ({size:,} bytes)")
-        mqtt.disconnect()
+        # ========== 4. 清理资源 ==========
+        if heartbeat:
+            console.print("[cyan]停止心跳...[/cyan]")
+            stop_heartbeat(heartbeat)
+
+        if mqtt:
+            console.print(f"[cyan]正在保存消息数据到 {OUTPUT_BASE_DIR}/...[/cyan]")
+            output_dir = sniffer.save_to_directory(OUTPUT_BASE_DIR)
+            console.print(f"[green]✓ 数据已保存到 {output_dir}/[/green]")
+
+            saved_files = list(output_dir.glob("*.json"))
+            if saved_files:
+                console.print("\n[bold cyan]已保存文件：[/bold cyan]")
+                for file in sorted(saved_files):
+                    size = file.stat().st_size
+                    console.print(f"  [green]→[/green] {file.name} ({size:,} bytes)")
+
+            console.print("[cyan]断开 MQTT 连接...[/cyan]")
+            mqtt.disconnect()
+
     console.print("[green]✓ 嗅探完成[/green]")
     return 0
 

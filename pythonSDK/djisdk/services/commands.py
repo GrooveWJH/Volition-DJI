@@ -172,6 +172,29 @@ def stop_live_push(caller: ServiceCaller, video_id: str) -> Dict[str, Any]:
     )
 
 
+# ========== 飞行控制 ==========
+
+def return_home(caller: ServiceCaller) -> Dict[str, Any]:
+    """
+    一键返航
+
+    发送返航指令，无人机将自动返回起飞点。
+
+    Args:
+        caller: 服务调用器
+
+    Returns:
+        服务返回数据
+
+    Example:
+        >>> return_home(caller)
+        [cyan]执行一键返航...[/cyan]
+        [green]✓ 返航指令已发送[/green]
+    """
+    console.print("[cyan]执行一键返航...[/cyan]")
+    return _call_service(caller, "return_home", data=None, success_msg="返航指令已发送")
+
+
 # ========== DRC 杆量控制 ==========
 
 def send_stick_control(

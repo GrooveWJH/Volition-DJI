@@ -1,0 +1,46 @@
+{
+  "metadata": {
+    "topic": "sys/product/9N9CN2J0012CXY/status",
+    "gateway_sn": "9N9CN2J0012CXY",
+    "capture_time": "2025-10-25T17:16:35.007547",
+    "runtime_seconds": 133.0008089542389,
+    "total_messages": 15,
+    "message_types": 1
+  },
+  "statistics": {
+    "update_topo": {
+      "count": 15,
+      "frequency_hz": 0.10993589799035583,
+      "first_time": "2025-10-25T17:14:22.960616",
+      "last_time": "2025-10-25T17:16:30.307554"
+    }
+  },
+  "latest_messages": {
+    "update_topo": {
+      "tid": "33c31de1-af75-49a4-94c4-fc13d9299a11",
+      "bid": "d53c838e-004c-4b9e-a6b3-20be81dd9458",
+      "timestamp": 1761383787788,
+      "method": "update_topo",
+      "data": {
+        "domain": "2",
+        "type": 174,
+        "sub_type": 0,
+        "device_secret": "51ef5d5bfda3f0b696b3aec1a458386c",
+        "nonce": "bc81d8e0c7a598e4a303587786008d85",
+        "thing_version": "1.2.0",
+        "sub_devices": [
+          {
+            "sn": "1581F7FVC253A00D04J5",
+            "domain": "0",
+            "type": 99,
+            "sub_type": 0,
+            "index": "A",
+            "device_secret": "47ee3ebb5dde84b659f1c7ff4cbb9043",
+            "nonce": "3c7609a218c026a8f9a97ca617e07468",
+            "thing_version": "1.2.0"
+          }
+        ]
+      }
+    }
+  }
+}

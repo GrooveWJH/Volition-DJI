@@ -57,6 +57,9 @@ def create_uav_panel(uav_client: Dict[str, Any], config: Dict[str, str], elapsed
     is_hsi_ok = mqtt.is_local_height_ok()
     battery_percent = mqtt.get_battery_percent()
     is_heartbeat_alive = heartbeat and heartbeat.is_alive()
+    flight_mode_name = mqtt.get_flight_mode_name()
+    drone_state = mqtt.get_drone_state()
+    aircraft_sn = mqtt.get_aircraft_sn()  # 获取无人机 SN
 
     # 创建表格
     table = Table.grid(padding=(0, 2))
@@ -68,7 +71,9 @@ def create_uav_panel(uav_client: Dict[str, Any], config: Dict[str, str], elapsed
         table.add_row("", "[dim]" + "─" * 30 + "[/dim]")
 
     # 基本信息
-    table.add_row("序列号:", f"[yellow]{config['sn']}[/yellow]")
+    table.add_row("网关序列号:", f"[yellow]{config['sn']}[/yellow]")
+    if aircraft_sn:
+        table.add_row("无人机SN:", f"[green]{aircraft_sn}[/green]")
     table.add_row("呼号:", f"[yellow]{config['callsign']}[/yellow]")
     table.add_row("运行时间:", f"[green]{elapsed}[/green] 秒")
     add_separator()
@@ -76,6 +81,19 @@ def create_uav_panel(uav_client: Dict[str, Any], config: Dict[str, str], elapsed
     # 心跳状态
     heartbeat_status = "[green]✓ 正常[/green]" if is_heartbeat_alive else "[red]✗ 异常[/red]"
     table.add_row("心跳状态:", heartbeat_status)
+    add_separator()
+
+    # 飞行模式
+    # 根据模式选择颜色
+    mode_color = "green"
+    if flight_mode_name in ["自动返航", "自动降落", "强制降落"]:
+        mode_color = "yellow"
+    elif flight_mode_name in ["未连接", "未知"]:
+        mode_color = "red"
+    elif flight_mode_name in ["手动飞行", "虚拟摇杆状态", "指令飞行"]:
+        mode_color = "cyan"
+
+    table.add_row("飞行模式:", f"[{mode_color}]{flight_mode_name}[/{mode_color}]")
     add_separator()
 
     # 电池电量

@@ -10,6 +10,7 @@ from .commands import (
     set_live_quality,
     start_live_push,
     stop_live_push,
+    return_home,
     send_stick_control,
     setup_drc_connection,
     setup_multiple_drc_connections,
@@ -28,6 +29,8 @@ __all__ = [
     'set_live_quality',
     'start_live_push',
     'stop_live_push',
+    # 飞行控制
+    'return_home',
     # 心跳
     'start_heartbeat',
     'stop_heartbeat',

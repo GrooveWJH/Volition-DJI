@@ -1,0 +1,248 @@
+{
+  "metadata": {
+    "topic": "thing/product/9N9CN2J0012CXY/drc/up",
+    "gateway_sn": "9N9CN2J0012CXY",
+    "capture_time": "2025-10-25T17:16:35.008660",
+    "runtime_seconds": 133.00192093849182,
+    "total_messages": 16353,
+    "message_types": 8
+  },
+  "statistics": {
+    "delay_info_push": {
+      "count": 399,
+      "frequency_hz": 3.002891578312635,
+      "first_time": "2025-10-25T17:14:22.159236",
+      "last_time": "2025-10-25T17:16:34.698154"
+    },
+    "drc_batteries_info_push": {
+      "count": 399,
+      "frequency_hz": 3.003423758051022,
+      "first_time": "2025-10-25T17:14:22.182644",
+      "last_time": "2025-10-25T17:16:34.698077"
+    },
+    "drc_camera_osd_info_push": {
+      "count": 399,
+      "frequency_hz": 3.002902430513747,
+      "first_time": "2025-10-25T17:14:22.159552",
+      "last_time": "2025-10-25T17:16:34.697991"
+    },
+    "drc_geo_connect_info_push": {
+      "count": 399,
+      "frequency_hz": 3.0023029760795352,
+      "first_time": "2025-10-25T17:14:22.159314",
+      "last_time": "2025-10-25T17:16:34.724216"
+    },
+    "drc_live_lens_change": {
+      "count": 2,
+      "frequency_hz": 2.899724774257509,
+      "first_time": "2025-10-25T17:15:59.962984",
+      "last_time": "2025-10-25T17:16:00.307844"
+    },
+    "heart_beat": {
+      "count": 133,
+      "frequency_hz": 1.0002727584019009,
+      "first_time": "2025-10-25T17:14:22.127343",
+      "last_time": "2025-10-25T17:16:34.091349"
+    },
+    "hsi_info_push": {
+      "count": 1330,
+      "frequency_hz": 10.002460417596149,
+      "first_time": "2025-10-25T17:14:22.127518",
+      "last_time": "2025-10-25T17:16:34.994827"
+    },
+    "osd_info_push": {
+      "count": 13292,
+      "frequency_hz": 99.96585178429572,
+      "first_time": "2025-10-25T17:14:22.039482",
+      "last_time": "2025-10-25T17:16:34.994884"
+    }
+  },
+  "latest_messages": {
+    "osd_info_push": {
+      "data": {
+        "attitude_head": 0.5,
+        "elevation": 0,
+        "height": -56.894073486328125,
+        "home_distance": -1,
+        "horizontal_speed": 0,
+        "speed_x": 0,
+        "speed_y": 0,
+        "speed_z": 0,
+        "ultrasonic_height": -1,
+        "vertical_speed": 0,
+        "wind_direction": 0,
+        "wind_speed": 0
+      },
+      "method": "osd_info_push",
+      "seq": 67504,
+      "timestamp": 1761383793728
+    },
+    "heart_beat": {
+      "seq": 1761383662136,
+      "method": "heart_beat",
+      "data": {
+        "timestamp": 1761383794005
+      },
+      "timestamp": 1761383792822
+    },
+    "hsi_info_push": {
+      "data": {
+        "around_distances": [],
+        "back_enable": false,
+        "back_work": true,
+        "down_distance": 100,
+        "down_enable": false,
+        "down_work": true,
+        "front_enable": false,
+        "front_work": true,
+        "horizontal_enable": false,
+        "horizontal_work": true,
+        "left_enable": false,
+        "left_work": true,
+        "right_enable": false,
+        "right_work": true,
+        "up_distance": 60000,
+        "up_enable": false,
+        "up_work": true,
+        "vertical_enable": false,
+        "vertical_work": true
+      },
+      "method": "hsi_info_push",
+      "seq": 67503,
+      "timestamp": 1761383793721
+    },
+    "delay_info_push": {
+      "data": {},
+      "method": "delay_info_push",
+      "seq": 67469,
+      "timestamp": 1761383793430
+    },
+    "drc_geo_connect_info_push": {
+      "data": {
+        "gps": {
+          "gps_number": 0,
+          "is_fixed": 0,
+          "quality": 0,
+          "rtk_number": 0
+        },
+        "wireless_link": {
+          "4g_freq_band": 5.8,
+          "4g_gnd_quality": 0,
+          "4g_link_state": 0,
+          "4g_quality": 0,
+          "4g_uav_quality": 0,
+          "dongle_number": 0,
+          "link_workmode": 0,
+          "sdr_freq_band": 2.4,
+          "sdr_link_state": 1,
+          "sdr_quality": 5
+        }
+      },
+      "method": "drc_geo_connect_info_push",
+      "seq": 67470,
+      "timestamp": 1761383793431
+    },
+    "drc_camera_osd_info_push": {
+      "data": {
+        "gimbal_pitch": 0,
+        "gimbal_roll": 0,
+        "gimbal_yaw": 0.6,
+        "ir_lense": {},
+        "ir_thermometry": {},
+        "liveview": {
+          "liveview_world_region": {
+            "bottom": 0.568326473236084,
+            "left": 0.441007673740387,
+            "right": 0.5667977333068848,
+            "top": 0.44013476371765137
+          }
+        },
+        "measure_target": {
+          "measure_target_altitude": 0,
+          "measure_target_distance": 1.399999976158142,
+          "measure_target_error_state": 3,
+          "measure_target_latitude": 0,
+          "measure_target_longitude": 0
+        },
+        "payload_index": "88-0-0",
+        "wide_lense": {
+          "wide_aperture_value": 280,
+          "wide_calibrate_farthest_focus_value": 22,
+          "wide_calibrate_nearest_focus_value": 71,
+          "wide_dewarping_state": 1,
+          "wide_exposure_mode": 1,
+          "wide_exposure_value": 16,
+          "wide_focus_mode": 2,
+          "wide_focus_state": 0,
+          "wide_focus_value": 58,
+          "wide_fov_info": {
+            "focal_length": 12290,
+            "height": 13054,
+            "image_ratio": 0,
+            "width": 17424
+          },
+          "wide_iso": 940,
+          "wide_max_focus_value": 84,
+          "wide_mechanical_shutter_state": 0,
+          "wide_min_focus_value": 9,
+          "wide_shutter_speed": 22
+        },
+        "zoom_lense": {
+          "zoom_aperture_value": 280,
+          "zoom_calibrate_farthest_focus_value": 22,
+          "zoom_calibrate_nearest_focus_value": 71,
+          "zoom_exposure_mode": 1,
+          "zoom_exposure_value": 16,
+          "zoom_factor": 7,
+          "zoom_focus_mode": 2,
+          "zoom_focus_state": 0,
+          "zoom_focus_value": 58,
+          "zoom_fov_info": {
+            "focal_length": 12290,
+            "height": 13054,
+            "image_ratio": 0,
+            "width": 17424
+          },
+          "zoom_iso": 940,
+          "zoom_max_focus_value": 84,
+          "zoom_min_focus_value": 9,
+          "zoom_shutter_speed": 22
+        }
+      },
+      "method": "drc_camera_osd_info_push",
+      "seq": 67467,
+      "timestamp": 1761383793428
+    },
+    "drc_batteries_info_push": {
+      "data": {
+        "batteries": [
+          {
+            "capacity_percent": 53,
+            "firmware_version": "29.02.01.41",
+            "index": 0,
+            "loop_times": 3,
+            "sn": "7PAPMC7CA001DF",
+            "temperature": 37.1,
+            "voltage": 15211
+          }
+        ],
+        "capacity_percent": 47,
+        "landing_power": 0,
+        "low_battery_warning_threshold": 25,
+        "remain_flight_time": 0,
+        "return_home_power": 0,
+        "serious_low_battery_warning_threshold": 10
+      },
+      "method": "drc_batteries_info_push",
+      "seq": 67468,
+      "timestamp": 1761383793429
+    },
+    "drc_live_lens_change": {
+      "data": {
+        "result": 325001
+      },
+      "method": "drc_live_lens_change",
+      "timestamp": 1761383759031
+    }
+  }
+}
