@@ -54,9 +54,42 @@ class MQTTClient:
         self.client.username_pw_set(self.config['username'], self.config['password'])
         self.client.on_message = self._on_message
 
+        # 添加连接回调用于调试
+        def on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                console.print(f"[green]✓[/green] MQTT 连接成功 (rc={rc})")
+            else:
+                error_messages = {
+                    1: "协议版本不正确",
+                    2: "客户端 ID 无效",
+                    3: "服务器不可用",
+                    4: "用户名或密码错误",
+                    5: "未授权"
+                }
+                error_msg = error_messages.get(rc, f"未知错误 (rc={rc})")
+                console.print(f"[red]✗[/red] MQTT 连接失败: {error_msg}")
+
+        self.client.on_connect = on_connect
+
         console.print(f"[cyan]连接 MQTT: {self.config['host']}:{self.config['port']}[/cyan]")
-        self.client.connect(self.config['host'], self.config['port'], 60)
-        self.client.loop_start()
+
+        try:
+            # 添加连接超时（5秒）
+            self.client.connect(self.config['host'], self.config['port'], 60)
+            self.client.loop_start()
+
+            # 等待连接成功（最多等待 5 秒）
+            import time
+            timeout = 5
+            start_time = time.time()
+            while not self.client.is_connected():
+                if time.time() - start_time > timeout:
+                    raise TimeoutError(f"MQTT 连接超时（{timeout}秒）")
+                time.sleep(0.1)
+
+        except Exception as e:
+            console.print(f"[red]✗[/red] MQTT 连接异常: {e}")
+            raise
 
         # 订阅响应主题
         reply_topic = f"thing/product/{self.gateway_sn}/services_reply"
