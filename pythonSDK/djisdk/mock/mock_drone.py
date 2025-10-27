@@ -288,6 +288,32 @@ class MockMQTTClient:
             ]
         }
 
+    def get_payload_index(self) -> Optional[str]:
+        """获取相机负载索引（模拟，返回默认值 "88-0-0"）"""
+        return "88-0-0"
+
+    def get_gimbal_attitude(self) -> tuple[Optional[float], Optional[float], Optional[float]]:
+        """
+        获取云台姿态 (pitch, roll, yaw)（模拟）
+
+        模拟云台随时间缓慢变化
+        """
+        t = self._elapsed()
+        pitch = 10.0 * math.sin(0.1 * t)  # -10° 到 +10° 摇头
+        roll = 0.0  # 横滚始终为0
+        yaw = 45.0 * math.sin(0.05 * t)  # -45° 到 +45° 左右转
+        return (pitch, roll, yaw)
+
+    def get_camera_osd_data(self) -> Dict[str, Any]:
+        """获取完整的相机 OSD 数据（模拟）"""
+        pitch, roll, yaw = self.get_gimbal_attitude()
+        return {
+            'payload_index': self.get_payload_index(),
+            'gimbal_pitch': pitch,
+            'gimbal_roll': roll,
+            'gimbal_yaw': yaw,
+        }
+
     # ========== 兼容方法（用于控制命令）==========
 
     def publish(self, topic: str, payload: str, qos: int = 0):

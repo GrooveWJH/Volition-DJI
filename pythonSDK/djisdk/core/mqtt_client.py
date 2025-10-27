@@ -38,6 +38,13 @@ class MQTTClient:
         }
         # 拓扑数据（update_topo）- 保存完整的 data 字段
         self.topo_data = None  # 完整的 update_topo data 对象
+        # 相机 OSD 信息（从 drc_camera_osd_info_push 获取）
+        self.camera_osd = {
+            'payload_index': None,  # 相机索引，如 "88-0-0"
+            'gimbal_pitch': None,
+            'gimbal_roll': None,
+            'gimbal_yaw': None,
+        }
         # 起飞点高度（第一次读取到的全局高度）
         self.takeoff_height = None
 
@@ -174,6 +181,25 @@ class MQTTClient:
         with self.lock:
             return self.topo_data.copy() if self.topo_data else None
 
+    def get_payload_index(self) -> Optional[str]:
+        """获取相机负载索引（如 "88-0-0"，从 drc_camera_osd_info_push 获取）"""
+        with self.lock:
+            return self.camera_osd['payload_index']
+
+    def get_gimbal_attitude(self) -> tuple[Optional[float], Optional[float], Optional[float]]:
+        """获取云台姿态 (pitch, roll, yaw)"""
+        with self.lock:
+            return (
+                self.camera_osd['gimbal_pitch'],
+                self.camera_osd['gimbal_roll'],
+                self.camera_osd['gimbal_yaw']
+            )
+
+    def get_camera_osd_data(self) -> Dict[str, Any]:
+        """获取完整的相机 OSD 数据"""
+        with self.lock:
+            return self.camera_osd.copy()
+
 
     def publish(self, method: str, data: Dict[str, Any], tid: str) -> Future:
         """
@@ -267,6 +293,16 @@ class MQTTClient:
                 data = payload.get('data', {})
                 with self.lock:
                     self.topo_data = data  # 保存完整的 data 对象
+                return
+
+            # 处理相机 OSD 信息推送
+            if payload.get('method') == 'drc_camera_osd_info_push':
+                data = payload.get('data', {})
+                with self.lock:
+                    self.camera_osd['payload_index'] = data.get('payload_index')
+                    self.camera_osd['gimbal_pitch'] = data.get('gimbal_pitch')
+                    self.camera_osd['gimbal_roll'] = data.get('gimbal_roll')
+                    self.camera_osd['gimbal_yaw'] = data.get('gimbal_yaw')
                 return
 
             # 处理服务响应
