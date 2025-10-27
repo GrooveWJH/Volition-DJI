@@ -85,6 +85,8 @@ VIDEO_QUALITY = 1  # 0=自适应, 1=流畅, 2=标清, 3=高清, 4=超清
 OSD_FREQUENCY = 1  # Hz
 HSI_FREQUENCY = 1  # Hz
 
+# 控制程序结束时是否自动停止直播
+STOP_LIVE_ON_EXIT = True
 
 # ========== 工具函数 ==========
 
@@ -356,12 +358,18 @@ def main():
             input("\n按 Enter 键停止直播并退出...")
 
             # 步骤 7: 停止直播
-            stop_live(caller, video_id)
+            if STOP_LIVE_ON_EXIT:
+                stop_live(caller, video_id)
+            else:
+                console.print("[yellow]根据配置保留直播推流[/yellow]")
 
     except KeyboardInterrupt:
         console.print("\n\n[yellow]收到中断信号[/yellow]")
         if video_id:
-            stop_live(caller, video_id)
+            if STOP_LIVE_ON_EXIT:
+                stop_live(caller, video_id)
+            else:
+                console.print("[yellow]根据配置保留直播推流[/yellow]")
 
     finally:
         # 清理资源

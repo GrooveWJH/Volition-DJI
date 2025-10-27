@@ -352,7 +352,8 @@ def setup_multiple_drc_connections(
     mqtt_config: Dict[str, Any],
     osd_frequency: int = 30,
     hsi_frequency: int = 10,
-    heartbeat_interval: float = 1.0
+    heartbeat_interval: float = 1.0,
+    skip_drc_setup: bool = False
 ) -> List[Tuple[MQTTClient, ServiceCaller, threading.Thread]]:
     """
     Setup multiple DRC connections in parallel (3x faster than sequential).
@@ -371,6 +372,7 @@ def setup_multiple_drc_connections(
         osd_frequency: OSD data frequency (Hz)
         hsi_frequency: HSI data frequency (Hz)
         heartbeat_interval: Heartbeat interval (seconds)
+        skip_drc_setup: Skip control auth and DRC mode setup (only connect MQTT)
 
     Returns:
         List of (mqtt_client, service_caller, heartbeat_thread) tuples
@@ -388,6 +390,32 @@ def setup_multiple_drc_connections(
     """
     from ..services.heartbeat import start_heartbeat
 
+    if skip_drc_setup:
+        console.print(f"[bold yellow]仅连接 MQTT ({len(uav_configs)} 架无人机)[/bold yellow]")
+        console.print("[dim]跳过控制权请求和 DRC 模式设置[/dim]\n")
+
+        # 只建立 MQTT 连接，不请求控制权和 DRC 模式
+        connections = []
+        for config in uav_configs:
+            sn = config['sn']
+            console.print(f"[cyan]连接 {sn}...[/cyan]")
+
+            mqtt = MQTTClient(sn, mqtt_config)
+            mqtt.connect()
+            caller = ServiceCaller(mqtt)
+
+            # 不启动心跳（因为没有进入 DRC 模式）
+            # 创建一个空的 MockHeartbeatThread 占位
+            from ..mock.mock_drone import MockHeartbeatThread
+            heartbeat = MockHeartbeatThread()
+
+            connections.append((mqtt, caller, heartbeat))
+            console.print(f"[green]✓ {sn} MQTT 已连接[/green]")
+
+        console.print(f"\n[bold green]✓ 所有 MQTT 连接已建立 ({len(connections)} 架)[/bold green]\n")
+        return connections
+
+    # 正常的 DRC 连接流程
     console.print(f"[bold cyan]并行设置 {len(uav_configs)} 架无人机的 DRC 连接[/bold cyan]\n")
 
     # Phase 1: Parallel connect + auth request

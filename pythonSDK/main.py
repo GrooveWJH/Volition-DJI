@@ -14,13 +14,17 @@ MQTT_CONFIG = {'host': '81.70.222.38', 'port': 1883,
 
 # UAV 配置 - 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
 UAV_CONFIGS = [
-    {'sn': '9N9CN2J0012CXY', 'user_id': 'pilot_1', 'callsign': 'Pilot 1'},
-    # {'sn': '9N9CN8400164WH', 'user_id': 'pilot_2', 'callsign': 'Pilot 2'},
+    # {'sn': '9N9CN2J0012CXY', 'user_id': 'pilot_1', 'callsign': 'Pilot 1'},
+    {'sn': '9N9CN8400164WH', 'user_id': 'pilot_2', 'callsign': 'Pilot 2'},
     # {'sn': '9N9CN180011TJN', 'user_id': 'pilot_3', 'callsign': 'Pilot 3'},
 ]
 
 OSD_FREQUENCY = 100
 HSI_FREQUENCY = 10
+
+# 跳过 DRC 连接建立（适用于其他程序已经维持 DRC 状态的场景）
+# 设置为 True 时，只连接 MQTT 订阅数据，不请求控制权和进入 DRC 模式
+SKIP_DRC_SETUP = True
 
 
 def main():
@@ -49,6 +53,7 @@ def main():
             heartbeat_interval=1.0,
             osd_frequency=OSD_FREQUENCY,
             hsi_frequency=HSI_FREQUENCY,
+            skip_drc_setup=SKIP_DRC_SETUP,
         )
 
     # 构建管理数据
