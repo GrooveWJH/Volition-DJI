@@ -7,6 +7,8 @@ from rich.console import Console
 from rich.live import Live
 from rich.columns import Columns
 from display import create_uav_panel
+from vrpn_display import create_vrpn_panel
+from vrpn_receiver import VRPNClient
 
 # 配置
 MQTT_CONFIG = {'host': '81.70.222.38', 'port': 1883,
@@ -14,9 +16,9 @@ MQTT_CONFIG = {'host': '81.70.222.38', 'port': 1883,
 
 # UAV 配置 - 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
 UAV_CONFIGS = [
-    # {'sn': '9N9CN2J0012CXY', 'user_id': 'pilot_1', 'callsign': 'Pilot 1'},
-    {'sn': '9N9CN8400164WH', 'user_id': 'pilot_2', 'callsign': 'Pilot 2'},
-    # {'sn': '9N9CN180011TJN', 'user_id': 'pilot_3', 'callsign': 'Pilot 3'},
+    {'sn': '9N9CN2J0012CXY', 'user_id': 'pilot_1', 'callsign': 'Pilot 1', 'vrpn_device': 'Drone001@192.168.31.100'},
+    # {'sn': '9N9CN8400164WH', 'user_id': 'pilot_2', 'callsign': 'Pilot 2', 'vrpn_device': 'Drone002@192.168.31.100'},
+    # {'sn': '9N9CN180011TJN', 'user_id': 'pilot_3', 'callsign': 'Pilot 3', 'vrpn_device': 'Drone003@192.168.31.100'},
 ]
 
 OSD_FREQUENCY = 100
@@ -24,7 +26,11 @@ HSI_FREQUENCY = 10
 
 # 跳过 DRC 连接建立（适用于其他程序已经维持 DRC 状态的场景）
 # 设置为 True 时，只连接 MQTT 订阅数据，不请求控制权和进入 DRC 模式
-SKIP_DRC_SETUP = True
+SKIP_DRC_SETUP = False
+
+# 启用 VRPN 动捕数据显示
+# 设置为 True 时，显示动捕位置、速度、加速度数据
+ENABLE_VRPN = True
 
 
 def main():
@@ -66,12 +72,43 @@ def main():
     console.print(
         f"\n[bold green]✓ 所有无人机已就绪 ({len(uav_clients)} 架)[/bold green]")
 
+    # 初始化 VRPN 客户端（如果启用）
+    vrpn_clients = []
+    vrpn_enabled = ENABLE_VRPN
+    if vrpn_enabled:
+        console.rule("[bold cyan]初始化 VRPN 动捕系统[/bold cyan]")
+        for i, config in enumerate(UAV_CONFIGS):
+            vrpn_device = config.get('vrpn_device')
+            if vrpn_device:
+                try:
+                    console.print(f"[cyan]连接 VRPN 设备: {vrpn_device}...[/cyan]")
+                    vrpn_client = VRPNClient(device_name=vrpn_device)
+                    vrpn_clients.append({
+                        'client': vrpn_client,
+                        'device_name': vrpn_device.split('@')[0],
+                        'uav_id': str(i+1)
+                    })
+                    console.print(f"[green]✓ VRPN 客户端 #{i+1} 已连接[/green]")
+                except Exception as e:
+                    console.print(f"[red]✗ VRPN 连接失败: {e}[/red]")
+                    vrpn_clients.append(None)
+            else:
+                vrpn_clients.append(None)
+
+        if any(vrpn_clients):
+            console.print(f"\n[bold green]✓ VRPN 动捕系统已就绪[/bold green]")
+        else:
+            console.print(f"\n[bold yellow]⚠ 无可用 VRPN 设备[/bold yellow]")
+            vrpn_enabled = False
+
     # 计算 GUI 刷新频率 = max(osd_frequency, 60)
     gui_refresh_rate = max(OSD_FREQUENCY, 60)
     sleep_interval = 1.0 / gui_refresh_rate
 
     console.print(
         f"[cyan]OSD 频率: {OSD_FREQUENCY} Hz | GUI 刷新频率: {gui_refresh_rate} Hz[/cyan]")
+    if vrpn_enabled:
+        console.print(f"[cyan]VRPN 动捕显示: [green]已启用[/green][/cyan]")
     console.print("[bold yellow]监控运行中... (按 Ctrl+C 退出)[/bold yellow]\n")
 
     # 实时监控循环
@@ -87,6 +124,17 @@ def main():
                     for i in range(len(uav_clients))
                 ]
 
+                # 如果启用 VRPN，添加动捕数据面板
+                if vrpn_enabled and vrpn_clients:
+                    for i, vrpn_data in enumerate(vrpn_clients):
+                        if vrpn_data is not None:
+                            vrpn_panel = create_vrpn_panel(
+                                vrpn_data['client'],
+                                vrpn_data['device_name'],
+                                elapsed
+                            )
+                            panels.append(vrpn_panel)
+
                 # 并排显示所有面板
                 display = Columns(panels, equal=True, expand=True)
                 live.update(display)
@@ -98,6 +146,19 @@ def main():
     finally:
         # 清理资源
         console.rule("[bold cyan]断开连接[/bold cyan]")
+
+        # 清理 VRPN 客户端
+        if vrpn_enabled and vrpn_clients:
+            console.print("[cyan]清理 VRPN 客户端...[/cyan]")
+            for vrpn_data in vrpn_clients:
+                if vrpn_data is not None:
+                    try:
+                        vrpn_data['client'].stop()
+                        console.print(f"[green]✓ VRPN 客户端 {vrpn_data['device_name']} 已断开[/green]")
+                    except Exception as e:
+                        console.print(f"[yellow]⚠ VRPN 清理警告: {e}[/yellow]")
+
+        # 清理无人机连接
         for i, uav_client in enumerate(uav_clients):
             uav_id = uav_client['id']
             sn = UAV_CONFIGS[i]['sn']
