@@ -1,5 +1,6 @@
 """
 数据记录器模块
+支持自定义CSV字段的参数化记录器
 """
 import csv
 import os
@@ -7,29 +8,70 @@ from datetime import datetime
 from rich.console import Console
 
 
-class DataLogger:
-    """PID控制数据记录器"""
+# 预定义的字段集合
+FIELD_SETS = {
+    'plane_yaw': [
+        'timestamp', 'target_x', 'target_y', 'target_yaw',
+        'current_x', 'current_y', 'current_yaw',
+        'error_x', 'error_y', 'error_yaw', 'distance',
+        'roll_offset', 'pitch_offset', 'yaw_offset',
+        'roll_absolute', 'pitch_absolute', 'yaw_absolute', 'waypoint_index'
+    ],
+    'yaw_only': [
+        'timestamp', 'target_yaw', 'current_yaw', 'error_yaw',
+        'yaw_offset', 'yaw_absolute', 'target_index'
+    ]
+}
 
-    def __init__(self, enabled=True, base_dir=None):
+
+class DataLogger:
+    """参数化PID控制数据记录器"""
+
+    def __init__(self, enabled=True, base_dir=None, field_set='plane_yaw',
+                 csv_name='control_data.csv', subdir=''):
+        """
+        初始化数据记录器
+
+        Args:
+            enabled: 是否启用记录
+            base_dir: 基础目录
+            field_set: 字段集合名称('plane_yaw', 'yaw_only')或自定义字段列表
+            csv_name: CSV文件名
+            subdir: 子目录名称(如'yaw')
+        """
         self.enabled = enabled
         self.csv_file = None
         self.csv_writer = None
         self.log_dir = None
+        self.fields = self._get_fields(field_set)
+        self.csv_name = csv_name
+        self.subdir = subdir
 
         if self.enabled:
             self._setup_logging(base_dir)
+
+    def _get_fields(self, field_set):
+        """获取字段列表"""
+        if isinstance(field_set, str):
+            return FIELD_SETS.get(field_set, FIELD_SETS['plane_yaw'])
+        elif isinstance(field_set, list):
+            return field_set
+        else:
+            return FIELD_SETS['plane_yaw']
 
     def _setup_logging(self, base_dir=None):
         """创建数据目录和CSV文件"""
         # 确定基础目录
         if base_dir is None:
-            # 获取pythonSDK目录（不管从哪里运行都能找到）
             import sys
             script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-            # 如果从control目录运行，回到上一级
             if os.path.basename(script_dir) == 'control':
                 script_dir = os.path.dirname(script_dir)
             base_dir = os.path.join(script_dir, 'data')
+
+        # 添加子目录
+        if self.subdir:
+            base_dir = os.path.join(base_dir, self.subdir)
 
         os.makedirs(base_dir, exist_ok=True)
 
@@ -39,53 +81,51 @@ class DataLogger:
         os.makedirs(self.log_dir, exist_ok=True)
 
         # 创建CSV文件
-        csv_path = os.path.join(self.log_dir, 'control_data.csv')
+        csv_path = os.path.join(self.log_dir, self.csv_name)
         self.csv_file = open(csv_path, 'w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
 
         # 写入CSV头部
-        self.csv_writer.writerow([
-            'timestamp',      # 时间戳
-            'target_x',       # 目标x位置
-            'target_y',       # 目标y位置
-            'target_yaw',     # 目标yaw角度
-            'current_x',      # 当前x位置
-            'current_y',      # 当前y位置
-            'current_yaw',    # 当前yaw角度
-            'error_x',        # x轴误差
-            'error_y',        # y轴误差
-            'error_yaw',      # yaw角误差
-            'distance',       # 距离目标的距离
-            'roll_offset',    # Roll杆量偏移
-            'pitch_offset',   # Pitch杆量偏移
-            'yaw_offset',     # Yaw杆量偏移
-            'roll_absolute',  # Roll绝对杆量
-            'pitch_absolute', # Pitch绝对杆量
-            'yaw_absolute',   # Yaw绝对杆量
-            'waypoint_index'  # 当前航点索引
-        ])
+        self.csv_writer.writerow(self.fields)
         self.csv_file.flush()
 
-    def log(self, timestamp, target_x, target_y, target_yaw,
-            current_x, current_y, current_yaw,
-            error_x, error_y, error_yaw, distance,
-            roll_offset, pitch_offset, yaw_offset,
-            roll_absolute, pitch_absolute, yaw_absolute, waypoint_index):
-        """记录一条数据"""
+    def log(self, **kwargs):
+        """记录一条数据（使用关键字参数）"""
         if not self.enabled or self.csv_writer is None:
             return
 
-        self.csv_writer.writerow([
-            timestamp, target_x, target_y, target_yaw,
-            current_x, current_y, current_yaw,
-            error_x, error_y, error_yaw, distance,
-            roll_offset, pitch_offset, yaw_offset,
-            roll_absolute, pitch_absolute, yaw_absolute, waypoint_index
-        ])
+        # 按字段顺序提取数据
+        row = [kwargs.get(field, '') for field in self.fields]
+        self.csv_writer.writerow(row)
 
         # 每10条刷新一次
-        if int(timestamp * 50) % 10 == 0:  # 假设50Hz
+        timestamp = kwargs.get('timestamp', 0)
+        if timestamp and int(timestamp * 50) % 10 == 0:
             self.csv_file.flush()
+
+    def log_plane_yaw(self, timestamp, target_x, target_y, target_yaw,
+                      current_x, current_y, current_yaw,
+                      error_x, error_y, error_yaw, distance,
+                      roll_offset, pitch_offset, yaw_offset,
+                      roll_absolute, pitch_absolute, yaw_absolute, waypoint_index):
+        """记录平面+Yaw控制数据（向后兼容）"""
+        self.log(
+            timestamp=timestamp, target_x=target_x, target_y=target_y, target_yaw=target_yaw,
+            current_x=current_x, current_y=current_y, current_yaw=current_yaw,
+            error_x=error_x, error_y=error_y, error_yaw=error_yaw, distance=distance,
+            roll_offset=roll_offset, pitch_offset=pitch_offset, yaw_offset=yaw_offset,
+            roll_absolute=roll_absolute, pitch_absolute=pitch_absolute,
+            yaw_absolute=yaw_absolute, waypoint_index=waypoint_index
+        )
+
+    def log_yaw_only(self, timestamp, target_yaw, current_yaw, error_yaw,
+                     yaw_offset, yaw_absolute, target_index):
+        """记录Yaw单独控制数据"""
+        self.log(
+            timestamp=timestamp, target_yaw=target_yaw, current_yaw=current_yaw,
+            error_yaw=error_yaw, yaw_offset=yaw_offset, yaw_absolute=yaw_absolute,
+            target_index=target_index
+        )
 
     def close(self):
         """关闭日志文件"""
