@@ -50,7 +50,12 @@ class MQTTClient:
 
     def connect(self):
         """建立 MQTT 连接"""
-        self.client = mqtt.Client(client_id=f"python-drc-{self.gateway_sn}")
+        # 添加3位随机UUID后缀，避免多个客户端冲突
+        import uuid
+        random_suffix = str(uuid.uuid4())[:3]
+        client_id = f"python-drc-{self.gateway_sn}-{random_suffix}"
+
+        self.client = mqtt.Client(client_id=client_id)
         self.client.username_pw_set(self.config['username'], self.config['password'])
         self.client.on_message = self._on_message
 
@@ -347,15 +352,26 @@ class MQTTClient:
                 future = self.pending_requests.pop(tid, None)
 
             if future:
-                # 检查是否有错误 - DJI 协议中 info.code != 0 表示错误
+                # 检查是否有错误 - DJI 协议有两种格式：
+                # 格式1（标准）：info.code != 0 表示错误
+                # 格式2（简化）：data.result != 0 表示错误
                 info = payload.get('info', {})
+                data = payload.get('data', {})
+
+                # 优先检查 info.code（标准格式）
                 if info and info.get('code') != 0:
                     error_msg = info.get('message', 'Unknown error')
                     console.print(f"[red]✗[/red] 错误: {error_msg}")
                     future.set_exception(Exception(error_msg))
+                # 再检查 data.result（简化格式，如 drc_mode_enter）
+                elif 'result' in data and data.get('result') != 0:
+                    error_msg = data.get('output', {}).get('msg', 'Unknown error')
+                    console.print(f"[red]✗[/red] 错误: {error_msg}")
+                    future.set_exception(Exception(error_msg))
+                # 成功
                 else:
                     console.print(f"[green]←[/green] 收到响应 (tid: {tid[:8]}...)")
-                    future.set_result(payload.get('data', {}))
+                    future.set_result(data)
 
         except Exception as e:
             console.print(f"[red]消息处理异常: {e}[/red]")

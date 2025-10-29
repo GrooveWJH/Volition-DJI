@@ -10,7 +10,8 @@ import time
 
 # 动态路径处理
 if __name__ == '__main__' and __package__ is None:
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    sys.path.insert(0, os.path.abspath(
+        os.path.join(os.path.dirname(__file__), '..')))
 
 # 导入 DJI SDK
 try:
@@ -40,9 +41,9 @@ CONFIG = {
     'frequency': 30.0,
     'user_id': 'keyboard_pilot',
     'user_callsign': 'Keyboard Pilot',
-    'in_drc_mode': True,
+    'in_drc_mode': False,
     'auto_confirm_auth': True,
-    'osd_frequency': 30,
+    'osd_frequency': 100,
     'hsi_frequency': 10,
     'ui_scale': 1.0,
 }
@@ -51,6 +52,7 @@ CONFIG = {
 def main():
     from rich.console import Console
     from rich.panel import Panel
+    import platform
 
     console = Console()
     console.print(Panel.fit(
@@ -59,6 +61,18 @@ def main():
         f"[dim]MQTT: {CONFIG['mqtt_host']}:{CONFIG['mqtt_port']}[/dim]",
         border_style="cyan"
     ))
+
+    # macOS 长按键盘提示
+    if platform.system() == 'Darwin':
+        console.print("\n[bold yellow]⚠️  macOS 用户重要提示[/bold yellow]")
+        console.print("[yellow]长按键盘可能会弹出字符选择器,影响无人机控制。[/yellow]")
+        console.print("[yellow]解决方案（二选一）：[/yellow]")
+        console.print(
+            "[cyan]1. 临时禁用（推荐）: defaults write -g ApplePressAndHoldEnabled -bool false[/cyan]")
+        console.print("[cyan]2. 使用 Shift+P 暂停后切换窗口操作[/cyan]")
+        console.print("[dim]提示：禁用后需要重启终端或重新登录生效[/dim]")
+        console.print(
+            "[dim]退出后可恢复: defaults write -g ApplePressAndHoldEnabled -bool true[/dim]\n")
 
     # 1. 连接 MQTT
     console.print("[bold cyan]━━━ 步骤 1/4: 连接 MQTT ━━━[/bold cyan]")
@@ -79,7 +93,8 @@ def main():
     if not in_drc_mode:
         console.print("\n[bold cyan]━━━ 步骤 2/4: 请求控制权 ━━━[/bold cyan]")
         try:
-            request_control_auth(caller, user_id=CONFIG['user_id'], user_callsign=CONFIG['user_callsign'])
+            request_control_auth(
+                caller, user_id=CONFIG['user_id'], user_callsign=CONFIG['user_callsign'])
         except Exception as e:
             console.print(f"[red]✗ 控制权请求失败: {e}[/red]")
             mqtt_client.disconnect()
@@ -87,8 +102,8 @@ def main():
 
         console.print("\n[bold green]控制权请求已发送，请在遥控器上点击确认授权。[/bold green]")
         if CONFIG['auto_confirm_auth']:
-            console.print("[bold cyan]自动等待 5 秒后继续...[/bold cyan]")
-            time.sleep(5)
+            console.print("[bold cyan]自动等待 3 秒后继续...[/bold cyan]")
+            time.sleep(3)
         else:
             console.print("[bold yellow]完成后按回车继续...[/bold yellow]")
             try:

@@ -175,7 +175,7 @@ class VRPNClient:
         if path:
             return Path(path)
 
-        # Auto-detect: assume we're in pythonSDK/vrpn_receiver/
+        # Auto-detect: assume we're in pythonSDK/vrpn/
         repo_root = Path(__file__).parent.parent
         return repo_root / "vrpn" / "build" / "vrpn_send"
 

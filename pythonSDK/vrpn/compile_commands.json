@@ -1,12 +1,6 @@
 [
 {
   "directory": "/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build",
-  "command": "/usr/bin/c++  -I/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build/_deps/vrpn-src -I/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build/_deps/libzmq-src/include -I/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build/_deps/libzmq-build -O3 -DNDEBUG -std=gnu++17 -arch arm64 -o CMakeFiles/vrpn_client.dir/main.cpp.o -c /Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/main.cpp",
-  "file": "/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/main.cpp",
-  "output": "CMakeFiles/vrpn_client.dir/main.cpp.o"
-},
-{
-  "directory": "/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build",
   "command": "/usr/bin/c++  -I/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build/_deps/vrpn-src -I/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build/_deps/cppzmq-src -I/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build/_deps/libzmq-src/include -I/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/build/_deps/libzmq-build -O3 -DNDEBUG -std=gnu++17 -arch arm64 -o CMakeFiles/vrpn_send.dir/send.cpp.o -c /Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/send.cpp",
   "file": "/Users/groovewjh/Project/work/SYSU/Volition-DJI/pythonSDK/vrpn/send.cpp",
   "output": "CMakeFiles/vrpn_send.dir/send.cpp.o"

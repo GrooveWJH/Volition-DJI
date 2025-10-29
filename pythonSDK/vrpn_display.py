@@ -4,7 +4,7 @@ VRPN 动捕数据显示模块
 from typing import Dict, Any, Optional
 from rich.panel import Panel
 from rich.table import Table
-from vrpn_receiver import VRPNClient
+from vrpn import VRPNClient
 
 
 def create_vrpn_panel(vrpn_client: Optional[VRPNClient], drone_name: str, elapsed: int) -> Panel:

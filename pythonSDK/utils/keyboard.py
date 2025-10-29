@@ -15,12 +15,12 @@
 - 空格: 上升 (半杆量)
 - Shift: 下降 (满杆量)
 - K 键: 外八解锁（左下右下，用于解锁无人机）
-- Shift+P：手动暂停/恢复
+- P: 暂停/恢复
 - Ctrl+C：退出
 
 ⚠️ 安全机制：
 - 零延迟响应：松开按键立即停止（pynput 真实按键事件）
-- 手动暂停：Shift+P 快捷键
+- 手动暂停：P 快捷键
 - 被动监听：不拦截按键，不干扰其他程序
 """
 import threading
@@ -157,7 +157,7 @@ class ControlsWidget(Static):
         table.add_row("空格", "上升 (半杆量)")
         table.add_row("Shift", "下降 (满杆量)")
         table.add_row("K", "外八解锁")
-        table.add_row("Shift+P", "暂停/恢复")
+        table.add_row("P", "暂停/恢复")
         table.add_row("Ctrl+C", "退出")
 
         return Panel(
@@ -175,7 +175,7 @@ class KeyStatusWidget(Static):
 
     def render(self):
         if self.paused:
-            content = Text("⏸️  手动暂停（按 Shift+P 恢复）", style="bold yellow")
+            content = Text("⏸️  已暂停（按 P 恢复）", style="bold black on yellow")
         elif self.pressed_keys:
             keys_text = ", ".join(sorted(self.pressed_keys))
             content = Text(keys_text, style="green bold")
@@ -282,6 +282,10 @@ class JoystickApp(App):
         self.scale = scale
         self.on_stick_update = on_stick_update  # 可选回调：当摇杆值更新时调用
         self.update_interval = update_interval  # 更新间隔（秒）
+        self._pressed_keys_state = set()
+        self._state_lock = threading.Lock()
+        self._shift_pressed = False
+        self._keyboard_listener = None
 
     def compose(self) -> ComposeResult:
         """组合 UI 组件 - 窗口风格布局"""
@@ -335,8 +339,17 @@ class JoystickApp(App):
 
     def on_unmount(self) -> None:
         """退出时清理资源"""
-        if self._keyboard_listener:
-            self._keyboard_listener.stop()
+        listener = self._keyboard_listener
+        if listener:
+            listener.stop()
+            try:
+                # Ensure the background listener thread releases resources promptly
+                listener.join(timeout=1.0)
+            except RuntimeError:
+                pass
+            finally:
+                self._keyboard_listener = None
+        self._pressed_keys_state.clear()
 
     def _normalize_key(self, key):
         """Convert pynput key to normalized string.
@@ -362,26 +375,19 @@ class JoystickApp(App):
         """pynput 按键按下事件（后台线程）"""
         key_char, is_shift = self._normalize_key(key)
 
-        # 调试：显示所有按键（包括特殊键）
         with self._state_lock:
             if key_char:
                 self._pressed_keys_state.add(key_char)
-            # 特殊处理：显示原始键名用于调试
-            try:
-                raw_key = f"raw:{key.char}" if hasattr(key, 'char') and key.char else f"special:{key.name if hasattr(key, 'name') else str(key)}"
-                self._pressed_keys_state.add(raw_key)
-            except:
-                pass
 
         if is_shift:
             self._shift_pressed = True
 
-        # Shift+P：切换手动暂停
-        if self._shift_pressed and key_char == 'p':
+        # P 键：切换手动暂停（无需 Shift）
+        if key_char == 'p':
             self.paused = not self.paused
             self.key_status.paused = self.paused
             if self.paused:
-                self.title = "🎮 虚拟摇杆 - ⏸️  手动暂停"
+                self.title = "🎮 虚拟摇杆 - ⏸️  已暂停"
                 with self._state_lock:
                     self._pressed_keys_state.clear()
             else:
@@ -392,16 +398,9 @@ class JoystickApp(App):
         """pynput 按键释放事件（后台线程）- 零延迟"""
         key_char, is_shift = self._normalize_key(key)
 
-        # 调试：移除原始键名
         with self._state_lock:
             if key_char:
                 self._pressed_keys_state.discard(key_char)
-            # 移除原始键名
-            try:
-                raw_key = f"raw:{key.char}" if hasattr(key, 'char') and key.char else f"special:{key.name if hasattr(key, 'name') else str(key)}"
-                self._pressed_keys_state.discard(raw_key)
-            except:
-                pass
 
         if is_shift:
             self._shift_pressed = False
@@ -476,8 +475,8 @@ class JoystickApp(App):
             self.stick_state['pitch']
         )
 
-        # 如果有回调且未暂停，调用回调传递摇杆状态
-        if self.on_stick_update and not self.paused:
+        # 如果有回调且未暂停，且有按键按下时，调用回调传递摇杆状态
+        if self.on_stick_update and not self.paused and current_keys:
             self.on_stick_update(self.stick_state)
 
 

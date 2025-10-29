@@ -8,7 +8,7 @@ from rich.live import Live
 from rich.columns import Columns
 from display import create_uav_panel
 from vrpn_display import create_vrpn_panel
-from vrpn_receiver import VRPNClient
+from vrpn import VRPNClient
 
 # 配置
 MQTT_CONFIG = {'host': '81.70.222.38', 'port': 1883,
@@ -118,25 +118,33 @@ def main():
             while True:
                 elapsed = int(time.time() - start_time)
 
-                # 为每个无人机创建面板
-                panels = [
-                    create_uav_panel(uav_clients[i], UAV_CONFIGS[i], elapsed)
-                    for i in range(len(uav_clients))
-                ]
+                # 为每个无人机创建合并面板（DJI OSD + VRPN 横向排列）
+                panels = []
+                for i in range(len(uav_clients)):
+                    # DJI 面板
+                    uav_panel = create_uav_panel(uav_clients[i], UAV_CONFIGS[i], elapsed)
 
-                # 如果启用 VRPN，添加动捕数据面板
-                if vrpn_enabled and vrpn_clients:
-                    for i, vrpn_data in enumerate(vrpn_clients):
-                        if vrpn_data is not None:
-                            vrpn_panel = create_vrpn_panel(
-                                vrpn_data['client'],
-                                vrpn_data['device_name'],
-                                elapsed
-                            )
-                            panels.append(vrpn_panel)
+                    # 如果启用 VRPN 且有对应数据，合并显示
+                    if vrpn_enabled and i < len(vrpn_clients) and vrpn_clients[i] is not None:
+                        vrpn_panel = create_vrpn_panel(
+                            vrpn_clients[i]['client'],
+                            vrpn_clients[i]['device_name'],
+                            elapsed
+                        )
+                        # 横向合并两个面板
+                        merged_panel = Columns([uav_panel, vrpn_panel], equal=False, expand=False, padding=0)
+                        panels.append(merged_panel)
+                    else:
+                        panels.append(uav_panel)
 
-                # 并排显示所有面板
-                display = Columns(panels, equal=True, expand=True)
+                # 纵向堆叠所有无人机的面板（如果有多架）
+                if len(panels) == 1:
+                    display = panels[0]
+                else:
+                    # 多架无人机时，纵向排列
+                    from rich.console import Group
+                    display = Group(*panels)
+
                 live.update(display)
 
                 time.sleep(sleep_interval)  # 匹配 GUI 刷新频率
