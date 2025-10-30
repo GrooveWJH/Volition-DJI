@@ -15,11 +15,30 @@ FIELD_SETS = {
         'current_x', 'current_y', 'current_yaw',
         'error_x', 'error_y', 'error_yaw', 'distance',
         'roll_offset', 'pitch_offset', 'yaw_offset',
-        'roll_absolute', 'pitch_absolute', 'yaw_absolute', 'waypoint_index'
+        'roll_absolute', 'pitch_absolute', 'yaw_absolute', 'waypoint_index',
+        # PID components for X (Pitch)
+        'x_pid_p', 'x_pid_i', 'x_pid_d',
+        # PID components for Y (Roll)
+        'y_pid_p', 'y_pid_i', 'y_pid_d',
+        # PID components for Yaw
+        'yaw_pid_p', 'yaw_pid_i', 'yaw_pid_d'
     ],
     'yaw_only': [
         'timestamp', 'target_yaw', 'current_yaw', 'error_yaw',
-        'yaw_offset', 'yaw_absolute', 'target_index'
+        'yaw_offset', 'yaw_absolute', 'target_index',
+        # PID components for Yaw
+        'yaw_pid_p', 'yaw_pid_i', 'yaw_pid_d'
+    ],
+    'plane_only': [
+        'timestamp', 'target_x', 'target_y',
+        'current_x', 'current_y',
+        'error_x', 'error_y', 'distance',
+        'roll_offset', 'pitch_offset',
+        'roll_absolute', 'pitch_absolute', 'waypoint_index',
+        # PID components for X (Pitch)
+        'x_pid_p', 'x_pid_i', 'x_pid_d',
+        # PID components for Y (Roll)
+        'y_pid_p', 'y_pid_i', 'y_pid_d'
     ]
 }
 
@@ -128,11 +147,25 @@ class DataLogger:
         )
 
     def close(self):
-        """关闭日志文件"""
+        """关闭日志文件并创建latest副本"""
         if self.csv_file:
             self.csv_file.close()
             console = Console()
             console.print(f"[green]✓ 数据已保存至: {self.log_dir}[/green]")
+
+            # 创建"latest"副本（覆盖旧的latest）
+            if self.log_dir:
+                import shutil
+                base_dir = os.path.dirname(self.log_dir)
+                latest_dir = os.path.join(base_dir, 'latest')
+
+                # 如果latest已存在，先删除
+                if os.path.exists(latest_dir):
+                    shutil.rmtree(latest_dir)
+
+                # 复制整个目录到latest
+                shutil.copytree(self.log_dir, latest_dir)
+                console.print(f"[green]✓ 最新记录已复制至: {latest_dir}[/green]")
 
     def get_log_dir(self):
         """获取日志目录路径"""

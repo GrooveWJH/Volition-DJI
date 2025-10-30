@@ -185,7 +185,7 @@ def main():
 
             # PID计算并发送控制指令
             current_time = time.time()
-            roll_offset, pitch_offset, yaw_offset = controller.compute(
+            roll_offset, pitch_offset, yaw_offset, pid_components = controller.compute(
                 target_x, target_y, target_yaw,
                 current_x, current_y, current_yaw,
                 current_time
@@ -195,7 +195,7 @@ def main():
             yaw = int(NEUTRAL + yaw_offset)
             send_stick_control(mqtt_client, roll=roll, pitch=pitch, yaw=yaw)
 
-            # 记录数据
+            # 记录数据（包含PID分量）
             error_x = target_x - current_x
             error_y = target_y - current_y
             error_yaw = controller._normalize_angle(target_yaw - current_yaw)
@@ -207,7 +207,19 @@ def main():
                 distance=distance,
                 roll_offset=roll_offset, pitch_offset=pitch_offset, yaw_offset=yaw_offset,
                 roll_absolute=roll, pitch_absolute=pitch, yaw_absolute=yaw,
-                waypoint_index=waypoint_index
+                waypoint_index=waypoint_index,
+                # PID components for X (Pitch)
+                x_pid_p=pid_components['x'][0],
+                x_pid_i=pid_components['x'][1],
+                x_pid_d=pid_components['x'][2],
+                # PID components for Y (Roll)
+                y_pid_p=pid_components['y'][0],
+                y_pid_i=pid_components['y'][1],
+                y_pid_d=pid_components['y'][2],
+                # PID components for Yaw
+                yaw_pid_p=pid_components['yaw'][0],
+                yaw_pid_i=pid_components['yaw'][1],
+                yaw_pid_d=pid_components['yaw'][2]
             )
 
             # 显示状态（每10次循环显示一次）
