@@ -59,13 +59,10 @@ class PlaneController:
 
     特性：
     - 距离自适应增益调度（远处激进，近处温和）
-    - Smith预测器延迟补偿（处理网络延迟）
     """
 
     def __init__(self, kp, ki, kd, output_limit,
                  enable_gain_scheduling=True,
-                 enable_smith_predictor=True,
-                 estimated_delay=0.5,
                  gain_schedule_profile=None):
         """
         初始化平面控制器
@@ -74,8 +71,6 @@ class PlaneController:
             kp, ki, kd: PID增益
             output_limit: 输出限幅
             enable_gain_scheduling: 是否启用增益调度
-            enable_smith_predictor: 是否启用Smith预测器
-            estimated_delay: 估计延迟时间（秒）
             gain_schedule_profile: {'far': {'kp_scale', 'kd_scale'}, 'near': {...}}
         """
         # 保存基础PID增益
@@ -98,19 +93,51 @@ class PlaneController:
         }
         self.gain_schedule_profile = gain_schedule_profile or default_profile
 
-        # Smith预测器配置
-        self.enable_smith_predictor = enable_smith_predictor
-        self.estimated_delay = estimated_delay
-        self.delay_buffer_x = []     # (时间戳, 指令值)
-        self.delay_buffer_y = []
-        self.response_gain = 0.0015  # 杆量到速度的响应增益（m/s per stick unit）
-
     def reset(self):
-        """重置所有PID状态和延迟缓冲区"""
+        """重置所有PID状态"""
         self.x_pid.reset()
         self.y_pid.reset()
-        self.delay_buffer_x.clear()
-        self.delay_buffer_y.clear()
+
+    def selective_reset(self, reset_mask='111'):
+        """
+        选择性重置PID状态
+
+        Args:
+            reset_mask: 三位字符串，每位对应P、I、D是否重置
+                       "000" - 不重置任何项
+                       "101" - 重置P和D，保留I
+                       "010" - 仅重置I项
+                       "111" - 全部重置
+
+        Examples:
+            controller.selective_reset('101')  # 重置P和D，保留I
+            controller.selective_reset('010')  # 仅重置I项（防止积分饱和）
+        """
+        if len(reset_mask) != 3:
+            raise ValueError("reset_mask must be 3 characters (e.g., '101')")
+
+        reset_p = reset_mask[0] == '1'
+        reset_i = reset_mask[1] == '1'
+        reset_d = reset_mask[2] == '1'
+
+        # X轴PID选择性重置
+        if reset_p:
+            # P项没有状态，不需要重置
+            pass
+        if reset_i:
+            self.x_pid.integral = 0.0
+        if reset_d:
+            self.x_pid.last_error = None
+            self.x_pid.last_time = None
+
+        # Y轴PID选择性重置
+        if reset_p:
+            pass
+        if reset_i:
+            self.y_pid.integral = 0.0
+        if reset_d:
+            self.y_pid.last_error = None
+            self.y_pid.last_time = None
 
     def compute(self, target_x, target_y, current_x, current_y, current_time):
         """
@@ -134,15 +161,6 @@ class PlaneController:
         # PID计算
         pitch_offset, x_components = self.x_pid.compute(error_x, current_time)  # X → Pitch正
         y_output, y_components = self.y_pid.compute(error_y, current_time)
-
-        # 【Smith预测器】延迟补偿
-        if self.enable_smith_predictor:
-            pitch_offset = self._apply_smith_predictor(
-                pitch_offset, self.delay_buffer_x, current_time, 'x'
-            )
-            y_output = self._apply_smith_predictor(
-                y_output, self.delay_buffer_y, current_time, 'y'
-            )
 
         # 输出限幅
         pitch_offset = max(-self.output_limit, min(self.output_limit, pitch_offset))
@@ -191,56 +209,6 @@ class PlaneController:
         self.x_pid.kd = self.kd_base * kd_scale
         self.y_pid.kp = self.kp_base * kp_scale
         self.y_pid.kd = self.kd_base * kd_scale
-
-    def _apply_smith_predictor(self, command, buffer, current_time, axis):
-        """
-        Smith预测器延迟补偿
-
-        原理：
-        1. 存储当前指令到缓冲区
-        2. 取出延迟时间前的历史指令
-        3. 用简单模型预测该指令造成的当前速度
-        4. 从当前指令中减去预测速度（抵消延迟效应）
-        """
-        # 存储当前指令
-        buffer.append((current_time, command))
-
-        # 清理1秒前的旧数据
-        while buffer and buffer[0][0] < current_time - 1.0:
-            buffer.pop(0)
-
-        # 获取延迟时间前的历史指令
-        delayed_time = current_time - self.estimated_delay
-        delayed_command = self._get_delayed_command(buffer, delayed_time)
-
-        # 预测该延迟指令造成的当前速度
-        predicted_velocity = delayed_command * self.response_gain
-
-        # 补偿：从当前指令减去预测速度的影响
-        # 补偿增益根据经验调整
-        compensation = predicted_velocity * 150
-        compensated_command = command - compensation
-
-        return compensated_command
-
-    def _get_delayed_command(self, buffer, target_time):
-        """从缓冲区获取指定时间的指令（线性插值）"""
-        if not buffer:
-            return 0.0
-
-        # 找到目标时间前后的两个点
-        for i, (t, cmd) in enumerate(buffer):
-            if t >= target_time:
-                if i == 0:
-                    return cmd
-                # 线性插值
-                t1, cmd1 = buffer[i-1]
-                t2, cmd2 = buffer[i]
-                ratio = (target_time - t1) / (t2 - t1) if t2 > t1 else 0
-                return cmd1 + (cmd2 - cmd1) * ratio
-
-        # 如果目标时间在所有记录之后，返回最后一个
-        return buffer[-1][1]
 
     def get_distance(self, target_x, target_y, current_x, current_y):
         """计算当前位置到目标位置的距离"""

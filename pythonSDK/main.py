@@ -11,12 +11,17 @@ from vrpn_display import create_vrpn_panel
 from vrpn import VRPNClient
 
 # 配置
-MQTT_CONFIG = {'host': '81.70.222.38', 'port': 1883,
-               'username': 'dji', 'password': 'lab605605'}
+MQTT_CONFIG = {
+    # 'host': '81.70.222.38',
+    'host': '192.168.31.73',
+    'port': 1883,
+    'username': 'dji',
+    'password': 'lab605605'}
 
 # UAV 配置 - 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
 UAV_CONFIGS = [
-    {'sn': '9N9CN2J0012CXY', 'user_id': 'pilot_1', 'callsign': 'Pilot 1', 'vrpn_device': 'Drone001@192.168.31.100'},
+    {'sn': '9N9CN2J0012CXY', 'user_id': 'pilot_1',
+        'callsign': 'Pilot 1', 'vrpn_device': 'Drone001@192.168.31.100'},
     # {'sn': '9N9CN8400164WH', 'user_id': 'pilot_2', 'callsign': 'Pilot 2', 'vrpn_device': 'Drone002@192.168.31.100'},
     # {'sn': '9N9CN180011TJN', 'user_id': 'pilot_3', 'callsign': 'Pilot 3', 'vrpn_device': 'Drone003@192.168.31.100'},
 ]
@@ -122,7 +127,8 @@ def main():
                 panels = []
                 for i in range(len(uav_clients)):
                     # DJI 面板
-                    uav_panel = create_uav_panel(uav_clients[i], UAV_CONFIGS[i], elapsed)
+                    uav_panel = create_uav_panel(
+                        uav_clients[i], UAV_CONFIGS[i], elapsed)
 
                     # 如果启用 VRPN 且有对应数据，合并显示
                     if vrpn_enabled and i < len(vrpn_clients) and vrpn_clients[i] is not None:
@@ -132,7 +138,8 @@ def main():
                             elapsed
                         )
                         # 横向合并两个面板
-                        merged_panel = Columns([uav_panel, vrpn_panel], equal=False, expand=False, padding=0)
+                        merged_panel = Columns(
+                            [uav_panel, vrpn_panel], equal=False, expand=False, padding=0)
                         panels.append(merged_panel)
                     else:
                         panels.append(uav_panel)
@@ -162,7 +169,8 @@ def main():
                 if vrpn_data is not None:
                     try:
                         vrpn_data['client'].stop()
-                        console.print(f"[green]✓ VRPN 客户端 {vrpn_data['device_name']} 已断开[/green]")
+                        console.print(
+                            f"[green]✓ VRPN 客户端 {vrpn_data['device_name']} 已断开[/green]")
                     except Exception as e:
                         console.print(f"[yellow]⚠ VRPN 清理警告: {e}[/yellow]")
 

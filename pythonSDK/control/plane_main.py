@@ -68,9 +68,9 @@ def main():
     console = Console()
 
     gain_scheduling_cfg = PLANE_GAIN_SCHEDULING_CONFIG
-    smith_predictor_cfg = PLANE_SMITH_PREDICTOR_CONFIG
+    pid_reset_cfg = PLANE_PID_RESET_ON_APPROACH
     gain_scheduling_enabled = gain_scheduling_cfg['enabled']
-    smith_predictor_enabled = smith_predictor_cfg['enabled']
+    pid_reset_enabled = pid_reset_cfg['enabled']
 
     # 根据配置决定使用固定航点还是随机航点
     if PLANE_USE_RANDOM_WAYPOINTS:
@@ -85,8 +85,8 @@ def main():
     features = []
     if gain_scheduling_enabled:
         features.append(f"[green]增益调度[/green] (远:{gain_scheduling_cfg['distance_far']}m, 近:{gain_scheduling_cfg['distance_near']}m)")
-    if smith_predictor_enabled:
-        features.append(f"[green]Smith预测器[/green] (延迟:{smith_predictor_cfg['estimated_delay']*1000:.0f}ms)")
+    if pid_reset_enabled:
+        features.append(f"[green]PID重置[/green] (mask:{pid_reset_cfg['reset_mask']}, 触发距离:<{pid_reset_cfg['trigger_distance']}m, 静音:{pid_reset_cfg['mute_duration']}s)")
     features_info = " | ".join(features) if features else "[dim]基础PID控制[/dim]"
 
     console.print(Panel.fit(
@@ -129,8 +129,6 @@ def main():
         KP_XY, KI_XY, KD_XY,
         MAX_STICK_OUTPUT,
         enable_gain_scheduling=gain_scheduling_enabled,
-        enable_smith_predictor=smith_predictor_enabled,
-        estimated_delay=smith_predictor_cfg['estimated_delay'],
         gain_schedule_profile=gain_scheduling_cfg.get('profile')
     )
 
@@ -138,10 +136,6 @@ def main():
     if gain_scheduling_enabled:
         controller.distance_far = gain_scheduling_cfg['distance_far']
         controller.distance_near = gain_scheduling_cfg['distance_near']
-
-    # 应用配置的Smith预测器参数
-    if smith_predictor_enabled:
-        controller.response_gain = smith_predictor_cfg['response_gain']
 
     # 初始化航点
     if PLANE_USE_RANDOM_WAYPOINTS:
@@ -180,6 +174,8 @@ def main():
     in_tolerance_since = None  # 记录进入阈值范围的时间戳
     control_start_time = time.time()  # 记录开始控制的时间
     loop_count = 0  # 循环计数器
+    pid_has_reset = False  # 记录当前航点是否已触发PID重置
+    pid_mute_until = 0  # 记录PID静音结束的时间戳（0表示未静音）
 
     try:
         while True:
@@ -198,6 +194,19 @@ def main():
 
             # 判断是否到达（带时间稳定性检查）
             if not reached:
+                # 【PID重置】当距离进入触发范围时，第一次触发重置（防止积分饱和）
+                if pid_reset_enabled and not pid_has_reset:
+                    trigger_distance = pid_reset_cfg['trigger_distance']
+                    if distance < trigger_distance:
+                        console.print(f"[magenta]▶ 进入触发距离 ({distance*100:.1f}cm < {trigger_distance*100:.0f}cm)，触发PID重置 (mask:{pid_reset_cfg['reset_mask']})[/magenta]")
+                        controller.selective_reset(pid_reset_cfg['reset_mask'])
+
+                        # 设置PID静音时间，在此期间只发送归中杆量
+                        mute_duration = pid_reset_cfg['mute_duration']
+                        pid_mute_until = time.time() + mute_duration
+                        console.print(f"[magenta]✓ PID重置完成，开始静音 {mute_duration}s（只发送归中杆量）[/magenta]")
+                        pid_has_reset = True
+
                 if distance < TOLERANCE_XY:
                     # 进入阈值范围
                     if in_tolerance_since is None:
@@ -249,6 +258,8 @@ def main():
                                 reached = False
                                 control_start_time = time.time()
                                 loop_count = 0
+                                pid_has_reset = False  # 重置PID重置标志
+                                pid_mute_until = 0  # 重置静音标志
                             else:
                                 # 手动模式：等待键盘输入
                                 try:
@@ -259,6 +270,8 @@ def main():
                                     reached = False
                                     control_start_time = time.time()
                                     loop_count = 0
+                                    pid_has_reset = False  # 重置PID重置标志
+                                    pid_mute_until = 0  # 重置静音标志
                                 except KeyboardInterrupt:
                                     break
                             continue
@@ -270,15 +283,32 @@ def main():
 
                 # PID计算并发送控制指令
                 current_time = time.time()
-                roll_offset, pitch_offset, pid_components = controller.compute(
-                    target_x, target_y,
-                    current_x, current_y,
-                    current_time
-                )
 
-                roll = int(NEUTRAL + roll_offset)
-                pitch = int(NEUTRAL + pitch_offset)
-                send_stick_control(mqtt_client, roll=roll, pitch=pitch)
+                # 检查是否处于PID静音期（重置后强制归中）
+                if current_time < pid_mute_until:
+                    # 静音期：只发送归中杆量，不执行PID计算
+                    roll = NEUTRAL
+                    pitch = NEUTRAL
+                    send_stick_control(mqtt_client, roll=roll, pitch=pitch)
+
+                    # 为了日志记录，设置零偏移和零PID分量
+                    roll_offset = 0
+                    pitch_offset = 0
+                    pid_components = {
+                        'x': (0, 0, 0),
+                        'y': (0, 0, 0)
+                    }
+                else:
+                    # 正常PID控制
+                    roll_offset, pitch_offset, pid_components = controller.compute(
+                        target_x, target_y,
+                        current_x, current_y,
+                        current_time
+                    )
+
+                    roll = int(NEUTRAL + roll_offset)
+                    pitch = int(NEUTRAL + pitch_offset)
+                    send_stick_control(mqtt_client, roll=roll, pitch=pitch)
 
             # 每10次循环打印详细信息
             if loop_count % 2 == 0:
@@ -295,13 +325,15 @@ def main():
                 ]
                 if gain_scheduling_enabled:
                     info_parts.append(f"[yellow]Kp×{kp_scale:.2f} Kd×{kd_scale:.2f}[/yellow]")
+
+                # 显示是否处于静音期
+                if current_time < pid_mute_until:
+                    remaining_mute = pid_mute_until - current_time
+                    info_parts.append(f"[magenta]MUTE({remaining_mute:.1f}s)[/magenta]")
+
                 info_parts.append(f"Out:P{pitch_offset:+5.0f}/R{roll_offset:+5.0f}")
                 info_parts.append(f"X(P{pid_components['x'][0]:+5.0f}/I{pid_components['x'][1]:+5.0f}/D{pid_components['x'][2]:+5.0f})")
                 info_parts.append(f"Y(P{pid_components['y'][0]:+5.0f}/I{pid_components['y'][1]:+5.0f}/D{pid_components['y'][2]:+5.0f})")
-                if smith_predictor_enabled:
-                    buf_x = len(controller.delay_buffer_x)
-                    buf_y = len(controller.delay_buffer_y)
-                    info_parts.append(f"[magenta]Smith[X:{buf_x}/Y:{buf_y}][/magenta]")
                 console.print(" | ".join(info_parts))
 
 

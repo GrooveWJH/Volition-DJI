@@ -304,6 +304,7 @@ def setup_drc_connection(
         >>> mqtt.disconnect()
     """
     from ..services.heartbeat import start_heartbeat
+    import uuid
 
     console.print(f"[bold cyan]设置 DRC 连接: {gateway_sn}[/bold cyan]")
 
@@ -323,9 +324,11 @@ def setup_drc_connection(
             input("🔔 请在 DJI Pilot APP 上允许控制权，然后按 Enter 继续...")
 
         # Step 5: Enter DRC mode (construct mqtt_broker config)
+        # 添加3位随机UUID后缀，避免多实例冲突
+        random_suffix = str(uuid.uuid4())[:3]
         mqtt_broker_config = {
             'address': f"{mqtt_config['host']}:{mqtt_config['port']}",
-            'client_id': f"drc-{gateway_sn}",
+            'client_id': f"drc-{gateway_sn}-{random_suffix}",
             'username': mqtt_config['username'],
             'password': mqtt_config['password'],
             'expire_time': int(time.time()) + 3600,  # 1 hour expiry
@@ -442,12 +445,15 @@ def setup_multiple_drc_connections(
 
     # Phase 3: Parallel enter DRC + start heartbeat
     def phase3_enter_drc_and_heartbeat(result):
+        import uuid
         sn, mqtt, caller = result
 
         console.print(f"[dim]设置 {sn} DRC 模式...[/dim]")
+        # 添加3位随机UUID后缀，避免多实例冲突
+        random_suffix = str(uuid.uuid4())[:3]
         mqtt_broker_config = {
             'address': f"{mqtt_config['host']}:{mqtt_config['port']}",
-            'client_id': f"drc-{sn}",
+            'client_id': f"drc-{sn}-{random_suffix}",
             'username': mqtt_config['username'],
             'password': mqtt_config['password'],
             'expire_time': int(time.time()) + 3600,  # 1 hour expiry

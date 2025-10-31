@@ -371,6 +371,21 @@ class JoystickApp(App):
         is_shift = key in (keyboard.Key.shift, keyboard.Key.shift_r)
         return key_map.get(key, key_char), is_shift
 
+    def _toggle_pause_ui(self) -> None:
+        """在 Textual 主线程上切换暂停状态并刷新界面。"""
+        new_state = not self.paused
+        self.paused = new_state
+        self.key_status.paused = new_state
+
+        if new_state:
+            self.title = "🎮 虚拟摇杆 - ⏸️  已暂停"
+            with self._state_lock:
+                self._pressed_keys_state.clear()
+            self.pressed_keys = set()
+            self.key_status.pressed_keys = set()
+        else:
+            self.title = "🎮 虚拟摇杆测试工具（美国手模式）"
+
     def _on_key_press(self, key):
         """pynput 按键按下事件（后台线程）"""
         key_char, is_shift = self._normalize_key(key)
@@ -384,14 +399,7 @@ class JoystickApp(App):
 
         # P 键：切换手动暂停（无需 Shift）
         if key_char == 'p':
-            self.paused = not self.paused
-            self.key_status.paused = self.paused
-            if self.paused:
-                self.title = "🎮 虚拟摇杆 - ⏸️  已暂停"
-                with self._state_lock:
-                    self._pressed_keys_state.clear()
-            else:
-                self.title = "🎮 虚拟摇杆测试工具（美国手模式）"
+            self.call_from_thread(self._toggle_pause_ui)
             return
 
     def _on_key_release(self, key):
