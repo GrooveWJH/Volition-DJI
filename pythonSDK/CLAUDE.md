@@ -19,7 +19,12 @@ This library follows **Linus Torvalds' "Good Taste" principle**: eliminate speci
 
 ## Project Overview
 
-**DJI Cloud API Python SDK** - A minimal Python library for DJI drone control via MQTT.
+**DJI Drone Control System** - A complete Python-based drone control system with three major components:
+
+1. **djisdk/** - Minimal MQTT-based DJI Cloud API SDK (2 core classes, ~150 lines)
+2. **control/** - PID-based position and yaw control system with data logging
+3. **control_mpc/** - Model Predictive Control (MPC) for 200ms delay compensation
+4. **vrpn/** - Motion capture integration via VRPN protocol
 
 ### Design Philosophy
 - **Only 2 core classes** (~150 lines total)
@@ -47,35 +52,96 @@ Business Layer (pure functions)
 
 ```bash
 # Install dependencies
-pip install paho-mqtt rich
+pip install -r requirements.txt
 
-# Run all tests (42 tests, 92% coverage)
-python tests/run_tests.py
+# Control System Commands
+python control/main.py                    # Run PID position + yaw control
+python control/yaw_main.py               # Run yaw-only control
+python control/visualize.py data/latest  # Visualize latest control logs
 
-# Run specific test module
-python tests/run_tests.py test_mqtt_client
-python tests/run_tests.py test_service_caller
-python tests/run_tests.py test_commands
-python tests/run_tests.py test_heartbeat
+# MPC Control System Commands
+python control_mpc/mpc_main.py           # Run MPC controller (real drone)
+python control_mpc/test_mpc.py           # Test MPC with simulation
 
-# Run single test with verbose output
-python -m unittest tests.test_mqtt_client.TestMQTTClient.test_connect -v
+# Main Display System
+python main.py                           # Multi-drone display with VRPN
+USE_MOCK_DRONE=1 python main.py         # Use mock data instead of real drones
 
-# Run CLI tool (interactive drone control)
+# DJI SDK Commands
 python -m djisdk.cli.drc_control \
   --sn <GATEWAY_SN> \
   --username <USER> \
-  --password <PASS>
+  --password <PASS>                      # Interactive drone control CLI
 
-# Run MQTT sniffer (monitor multiple topics)
-python utils/mqtt_sniffer.py
-
-# Check code coverage
-pip install coverage
-coverage run -m unittest discover -s tests
-coverage report
-coverage html  # Generate HTML report
+# Monitoring and Testing
+python utils/mqtt_sniffer.py            # Monitor MQTT traffic
+python vrpn_test.py                      # Test VRPN connection
 ```
+
+## Key System Components
+
+### 1. Control System Architecture
+
+**control/** - PID-based position and yaw control
+- `config.py` - All control parameters (PID gains, thresholds, frequencies)
+- `main.py` - Combined plane + yaw control with waypoint navigation
+- `yaw_main.py` - Yaw-only control with automatic angle targets
+- `controller.py` - Control strategies with advanced features
+- `pid.py` - PID implementation with anti-windup
+- `logger.py` - Data logging with PID component tracking
+- `visualize.py` - Interactive Plotly visualization
+
+**Configuration Pattern**: All tunable parameters centralized in `control/config.py`:
+```python
+# PID gains
+KP_XY = 400.0    # Position control
+KD_XY = 10.0
+KP_YAW = 12.0    # Yaw control
+
+# Control frequency and limits
+CONTROL_FREQUENCY = 50  # Hz
+MAX_STICK_OUTPUT = 150  # Half-stick limit
+```
+
+### 2. MPC System Architecture
+
+**control_mpc/** - Model Predictive Control for 200ms delay compensation
+- `mpc_controller.py` - Core MPC algorithm with QP optimization
+- `system_id.py` - Automatic system identification using PRBS signals
+- `delay_compensator.py` - State prediction for delay compensation
+- `mpc_main.py` - Main control loop (identification → control)
+- `test_mpc.py` - Simulation and validation
+
+**Key Innovation**: Converts 200ms communication delay from disadvantage to advantage through predictive control.
+
+### 3. VRPN Integration
+
+**vrpn/** - Motion capture system integration
+- Uses ZeroMQ for communication with VRPN server
+- Provides position feedback for closed-loop control
+- Quaternion to Euler angle conversion
+
+### 4. Display System
+
+**main.py** - Multi-drone real-time display
+- Rich-based terminal UI with live updates
+- Combines DJI telemetry + VRPN motion capture data
+- Support for mock simulation mode (`USE_MOCK_DRONE=1`)
+
+## Data Logging and Visualization
+
+All control tests automatically create timestamped logs in `data/` directory:
+- CSV files with full telemetry and PID components
+- `latest/` directories for quick access to most recent logs
+- Interactive HTML visualizations with Plotly
+
+**Example workflow**:
+```bash
+python control/main.py        # Creates data/latest/
+python control/visualize.py data/latest  # Opens interactive charts
+```
+
+## DJI SDK Architecture
 
 ### Quick Start Example
 
@@ -87,7 +153,7 @@ from djisdk import (
 )
 
 # 1. Connect
-mqtt = MQTTClient('GATEWAY_SN', {'host': '172.20.10.2', 'port': 1883, 'username': 'admin', 'password': 'pass'})
+mqtt = MQTTClient('GATEWAY_SN', {'host': '192.168.31.73', 'port': 1883, 'username': 'dji', 'password': 'lab605605'})
 mqtt.connect()
 
 # 2. Request control
@@ -96,8 +162,8 @@ request_control_auth(caller, user_id='pilot', user_callsign='Callsign')
 
 # 3. Enter DRC mode
 mqtt_broker_config = {
-    'address': '172.20.10.2:1883', 'client_id': 'drc-client',
-    'username': 'admin', 'password': 'pass',
+    'address': '192.168.31.73:1883', 'client_id': 'drc-client',
+    'username': 'dji', 'password': 'lab605605',
     'expire_time': 1_700_000_000, 'enable_tls': False
 }
 enter_drc_mode(caller, mqtt_broker=mqtt_broker_config, osd_frequency=100, hsi_frequency=10)
