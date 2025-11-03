@@ -1,5 +1,16 @@
 # MPC平面控制器 - 解决200ms延迟问题
 
+## ⚠️ 首次使用必读
+
+**如果你即将进行真机实验，请先阅读 [详细操作指南](operation-guide.md)**
+
+该指南包含：
+- 完整的实验前准备清单
+- 针对2m半径场地的安全配置
+- 每个步骤的详细说明和预期状态
+- 异常情况的应对方案
+- 紧急情况处理流程
+
 ## 核心设计理念
 
 **PID (反应式)**: "我看到了一个误差，我现在就根据这个误差做出反应。"（但这个误差是200ms前的）
@@ -30,20 +41,74 @@ control_mpc/
 └── test_mpc.py              # 测试验证脚本
 ```
 
+## 📚 文档导航
+
+### 快速开始（首次使用必读）
+
+**推荐阅读顺序：**
+
+1. 📋 **[preflight-checklist.md](preflight-checklist.md)** (3分钟)
+   - 实验前快速检查清单
+   - 可打印，逐项确认
+
+2. 📖 **[operation-guide.md](operation-guide.md)** (30分钟)
+   - **最详细的操作指南**（44KB）
+   - 针对2m半径场地优化
+   - 包含完整的准备、操作、异常处理流程
+
+3. ⚡ **[quick-reference.md](quick-reference.md)** (5分钟)
+   - 快速参考卡
+   - 可打印并张贴在实验台
+   - 包含关键命令和应急流程
+
+### 辅助工具
+
+```bash
+# 航点安全检查（验证所有航点在安全范围内）
+python control_mpc/check_safety.py
+
+# 配置验证（检查依赖、配置、模型）
+python control_mpc/verify_config.py
+```
+
 ## 使用方法
 
 ### 1. 快速测试 (无需真机)
+
 ```bash
 cd control_mpc
 python test_mpc.py
 ```
 
-### 2. 真机运行
+### 2. 真机运行前准备
+
+**⚠️ 重要：真机实验前请务必完成以下步骤**
+
 ```bash
-# 1. 手动起飞到1m高度
+# 1. 验证航点安全性
+python control_mpc/check_safety.py
+
+# 2. 检查系统配置
+python control_mpc/verify_config.py
+
+# 3. 测试通信连接
+python vrpn_test.py  # 测试动捕连接
+mosquitto_pub -h 192.168.31.73 -t test -m "hello" -u dji -P lab605605  # 测试MQTT
+```
+
+### 3. 真机运行流程
+
+```bash
+# 1. 手动起飞到1m高度，悬停在场地中心（0,0）
 # 2. 运行MPC控制器
 python control_mpc/mpc_main.py
+
+# 程序会自动执行：
+#   - 系统辨识（10秒）
+#   - MPC控制（自动到达目标）
 ```
+
+**详细操作流程请参考：[operation-guide.md](operation-guide.md)**
 
 ## 运行流程
 
