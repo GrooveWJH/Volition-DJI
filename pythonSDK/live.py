@@ -38,19 +38,19 @@ MQTT_CONFIG = {
 # 无人机配置列表
 UAV_CONFIGS = [
     {
-        'name': 'UAV-001',
+        'name': 'Drone001',
         'sn': '9N9CN2J0012CXY',
         'user_id': 'pilot_1',
         'callsign': 'Pilot 1',
     },
     {
-        'name': 'UAV-002',
+        'name': 'Drone002',
         'sn': '9N9CN8400164WH',
         'user_id': 'pilot_2',
         'callsign': 'Pilot 2',
     },
     {
-        'name': 'UAV-003',
+        'name': 'Drone003',
         'sn': '9N9CN180011TJN',
         'user_id': 'pilot_3',
         'callsign': 'Pilot 3',
@@ -58,8 +58,8 @@ UAV_CONFIGS = [
 ]
 
 # RTMP 直播配置
-# RTMP_URL = 'rtmp://192.168.31.73:1935/live/Drone001'
-RTMP_URL = 'rtmp://81.70.222.38:1935/live/Drone001'
+# RTMP_BASE_URL = 'rtmp://192.168.31.73:1935/live/'
+RTMP_BASE_URL = 'rtmp://81.70.222.38:1935/live/'  # 基础 URL，会自动拼接无人机名称
 VIDEO_INDEX = 'normal-0'  # 视频流索引
 VIDEO_QUALITY = 0  # 0=自适应, 1=流畅, 2=标清, 3=高清, 4=超清
 
@@ -138,8 +138,10 @@ def main():
         # 步骤 4: 等待相机数据
         wait_for_camera_data(mqtt, max_wait=10)
 
-        # 步骤 5: 开始直播
-        video_id = start_live(caller, mqtt, RTMP_URL, VIDEO_INDEX, VIDEO_QUALITY)
+        # 步骤 5: 开始直播（动态构建 RTMP_URL）
+        rtmp_url = f"{RTMP_BASE_URL}{selected_uav['name']}"
+        console.print(f"[dim]推流地址: {rtmp_url}[/dim]")
+        video_id = start_live(caller, mqtt, rtmp_url, VIDEO_INDEX, VIDEO_QUALITY)
 
         if video_id:
             # 获取相机参数用于变焦控制
