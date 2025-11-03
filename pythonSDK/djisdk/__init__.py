@@ -17,8 +17,20 @@ from .services import (
     start_heartbeat,
     stop_heartbeat,
     send_stick_control,
+    set_camera_zoom,
     setup_drc_connection,
     setup_multiple_drc_connections,
+)
+from .utils import (
+    print_json_message,
+    get_key,
+    wait_for_camera_data,
+    build_video_id,
+)
+from .live_utils import (
+    start_live,
+    stop_live,
+    zoom_control_loop,
 )
 
 __version__ = '1.0.0'
@@ -40,6 +52,16 @@ __all__ = [
     'start_heartbeat',
     'stop_heartbeat',
     'send_stick_control',
+    'set_camera_zoom',
     'setup_drc_connection',
     'setup_multiple_drc_connections',
+    # Utils
+    'print_json_message',
+    'get_key',
+    'wait_for_camera_data',
+    'build_video_id',
+    # Live Utils
+    'start_live',
+    'stop_live',
+    'zoom_control_loop',
 ]

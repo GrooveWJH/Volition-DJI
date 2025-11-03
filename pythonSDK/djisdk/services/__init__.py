@@ -16,6 +16,7 @@ from .commands import (
     setup_multiple_drc_connections,
 )
 from .heartbeat import start_heartbeat, stop_heartbeat
+from .drc_commands import set_camera_zoom
 
 __all__ = [
     # 控制权
@@ -36,6 +37,8 @@ __all__ = [
     'stop_heartbeat',
     # DRC 杆量控制
     'send_stick_control',
+    # 相机控制
+    'set_camera_zoom',
     # DRC 连接设置
     'setup_drc_connection',
     'setup_multiple_drc_connections',
