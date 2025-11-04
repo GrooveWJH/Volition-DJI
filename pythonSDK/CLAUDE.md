@@ -68,10 +68,7 @@ python main.py                           # Multi-drone display with VRPN
 USE_MOCK_DRONE=1 python main.py         # Use mock data instead of real drones
 
 # DJI SDK Commands
-python -m djisdk.cli.drc_control \
-  --sn <GATEWAY_SN> \
-  --username <USER> \
-  --password <PASS>                      # Interactive drone control CLI
+# CLI module removed - use djisdk library directly in your code
 
 # Monitoring and Testing
 python utils/mqtt_sniffer.py            # Monitor MQTT traffic

@@ -559,17 +559,9 @@ enter_drc_mode(caller, ...)
 - 🔴 **红色** `[red]` - 错误/异常
 - 🟡 **黄色** `[yellow]` - 警告
 
-## 📦 命令行工具（可选）
+## 📦 编程接口
 
-如果你更喜欢命令行方式：
-
-```bash
-python -m djisdk.cli.drc_control \
-  --sn 9N9CN180011TJN \
-  --host 172.20.10.2 \
-  --username admin \
-  --password your_password
-```
+使用 djisdk 库直接在你的 Python 代码中控制无人机，参考上面的快速开始示例。
 
 ## ⚖️ 许可证
 
