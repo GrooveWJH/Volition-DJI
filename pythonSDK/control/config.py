@@ -10,6 +10,7 @@ VRPN_DEVICE = 'Drone001@192.168.31.100'
 # ========== MQTT配置 ==========
 MQTT_CONFIG = {
     # 'host': '81.70.222.38',
+    # 'host': 'grve.me',
     'host': '192.168.31.73',
     'port': 1883,
     'username': 'dji',

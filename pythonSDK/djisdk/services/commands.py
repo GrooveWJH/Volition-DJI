@@ -195,6 +195,73 @@ def return_home(caller: ServiceCaller) -> Dict[str, Any]:
     return _call_service(caller, "return_home", data=None, success_msg="返航指令已发送")
 
 
+def fly_to_point(
+    caller: ServiceCaller,
+    latitude: float,
+    longitude: float,
+    height: float,
+    max_speed: int = 12,
+    fly_to_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    飞向目标点
+
+    特别说明：飞机有最低飞行高度(20m)安全保障机制，
+    如果飞机相对起飞点高度低于20m，会先上升到20m
+
+    Args:
+        caller: 服务调用器
+        latitude: 目标点纬度（-90 ~ 90），南纬是负，北纬是正
+        longitude: 目标点经度（-180 ~ 180），东经是正，西经是负
+        height: 目标点高度（椭球高，WGS84模型），单位：米
+        max_speed: 飞行过程中的最大速度（0-15 m/s）
+        fly_to_id: 飞向目标点ID（可选，默认自动生成UUID）
+
+    Returns:
+        服务返回数据
+
+    Example:
+        >>> # 飞向目标点
+        >>> fly_to_point(caller, latitude=39.0427514, longitude=117.7238255, height=100.0)
+        [cyan]飞向目标点...[/cyan]
+        [green]✓ Fly-to 指令已发送[/green]
+    """
+    import uuid
+
+    # 参数验证
+    if not (-90 <= latitude <= 90):
+        raise ValueError(f"latitude 必须在 [-90, 90] 范围内，当前值: {latitude}")
+    if not (-180 <= longitude <= 180):
+        raise ValueError(f"longitude 必须在 [-180, 180] 范围内，当前值: {longitude}")
+    if not (2 <= height <= 10000):
+        raise ValueError(f"height 必须在 [2, 10000] 范围内，当前值: {height}")
+    if not (0 <= max_speed <= 15):
+        raise ValueError(f"max_speed 必须在 [0, 15] 范围内，当前值: {max_speed}")
+
+    # 生成 fly_to_id
+    if fly_to_id is None:
+        fly_to_id = str(uuid.uuid4())
+
+    console.print(f"[cyan]飞向目标点 (lat: {latitude:.6f}, lon: {longitude:.6f}, h: {height:.1f}m)...[/cyan]")
+
+    return _call_service(
+        caller,
+        "fly_to_point",
+        {
+            "fly_to_id": fly_to_id,
+            "max_speed": max_speed,
+            "points": [
+                {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "height": height
+                }
+            ]
+        },
+        "Fly-to 指令已发送"
+    )
+
+
 # ========== DRC 杆量控制 ==========
 
 def send_stick_control(

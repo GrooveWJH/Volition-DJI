@@ -196,7 +196,7 @@ class MPCPlaneController:
                 state = np.array([x, y, vx, vy])
 
                 # 生成激励信号
-                excitation_signal = self.sysid.generate_excitation_signal(elapsed, "prbs")
+                excitation_signal = self.sysid.generate_excitation_signal(elapsed, "chirp")
 
                 # 发送控制命令
                 pitch = int(NEUTRAL + excitation_signal[0])

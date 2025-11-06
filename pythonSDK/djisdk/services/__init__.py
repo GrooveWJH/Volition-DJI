@@ -11,6 +11,7 @@ from .commands import (
     start_live_push,
     stop_live_push,
     return_home,
+    fly_to_point,
     send_stick_control,
     setup_drc_connection,
     setup_multiple_drc_connections,
@@ -32,6 +33,7 @@ __all__ = [
     'stop_live_push',
     # 飞行控制
     'return_home',
+    'fly_to_point',
     # 心跳
     'start_heartbeat',
     'stop_heartbeat',

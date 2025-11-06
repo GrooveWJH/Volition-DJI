@@ -47,6 +47,22 @@ class MQTTClient:
         }
         # 起飞点高度（第一次读取到的全局高度）
         self.takeoff_height = None
+        # Fly-to 进度数据
+        self.flyto_progress = {
+            'fly_to_id': None,
+            'status': None,  # wayline_cancel, wayline_failed, wayline_ok, wayline_progress
+            'result': None,
+            'way_point_index': None,
+            'remaining_distance': None,
+            'remaining_time': None,
+            'planned_path_points': None,
+        }
+        # OSD 消息回调列表（用于 FPS 监控等）
+        self.osd_callbacks = []
+        # 频率追踪（2秒时间窗口，平滑网络抖动）
+        self._osd_timestamps = []  # 2秒窗口内的所有 OSD 消息时间戳
+        self._last_osd_time = 0.0  # 最后一次 OSD 消息时间（用于离线检测）
+        self._freq_window = 2.0  # 频率计算窗口大小（秒）
 
     def connect(self):
         """建立 MQTT 连接"""
@@ -110,6 +126,11 @@ class MQTTClient:
         status_topic = f"sys/product/{self.gateway_sn}/status"
         self.client.subscribe(status_topic, qos=0)
         console.print(f"[green]✓[/green] 已订阅: {status_topic}")
+
+        # 订阅事件主题（接收 fly_to_point_progress 等事件）
+        events_topic = f"thing/product/{self.gateway_sn}/events"
+        self.client.subscribe(events_topic, qos=0)
+        console.print(f"[green]✓[/green] 已订阅: {events_topic}")
 
     def disconnect(self):
         """断开连接"""
@@ -238,6 +259,65 @@ class MQTTClient:
         with self.lock:
             return self.camera_osd.copy()
 
+    def get_flyto_progress(self) -> Dict[str, Any]:
+        """获取 Fly-to 进度数据"""
+        with self.lock:
+            return self.flyto_progress.copy()
+
+    def get_flyto_status(self) -> Optional[str]:
+        """
+        获取 Fly-to 状态
+
+        Returns:
+            状态字符串或 None
+            - "wayline_cancel": 取消飞向目标点
+            - "wayline_failed": 执行失败
+            - "wayline_ok": 执行成功，已飞向目标点
+            - "wayline_progress": 执行中
+        """
+        with self.lock:
+            return self.flyto_progress['status']
+
+    def register_osd_callback(self, callback):
+        """注册 OSD 消息回调（用于 FPS 监控等）"""
+        self.osd_callbacks.append(callback)
+
+    def get_osd_frequency(self) -> float:
+        """
+        获取实时 OSD 消息频率
+
+        使用2秒时间窗口法计算频率，有效平滑网络抖动。
+        100Hz 下窗口约包含200条消息，统计误差 < 0.5%。
+
+        Returns:
+            频率（Hz），如果数据不足返回 0.0
+        """
+        with self.lock:
+            if len(self._osd_timestamps) < 2:
+                return 0.0
+            time_span = self._osd_timestamps[-1] - self._osd_timestamps[0]
+            if time_span == 0:
+                return 0.0
+            # 计算频率：消息数量 / 时间跨度
+            return (len(self._osd_timestamps) - 1) / time_span
+
+    def is_online(self, timeout: float = 2.0) -> bool:
+        """
+        检查无人机是否在线
+
+        根据最后一次 OSD 消息的时间判断无人机是否在线。
+
+        Args:
+            timeout: 超时时间（秒），默认 2.0 秒
+
+        Returns:
+            True 如果在线（timeout 秒内有消息），False 如果离线
+        """
+        import time
+        with self.lock:
+            if self._last_osd_time == 0:
+                return False  # 还没有收到过任何 OSD 消息
+            return (time.time() - self._last_osd_time) < timeout
 
     def publish(self, method: str, data: Dict[str, Any], tid: str) -> Future:
         """
@@ -281,8 +361,13 @@ class MQTTClient:
 
             # 处理 OSD 数据推送
             if payload.get('method') == 'osd_info_push':
+                # 更新频率追踪（在锁外完成时间获取，减少锁持有时间）
+                import time
+                now = time.time()
+
                 data = payload.get('data', {})
                 with self.lock:
+                    # 更新 OSD 数据
                     self.osd_data['latitude'] = data.get('latitude')
                     self.osd_data['longitude'] = data.get('longitude')
                     height = data.get('height')
@@ -295,6 +380,20 @@ class MQTTClient:
                     self.osd_data['speed_x'] = data.get('speed_x')
                     self.osd_data['speed_y'] = data.get('speed_y')
                     self.osd_data['speed_z'] = data.get('speed_z')
+
+                    # 更新频率追踪数据（2秒时间窗口）
+                    self._last_osd_time = now
+                    self._osd_timestamps.append(now)
+                    # 清理超过2秒的旧时间戳，保持窗口大小
+                    while self._osd_timestamps and (now - self._osd_timestamps[0]) > self._freq_window:
+                        self._osd_timestamps.pop(0)
+
+                # 触发所有注册的回调（用于 FPS 监控等）
+                for callback in self.osd_callbacks:
+                    try:
+                        callback()
+                    except Exception:
+                        pass  # 忽略回调异常，避免影响消息处理
                 return
 
             # 处理 HSI 数据推送
@@ -341,6 +440,19 @@ class MQTTClient:
                     self.camera_osd['gimbal_pitch'] = data.get('gimbal_pitch')
                     self.camera_osd['gimbal_roll'] = data.get('gimbal_roll')
                     self.camera_osd['gimbal_yaw'] = data.get('gimbal_yaw')
+                return
+
+            # 处理 Fly-to 进度事件推送
+            if payload.get('method') == 'fly_to_point_progress':
+                data = payload.get('data', {})
+                with self.lock:
+                    self.flyto_progress['fly_to_id'] = data.get('fly_to_id')
+                    self.flyto_progress['status'] = data.get('status')
+                    self.flyto_progress['result'] = data.get('result')
+                    self.flyto_progress['way_point_index'] = data.get('way_point_index')
+                    self.flyto_progress['remaining_distance'] = data.get('remaining_distance')
+                    self.flyto_progress['remaining_time'] = data.get('remaining_time')
+                    self.flyto_progress['planned_path_points'] = data.get('planned_path_points')
                 return
 
             # 处理服务响应

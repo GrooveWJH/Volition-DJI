@@ -215,7 +215,7 @@ def zoom_control_loop(
     # 初始变焦倍数
     zoom_factor = 1.0
     zoom_step = 0.5  # 每次调整步长
-    min_zoom = 2.0
+    min_zoom = 1.0
     max_zoom = 112.0 if camera_type != "ir" else 20.0
 
     console.print("\n[bold cyan]========== 变焦控制模式 ==========[/bold cyan]")

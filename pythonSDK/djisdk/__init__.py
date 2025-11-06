@@ -14,6 +14,7 @@ from .services import (
     start_live_push,
     stop_live_push,
     return_home,
+    fly_to_point,
     start_heartbeat,
     stop_heartbeat,
     send_stick_control,
@@ -32,6 +33,18 @@ from .live_utils import (
     stop_live,
     zoom_control_loop,
 )
+from .primitives import (
+    wait_for_condition,
+    send_stick_repeatedly,
+    fly_to_waypoint,
+    monitor_flyto_progress,
+)
+from .tasks import (
+    MissionRunner,
+    run_parallel_missions,
+    cleanup_missions,
+    create_takeoff_mission,
+)
 
 __version__ = '1.0.0'
 
@@ -49,6 +62,7 @@ __all__ = [
     'start_live_push',
     'stop_live_push',
     'return_home',
+    'fly_to_point',
     'start_heartbeat',
     'stop_heartbeat',
     'send_stick_control',
@@ -64,4 +78,14 @@ __all__ = [
     'start_live',
     'stop_live',
     'zoom_control_loop',
+    # Primitives
+    'wait_for_condition',
+    'send_stick_repeatedly',
+    'fly_to_waypoint',
+    'monitor_flyto_progress',
+    # Tasks
+    'MissionRunner',
+    'run_parallel_missions',
+    'cleanup_missions',
+    'create_takeoff_mission',
 ]

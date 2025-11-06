@@ -329,6 +329,33 @@ class MockMQTTClient:
         """兼容超时清理接口"""
         pass
 
+    # ========== 新增：频率追踪和在线状态（与真实 MQTTClient 保持一致）==========
+
+    def get_osd_frequency(self) -> float:
+        """
+        获取实时 OSD 消息频率（模拟）
+
+        模拟中返回固定频率（100 Hz），因为模拟器是按需生成数据。
+
+        Returns:
+            频率（Hz）
+        """
+        return 100.0  # 模拟器固定返回 100 Hz
+
+    def is_online(self, timeout: float = 2.0) -> bool:
+        """
+        检查无人机是否在线（模拟）
+
+        模拟中始终返回 True（在线状态）。
+
+        Args:
+            timeout: 超时时间（秒），模拟中不使用
+
+        Returns:
+            True（始终在线）
+        """
+        return True  # 模拟器始终在线
+
 
 class MockServiceCaller:
     """
