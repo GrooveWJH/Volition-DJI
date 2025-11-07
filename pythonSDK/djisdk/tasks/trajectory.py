@@ -6,6 +6,8 @@
 - 依次飞向多个航点
 - 实时监控飞行进度
 - 航点间悬停稳定
+- 自动云台控制（gimbal: 0=回中, 1=向下）
+- 自动变焦控制（zoom: 1-112）
 """
 import time
 import json
@@ -13,7 +15,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from rich.console import Console
 
-from ..services import fly_to_point, send_stick_control
+from ..services import fly_to_point, send_stick_control, reset_gimbal
+from ..services.drc_commands import set_camera_zoom
 from .runner import MissionRunner
 
 console = Console()
@@ -27,7 +30,12 @@ def load_trajectory(filepath: str) -> List[Dict[str, Any]]:
         filepath: 航点文件路径
 
     Returns:
-        航点列表，每个航点包含 id, lat, lon
+        航点列表，每个航点包含:
+        - id: 航点编号
+        - lat: 纬度
+        - lon: 经度
+        - gimbal: 云台模式 (0=回中, 1=向下，可选，默认0)
+        - zoom: 变焦倍数 (1-112，可选，默认2)
 
     Raises:
         FileNotFoundError: 文件不存在
@@ -53,6 +61,18 @@ def load_trajectory(filepath: str) -> List[Dict[str, Any]]:
         if 'lat' not in wp or 'lon' not in wp:
             raise ValueError(f"航点 {i+1} 缺少 lat 或 lon 字段: {wp}")
 
+        # 设置默认值
+        if 'gimbal' not in wp:
+            wp['gimbal'] = 0  # 默认回中
+        if 'zoom' not in wp:
+            wp['zoom'] = 2  # 默认最小变焦
+
+        # 验证云台和变焦参数
+        if wp['gimbal'] not in [0, 1]:
+            raise ValueError(f"航点 {i+1} gimbal 值错误（必须是 0 或 1）: {wp['gimbal']}")
+        if not (1 <= wp['zoom'] <= 112):
+            raise ValueError(f"航点 {i+1} zoom 值错误（必须在 1-112 范围内）: {wp['zoom']}")
+
     return waypoints
 
 
@@ -62,26 +82,33 @@ def fly_trajectory_sequence(
     height: float,
     max_speed: int = 12,
     hover_between_waypoints: float = 5.0,
-    show_progress: bool = True
+    show_progress: bool = True,
+    enable_gimbal_control: bool = True,
+    enable_zoom_control: bool = True
 ) -> bool:
     """
     依次飞向多个航点（所有无人机并行执行相同轨迹）
 
     Args:
         runners: MissionRunner 列表
-        waypoints: 航点列表，每个航点包含 lat, lon, 可选 id
+        waypoints: 航点列表，每个航点包含:
+            - lat, lon: 必需
+            - gimbal: 云台模式 (0=回中, 1=向下，可选)
+            - zoom: 变焦倍数 (1-112，可选)
         height: 飞行高度（椭球高，米）
         max_speed: 最大速度（m/s，0-15）
         hover_between_waypoints: 航点间悬停时间（秒）
         show_progress: 是否显示进度信息
+        enable_gimbal_control: 是否启用云台控制
+        enable_zoom_control: 是否启用变焦控制
 
     Returns:
         是否全部成功
 
     Example:
         >>> waypoints = [
-        >>>     {'id': 1, 'lat': 39.0427514, 'lon': 117.7238255},
-        >>>     {'id': 2, 'lat': 39.0428000, 'lon': 117.7239000},
+        >>>     {'id': 1, 'lat': 39.0427514, 'lon': 117.7238255, 'gimbal': 0, 'zoom': 10},
+        >>>     {'id': 2, 'lat': 39.0428000, 'lon': 117.7239000, 'gimbal': 1, 'zoom': 20},
         >>> ]
         >>> success = fly_trajectory_sequence(runners, waypoints, height=100.0)
     """
@@ -92,12 +119,16 @@ def fly_trajectory_sequence(
         wp_id = waypoint.get('id', wp_index)
         lat = waypoint['lat']
         lon = waypoint['lon']
+        gimbal_mode = waypoint.get('gimbal', 0)
+        zoom_factor = waypoint.get('zoom', 2)
 
         if show_progress:
             console.print(
                 f"\n[bold bright_cyan]━━━ 航点 {wp_index}/{total_waypoints} (ID: {wp_id}) ━━━[/bold bright_cyan]")
             console.print(
                 f"[bright_yellow]目标: lat={lat:.7f}, lon={lon:.7f}, h={height:.1f}m[/bright_yellow]")
+            console.print(
+                f"[bright_magenta]云台: {'回中' if gimbal_mode == 0 else '向下'}, 变焦: {zoom_factor}x[/bright_magenta]")
 
         # 发送 Fly-to 指令到所有无人机
         for runner in runners:
@@ -169,7 +200,42 @@ def fly_trajectory_sequence(
 
         if show_progress:
             console.print(
-                f"[bold bright_green]✓ 航点 {wp_index}/{total_waypoints} 完成[/bold bright_green]")
+                f"[bold bright_green]✓ 航点 {wp_index}/{total_waypoints} 飞行完成[/bold bright_green]")
+
+        # === 到达航点后，执行云台和变焦控制 ===
+        if enable_gimbal_control or enable_zoom_control:
+            if show_progress:
+                console.print(f"[dim]执行云台和变焦控制...[/dim]")
+
+            for runner in runners:
+                mqtt = runner.mqtt
+                callsign = runner.config.get('callsign', 'UAV')
+
+                # 获取 payload_index (从 MQTT 数据中获取)
+                payload_index = mqtt.get_payload_index() or "88-0-0"
+
+                try:
+                    # 云台控制
+                    if enable_gimbal_control:
+                        gimbal_name = "回中" if gimbal_mode == 0 else "向下"
+                        if show_progress:
+                            console.print(
+                                f"[bright_cyan][{callsign}] 云台{gimbal_name}...[/bright_cyan]")
+                        reset_gimbal(mqtt, payload_index=payload_index, reset_mode=gimbal_mode)
+
+                    # 变焦控制
+                    if enable_zoom_control:
+                        if show_progress:
+                            console.print(
+                                f"[bright_cyan][{callsign}] 变焦 {zoom_factor}x...[/bright_cyan]")
+                        set_camera_zoom(mqtt, payload_index=payload_index, zoom_factor=zoom_factor, camera_type="zoom")
+
+                except Exception as e:
+                    console.print(f"[bright_yellow]⚠ [{callsign}] 云台/变焦控制失败: {e}[/bright_yellow]")
+                    # 不影响任务继续执行
+
+            if show_progress:
+                console.print(f"[bright_green]✓ 云台和变焦控制完成[/bright_green]")
 
         # 悬停等待飞控状态稳定（除了最后一个航点）
         if wp_index < total_waypoints and hover_between_waypoints > 0:
@@ -191,7 +257,9 @@ def create_trajectory_mission(
     height: float,
     max_speed: int = 12,
     hover_between_waypoints: float = 5.0,
-    show_progress: bool = True
+    show_progress: bool = True,
+    enable_gimbal_control: bool = True,
+    enable_zoom_control: bool = True
 ):
     """
     创建轨迹飞行任务函数（用于 run_parallel_missions）
@@ -204,6 +272,8 @@ def create_trajectory_mission(
         max_speed: 最大速度（m/s）
         hover_between_waypoints: 航点间悬停时间（秒）
         show_progress: 是否显示进度信息
+        enable_gimbal_control: 是否启用云台控制
+        enable_zoom_control: 是否启用变焦控制
 
     Returns:
         任务函数，签名: (runner: MissionRunner) -> None
@@ -222,7 +292,9 @@ def create_trajectory_mission(
             height=height,
             max_speed=max_speed,
             hover_between_waypoints=hover_between_waypoints,
-            show_progress=show_progress
+            show_progress=show_progress,
+            enable_gimbal_control=enable_gimbal_control,
+            enable_zoom_control=enable_zoom_control
         )
 
         if not success:
