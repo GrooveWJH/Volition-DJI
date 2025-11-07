@@ -13,6 +13,7 @@ from .commands import (
     return_home,
     fly_to_point,
     send_stick_control,
+    reset_gimbal,
     setup_drc_connection,
     setup_multiple_drc_connections,
 )
@@ -39,8 +40,9 @@ __all__ = [
     'stop_heartbeat',
     # DRC 杆量控制
     'send_stick_control',
-    # 相机控制
+    # 相机和云台控制
     'set_camera_zoom',
+    'reset_gimbal',
     # DRC 连接设置
     'setup_drc_connection',
     'setup_multiple_drc_connections',

@@ -539,13 +539,68 @@ def setup_multiple_drc_connections(
     return connections
 
 
+# ========== 云台控制 ==========
+
+def reset_gimbal(
+    caller: ServiceCaller,
+    payload_index: str,
+    reset_mode: int
+) -> Dict[str, Any]:
+    """
+    重置云台
+
+    Args:
+        caller: 服务调用器
+        payload_index: 负载编号，格式为 {type-subtype-gimbalindex}
+                      例如: "89-0-0" (type=89, subtype=0, gimbalindex=0)
+        reset_mode: 重置模式类型
+                   0 - 回中（yaw回中、pitch回中）
+                   1 - 向下（yaw回中、pitch向下）
+                   2 - 偏航回中（只回中yaw）
+                   3 - 俯仰向下（只向下pitch）
+
+    Returns:
+        服务返回数据
+
+    Example:
+        >>> # 云台回中
+        >>> reset_gimbal(caller, payload_index="89-0-0", reset_mode=0)
+        [cyan]重置云台: 回中[/cyan]
+        [green]✓ 云台重置成功[/green]
+
+        >>> # 云台向下
+        >>> reset_gimbal(caller, payload_index="89-0-0", reset_mode=1)
+        [cyan]重置云台: 向下[/cyan]
+        [green]✓ 云台重置成功[/green]
+    """
+    reset_mode_names = {
+        0: "回中",
+        1: "向下",
+        2: "偏航回中",
+        3: "俯仰向下"
+    }
+    mode_name = reset_mode_names.get(reset_mode, f"未知模式({reset_mode})")
+
+    # 参数验证
+    if reset_mode not in reset_mode_names:
+        raise ValueError(f"reset_mode 必须在 [0, 3] 范围内，当前值: {reset_mode}")
+
+    console.print(f"[cyan]重置云台: {mode_name}[/cyan]")
+
+    return _call_service(
+        caller,
+        "drc_gimbal_reset",
+        {
+            "payload_index": payload_index,
+            "reset_mode": reset_mode
+        },
+        f"云台重置成功 ({mode_name})"
+    )
+
+
 # ========== 扩展示例 ==========
 # 添加新服务只需 1-2 行！
 
 # def send_joystick(caller: ServiceCaller, pitch: float, roll: float, yaw: float, throttle: float) -> Dict[str, Any]:
 #     """发送虚拟摇杆指令"""
 #     return _call_service(caller, "drc_joystick", {"pitch": pitch, "roll": roll, "yaw": yaw, "throttle": throttle})
-
-# def control_gimbal(caller: ServiceCaller, pitch: float, yaw: float) -> Dict[str, Any]:
-#     """控制云台"""
-#     return _call_service(caller, "drc_gimbal_control", {"pitch": pitch, "yaw": yaw})

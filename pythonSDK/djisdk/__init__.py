@@ -19,6 +19,7 @@ from .services import (
     stop_heartbeat,
     send_stick_control,
     set_camera_zoom,
+    reset_gimbal,
     setup_drc_connection,
     setup_multiple_drc_connections,
 )
@@ -70,6 +71,7 @@ __all__ = [
     'stop_heartbeat',
     'send_stick_control',
     'set_camera_zoom',
+    'reset_gimbal',
     'setup_drc_connection',
     'setup_multiple_drc_connections',
     # Utils
