@@ -146,3 +146,90 @@ def set_camera_zoom(
     except Exception as e:
         console.print(f"[red]✗ 变焦控制发送失败: {e}[/red]")
         raise
+
+
+def camera_look_at(
+    mqtt_client: MQTTClient,
+    payload_index: str,
+    latitude: float,
+    longitude: float,
+    height: float,
+    locked: bool = False,
+    seq: int | None = None
+) -> None:
+    """
+    发送相机 Look At 指令（云台指向目标点，Fire-and-forget）
+
+    飞行器将从当前朝向转向实际经纬高度指定的点。
+
+    Args:
+        mqtt_client: MQTT 客户端
+        payload_index: 相机枚举值（格式: {type-subtype-gimbalindex}，如 "89-0-0"）
+        latitude: 目标点纬度（角度值，-90 ~ 90，南纬负，北纬正）
+        longitude: 目标点经度（角度值，-180 ~ 180，东经正，西经负）
+        height: 目标点高度（椭球高，单位：米，2-10000）
+        locked: 机头和云台的相对关系是否锁定
+                False: 仅云台转，机身不转（推荐用于 M30/M30T）
+                True: 锁定机头，云台和机身一起转
+        seq: 序列号（None 则自动生成时间戳）
+
+    注意:
+        - 无返回值（Fire-and-forget）
+        - M30/M30T 建议使用 locked=False（仅云台转）
+        - 云台限位角后 lookat 功能可能异常
+        - 纬度精度到小数点后6位
+        - 经度精度到小数点后6位
+
+    示例:
+        >>> # 让云台看向地面（使用无人机当前位置，高度-100米）
+        >>> lat, lon, _ = mqtt.get_position()
+        >>> camera_look_at(mqtt, payload_index="89-0-0",
+        ...                latitude=lat, longitude=lon, height=-100, locked=False)
+        >>>
+        >>> # 让云台看向指定点
+        >>> camera_look_at(mqtt, payload_index="89-0-0",
+        ...                latitude=22.908061, longitude=113.705107,
+        ...                height=24.84, locked=False)
+    """
+    # 参数校验
+    if not -90 <= latitude <= 90:
+        console.print(f"[red]✗ 纬度超出范围: {latitude} (应在 -90 ~ 90)[/red]")
+        raise ValueError(f"latitude must be in range [-90, 90], got {latitude}")
+
+    if not -180 <= longitude <= 180:
+        console.print(f"[red]✗ 经度超出范围: {longitude} (应在 -180 ~ 180)[/red]")
+        raise ValueError(f"longitude must be in range [-180, 180], got {longitude}")
+
+    if not -1000 <= height <= 10000:
+        console.print(f"[red]✗ 高度超出合理范围: {height} (建议 -1000 ~ 10000)[/red]")
+        # 仅警告，不抛出异常（允许负高度用于看地面）
+
+    # 生成 seq
+    if seq is None:
+        seq = int(time.time() * 1000)
+
+    # 构建消息
+    topic = f"thing/product/{mqtt_client.gateway_sn}/drc/down"
+    payload = {
+        "seq": seq,
+        "method": "drc_camera_look_at",
+        "data": {
+            "payload_index": payload_index,
+            "locked": locked,
+            "latitude": latitude,
+            "longitude": longitude,
+            "height": height
+        }
+    }
+
+    # 发送（QoS 0，无响应）
+    try:
+        mqtt_client.client.publish(topic, json.dumps(payload), qos=0)
+        console.print(
+            f"[cyan]→[/cyan] Look At 指令已发送: "
+            f"lat={latitude:.6f}, lon={longitude:.6f}, h={height:.1f}m "
+            f"(locked={locked}, payload: {payload_index})"
+        )
+    except Exception as e:
+        console.print(f"[red]✗ Look At 控制发送失败: {e}[/red]")
+        raise
