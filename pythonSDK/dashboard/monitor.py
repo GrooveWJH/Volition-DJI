@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from rich.console import Console
 from rich.live import Live
 
-from djisdk import setup_multiple_drc_connections, stop_heartbeat
+from djisdk import setup_multiple_drc_connections, stop_heartbeat, DRCConnectionManager
 from vrpn import VRPNClient
 
 from .config import (
@@ -52,6 +52,7 @@ def setup_connections(console: Console):
     uav_clients = []
     vrpn_clients = []
     ivas_adapters = []  # 新增：IVAS 适配器列表
+    conn_managers = []  # 新增：连接管理器列表
 
     try:
         # === 阶段 1: 建立 DJI 无人机连接 ===
@@ -83,6 +84,41 @@ def setup_connections(console: Console):
         ]
 
         console.print(f"\n[bold bright_green]✓ 所有无人机已就绪 ({len(uav_clients)} 架)[/bold bright_green]")
+
+        # === 阶段 1.5: 启动连接管理器（自动重连）===
+        if not USE_MOCK and not SKIP_DRC_SETUP:
+            # 只在真实模式且启用 DRC 时启用连接管理器
+            console.rule("[bold bright_yellow]启动连接管理器[/bold bright_yellow]")
+            for i, uav in enumerate(uav_clients):
+                config = UAV_CONFIGS[i]
+                try:
+                    console.print(f"[bright_cyan]初始化连接管理器 #{i+1} ({config['callsign']})...[/bright_cyan]")
+
+                    # 创建连接管理器
+                    manager = DRCConnectionManager(
+                        mqtt_client=uav['mqtt'],
+                        service_caller=uav['caller'],
+                        uav_config=config,
+                        mqtt_config=MQTT_CONFIG,
+                        osd_frequency=OSD_FREQUENCY,
+                        hsi_frequency=HSI_FREQUENCY,
+                        offline_timeout=OFFLINE_TIMEOUT,
+                        reconnect_attempts=10,
+                        reconnect_interval=1.0
+                    )
+
+                    # 启动管理器
+                    manager.start(heartbeat_thread=uav['heartbeat'])
+
+                    conn_managers.append(manager)
+                    uav['connection_manager'] = manager  # 绑定到 UAV 客户端
+
+                    console.print(f"[bright_green]✓ 连接管理器 #{i+1} 已启动[/bright_green]")
+                except Exception as e:
+                    console.print(f"[bright_red]✗ 连接管理器初始化失败: {e}[/bright_red]")
+
+            if conn_managers:
+                console.print(f"\n[bold bright_green]✓ 连接管理器已就绪 ({len(conn_managers)} 个)[/bold bright_green]")
 
         # === 阶段 2: 初始化 VRPN 客户端（如果启用）===
         if ENABLE_VRPN:
@@ -155,6 +191,16 @@ def setup_connections(console: Console):
     finally:
         # === 自动清理资源 ===
         console.rule("[bold bright_magenta]断开连接[/bold bright_magenta]")
+
+        # 清理连接管理器
+        if conn_managers:
+            console.print("[bright_cyan]清理连接管理器...[/bright_cyan]")
+            for i, manager in enumerate(conn_managers):
+                try:
+                    manager.stop()
+                    console.print(f"[bright_green]✓ 连接管理器 #{i+1} 已停止[/bright_green]")
+                except Exception as e:
+                    console.print(f"[bright_yellow]⚠ 连接管理器清理警告: {e}[/bright_yellow]")
 
         # 清理 IVAS 客户端
         if ivas_adapters:

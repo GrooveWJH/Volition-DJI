@@ -22,6 +22,8 @@ from .services import (
     reset_gimbal,
     setup_drc_connection,
     setup_multiple_drc_connections,
+    DRCConnectionManager,
+    ConnectionState,
 )
 from .utils import (
     print_json_message,
@@ -74,6 +76,8 @@ __all__ = [
     'reset_gimbal',
     'setup_drc_connection',
     'setup_multiple_drc_connections',
+    'DRCConnectionManager',
+    'ConnectionState',
     # Utils
     'print_json_message',
     'get_key',

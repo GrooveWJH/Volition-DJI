@@ -218,7 +218,13 @@ def create_uav_panel(
         table.add_row("", ivas_panel)
 
     # 面板标题和边框颜色（离线状态优先显示）- 前卫配色：霓虹色系边框
-    if not is_online:
+    # 新增：检测重连状态
+    connection_manager = uav_client.get('connection_manager')
+    if connection_manager and connection_manager.is_reconnecting():
+        # 重连中：黄色边框
+        panel_color = "bright_yellow"
+        title = f"[bold]无人机 #{uav_id}[/bold] [bright_yellow]🔄 重连中...[/bright_yellow]"
+    elif not is_online:
         panel_color = "bright_red"
         title = f"[bold]无人机 #{uav_id}[/bold] [bright_red]● 离线[/bright_red]"
     elif not is_heartbeat_alive:
