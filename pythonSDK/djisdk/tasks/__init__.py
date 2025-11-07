@@ -5,10 +5,18 @@
 """
 from .runner import MissionRunner, run_parallel_missions, cleanup_missions
 from .takeoff import create_takeoff_mission
+from .trajectory import (
+    load_trajectory,
+    fly_trajectory_sequence,
+    create_trajectory_mission
+)
 
 __all__ = [
     'MissionRunner',
     'run_parallel_missions',
     'cleanup_missions',
     'create_takeoff_mission',
+    'load_trajectory',
+    'fly_trajectory_sequence',
+    'create_trajectory_mission',
 ]

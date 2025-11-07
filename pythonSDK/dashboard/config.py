@@ -24,18 +24,18 @@ UAV_CONFIGS = [
         'callsign': 'Pilot 1',
         'vrpn_device': 'Drone001@192.168.31.100'
     },
-    {
-        'sn': '9N9CN8400164WH',
-        'user_id': 'pilot_2',
-        'callsign': 'Pilot 2',
-        'vrpn_device': 'Drone002@192.168.31.100'
-    },
-    {
-        'sn': '9N9CN180011TJN',
-        'user_id': 'pilot_3',
-        'callsign': 'Pilot 3',
-        'vrpn_device': 'Drone003@192.168.31.100'
-    },
+    # {
+    #     'sn': '9N9CN8400164WH',
+    #     'user_id': 'pilot_2',
+    #     'callsign': 'Pilot 2',
+    #     'vrpn_device': 'Drone002@192.168.31.100'
+    # },
+    # {
+    #     'sn': '9N9CN180011TJN',
+    #     'user_id': 'pilot_3',
+    #     'callsign': 'Pilot 3',
+    #     'vrpn_device': 'Drone003@192.168.31.100'
+    # },
 ]
 
 # ========== 频率配置 ==========
@@ -75,9 +75,9 @@ ENABLE_IVAS = True
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {
     'position_report': True,    # 无人机位置上报（实际执行，从真实MQTT获取数据）
-    'target_report': True,     # 目标检测上报（暂不启用，无数据源）
+    'target_report': False,     # 目标检测上报（暂不启用，无数据源）
     'task_receive': True,       # 任务接收（仅显示，不实际执行无人机控制）
-    'situation_awareness': True,  # 态势感知（留白占位，无数据源）
+    'situation_awareness': False,  # 态势感知（留白占位，无数据源）
 }
 
 # IVAS 服务器配置

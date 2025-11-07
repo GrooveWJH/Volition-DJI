@@ -11,10 +11,10 @@
 6. 监控飞行进度（剩余距离、时间）
 7. 完成最后一个航点后自动返航
 8. 悬停监控，直到 Ctrl+C 退出
+
+现在使用 djisdk.tasks.trajectory 模块简化实现。
 """
 import time
-import json
-from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -24,9 +24,10 @@ from djisdk import (
     send_stick_control,
     run_parallel_missions,
     cleanup_missions,
-    fly_to_point,
     return_home,
     create_takeoff_mission,
+    load_trajectory,
+    fly_trajectory_sequence,
 )
 
 console = Console()
@@ -58,39 +59,8 @@ MISSION_CONFIG = {
     'trajectory_file': 'Trajectory/uav1.json',  # 航点文件路径
     'waypoint_height': 100.0,    # 航点飞行高度（椭球高，米）
     'max_speed': 12,             # 最大飞行速度（m/s）
+    'hover_between_waypoints': 5.0,  # 航点间悬停时间（秒）
 }
-
-
-def load_trajectory(filepath: str) -> list:
-    """
-    加载航点数据
-
-    Args:
-        filepath: 航点文件路径
-
-    Returns:
-        航点列表，每个航点包含 id, lat, lon
-
-    Raises:
-        FileNotFoundError: 文件不存在
-        json.JSONDecodeError: JSON 格式错误
-    """
-    path = Path(filepath)
-    if not path.exists():
-        raise FileNotFoundError(f"航点文件不存在: {filepath}")
-
-    with open(path, 'r', encoding='utf-8') as f:
-        waypoints = json.load(f)
-
-    if not isinstance(waypoints, list) or len(waypoints) == 0:
-        raise ValueError(f"航点数据格式错误或为空: {filepath}")
-
-    # 验证航点数据格式
-    for i, wp in enumerate(waypoints):
-        if 'lat' not in wp or 'lon' not in wp:
-            raise ValueError(f"航点 {i+1} 缺少 lat 或 lon 字段: {wp}")
-
-    return waypoints
 
 
 def display_trajectory_info(waypoints: list, height: float):
@@ -101,12 +71,12 @@ def display_trajectory_info(waypoints: list, height: float):
         waypoints: 航点列表
         height: 飞行高度
     """
-    table = Table(title="[bold cyan]📍 航点列表[/bold cyan]", show_header=True)
-    table.add_column("序号", style="cyan", width=6)
-    table.add_column("ID", style="yellow", width=6)
-    table.add_column("纬度 (Lat)", style="green", width=12)
-    table.add_column("经度 (Lon)", style="green", width=12)
-    table.add_column("高度 (m)", style="magenta", width=10)
+    table = Table(title="[bold bright_cyan]📍 航点列表[/bold bright_cyan]", show_header=True)
+    table.add_column("序号", style="bright_cyan", width=6)
+    table.add_column("ID", style="bright_yellow", width=6)
+    table.add_column("纬度 (Lat)", style="bright_green", width=12)
+    table.add_column("经度 (Lon)", style="bright_green", width=12)
+    table.add_column("高度 (m)", style="bright_magenta", width=10)
 
     for i, wp in enumerate(waypoints, 1):
         table.add_row(
@@ -122,133 +92,37 @@ def display_trajectory_info(waypoints: list, height: float):
     console.print("\n")
 
 
-def fly_trajectory_sequence(runners, waypoints, height, max_speed):
-    """
-    依次飞向所有航点
-
-    Args:
-        runners: MissionRunner 列表
-        waypoints: 航点列表
-        height: 飞行高度（米）
-        max_speed: 最大速度（m/s）
-    """
-    total_waypoints = len(waypoints)
-
-    for wp_index, waypoint in enumerate(waypoints, 1):
-        wp_id = waypoint.get('id', wp_index)
-        lat = waypoint['lat']
-        lon = waypoint['lon']
-
-        # 显示当前航点信息
-        console.print(
-            f"\n[bold cyan]━━━ 航点 {wp_index}/{total_waypoints} (ID: {wp_id}) ━━━[/bold cyan]")
-        console.print(
-            f"[yellow]目标: lat={lat:.7f}, lon={lon:.7f}, h={height:.1f}m[/yellow]")
-
-        # 发送 Fly-to 指令
-        for runner in runners:
-            caller = runner.caller
-            callsign = runner.config['callsign']
-            console.print(f"[cyan][{callsign}] 飞向航点 {wp_index}...[/cyan]")
-            fly_to_point(caller, latitude=lat, longitude=lon,
-                         height=height, max_speed=max_speed)
-
-        # 监控飞行进度
-        console.print(f"[dim]监控飞行进度...[/dim]\n")
-        last_status = {}
-
-        while True:
-            time.sleep(1.0)
-
-            all_done = True
-            for runner in runners:
-                mqtt = runner.mqtt
-                callsign = runner.config['callsign']
-
-                # 获取进度数据
-                progress = mqtt.get_flyto_progress()
-                status = progress.get('status')
-                remaining_distance = progress.get('remaining_distance')
-                remaining_time = progress.get('remaining_time')
-
-                # 检查是否完成
-                if status in ['wayline_ok', 'wayline_failed', 'wayline_cancel']:
-                    # 只在状态变化时打印
-                    if last_status.get(callsign) != status:
-                        if status == 'wayline_ok':
-                            console.print(
-                                f"[bold green]✓ [{callsign}] 已到达航点 {wp_index}！[/bold green]")
-                        elif status == 'wayline_failed':
-                            console.print(
-                                f"[bold red]✗ [{callsign}] 飞向航点 {wp_index} 失败[/bold red]")
-                        elif status == 'wayline_cancel':
-                            console.print(
-                                f"[bold yellow]⚠ [{callsign}] 飞向航点 {wp_index} 取消[/bold yellow]")
-                        last_status[callsign] = status
-                elif status == 'wayline_progress':
-                    all_done = False
-                    # 打印进度信息
-                    if remaining_distance is not None and remaining_time is not None:
-                        console.print(
-                            f"[dim]{time.strftime('%H:%M:%S')}[/dim] | "
-                            f"[cyan]{callsign}[/cyan]: "
-                            f"[yellow]航点 {wp_index} - 剩余 {remaining_distance:.1f}m, {remaining_time:.1f}s[/yellow]"
-                        )
-                    else:
-                        console.print(
-                            f"[dim]{time.strftime('%H:%M:%S')}[/dim] | [{callsign}] 执行中...")
-                else:
-                    # 还没收到进度数据
-                    all_done = False
-
-            # 所有无人机都完成了当前航点
-            if all_done:
-                break
-
-        console.print(
-            f"[bold green]✓ 航点 {wp_index}/{total_waypoints} 完成[/bold green]")
-
-        # 悬停等待飞控状态稳定（除了最后一个航点）
-        if wp_index < total_waypoints:
-            wait_time = 5  # 增加到 5 秒，让飞控完全稳定
-            console.print(f"[dim]悬停等待 {wait_time} 秒，飞控状态稳定中...[/dim]")
-            for _ in range(wait_time * 10):  # wait_time 秒 @ 10Hz
-                for runner in runners:
-                    send_stick_control(runner.mqtt)
-                time.sleep(0.1)
-
-
 def main():
     """主函数"""
     console.print(Panel.fit(
-        "[bold cyan]🚁 无人机轨迹飞行任务[/bold cyan]\n"
+        "[bold bright_cyan]🚁 无人机轨迹飞行任务[/bold bright_cyan]\n"
         f"[dim]无人机数量: {len(MISSION_CONFIG['uav_configs'])}[/dim]\n"
         f"[dim]1. 起飞到 {MISSION_CONFIG['target_height']}m[/dim]\n"
         f"[dim]2. 依次飞向所有航点[/dim]\n"
         f"[dim]3. 自动返航回起飞点[/dim]\n"
         f"[dim]航点文件: {MISSION_CONFIG['trajectory_file']}[/dim]\n"
         f"[dim]MQTT: {MISSION_CONFIG['mqtt_config']['host']}:{MISSION_CONFIG['mqtt_config']['port']}[/dim]",
-        border_style="cyan"
+        border_style="bright_cyan"
     ))
 
-    # 步骤0: 加载航点数据
-    console.print("\n[bold cyan]━━━ 步骤 0/5: 加载航点数据 ━━━[/bold cyan]")
+    # 步骤0: 加载航点数据（使用 SDK 函数）
+    console.print("\n[bold bright_cyan]━━━ 步骤 0/5: 加载航点数据 ━━━[/bold bright_cyan]")
     try:
         waypoints = load_trajectory(MISSION_CONFIG['trajectory_file'])
         console.print(
-            f"[green]✓ 成功加载 {len(waypoints)} 个航点[/green]")
+            f"[bright_green]✓ 成功加载 {len(waypoints)} 个航点[/bright_green]")
         display_trajectory_info(
             waypoints, MISSION_CONFIG['waypoint_height'])
     except Exception as e:
-        console.print(f"[red]✗ 加载航点失败: {e}[/red]")
+        console.print(f"[bright_red]✗ 加载航点失败: {e}[/bright_red]")
         return 1
 
     # 用户确认
     input(
-        f"\n[bold yellow]即将执行 {len(waypoints)} 个航点的飞行任务，按 Enter 继续...[/bold yellow]\n")
+        f"\n[bold bright_yellow]即将执行 {len(waypoints)} 个航点的飞行任务，按 Enter 继续...[/bold bright_yellow]\n")
 
     # 步骤1: 连接所有无人机
-    console.print("\n[bold cyan]━━━ 步骤 1/5: 并行连接无人机 ━━━[/bold cyan]")
+    console.print("\n[bold bright_cyan]━━━ 步骤 1/5: 并行连接无人机 ━━━[/bold bright_cyan]")
     try:
         connections = setup_multiple_drc_connections(
             uav_configs=MISSION_CONFIG['uav_configs'],
@@ -258,13 +132,13 @@ def main():
             heartbeat_interval=MISSION_CONFIG['heartbeat_interval']
         )
     except Exception as e:
-        console.print(f"[red]✗ 连接失败: {e}[/red]")
+        console.print(f"[bright_red]✗ 连接失败: {e}[/bright_red]")
         return 1
 
     # 步骤2: 执行起飞任务
-    console.print("\n[bold cyan]━━━ 步骤 2/5: 起飞到指定高度 ━━━[/bold cyan]")
+    console.print("\n[bold bright_cyan]━━━ 步骤 2/5: 起飞到指定高度 ━━━[/bold bright_cyan]")
     console.print(
-        f"[yellow]⚠️  任务将自动执行：外八解锁 → 上升到 {MISSION_CONFIG['target_height']}m[/yellow]")
+        f"[bright_yellow]⚠️  任务将自动执行：外八解锁 → 上升到 {MISSION_CONFIG['target_height']}m[/bright_yellow]")
 
     # 创建起飞任务函数（自动验证参数）
     takeoff_mission = create_takeoff_mission(
@@ -282,40 +156,46 @@ def main():
             countdown=3
         )
 
-        console.print("\n[bold green]✓ 所有无人机已完成起飞任务[/bold green]")
+        console.print("\n[bold bright_green]✓ 所有无人机已完成起飞任务[/bold bright_green]")
 
-        # 步骤3: 依次飞向所有航点
-        console.print("\n[bold cyan]━━━ 步骤 3/5: 依次飞向所有航点 ━━━[/bold cyan]")
+        # 步骤3: 依次飞向所有航点（使用 SDK 函数）
+        console.print("\n[bold bright_cyan]━━━ 步骤 3/5: 依次飞向所有航点 ━━━[/bold bright_cyan]")
         console.print(
-            f"[yellow]总航点数: {len(waypoints)}，飞行高度: {MISSION_CONFIG['waypoint_height']}m[/yellow]\n")
+            f"[bright_yellow]总航点数: {len(waypoints)}，飞行高度: {MISSION_CONFIG['waypoint_height']}m[/bright_yellow]\n")
 
-        fly_trajectory_sequence(
+        success = fly_trajectory_sequence(
             runners=runners,
             waypoints=waypoints,
             height=MISSION_CONFIG['waypoint_height'],
-            max_speed=MISSION_CONFIG['max_speed']
+            max_speed=MISSION_CONFIG['max_speed'],
+            hover_between_waypoints=MISSION_CONFIG['hover_between_waypoints'],
+            show_progress=True
         )
 
-        console.print(
-            f"\n[bold green]✓ 所有航点任务完成！({len(waypoints)} 个航点)[/bold green]")
+        if success:
+            console.print(
+                f"\n[bold bright_green]✓ 所有航点任务完成！({len(waypoints)} 个航点)[/bold bright_green]")
+        else:
+            console.print(
+                f"\n[bold bright_yellow]⚠ 航点任务完成，但有部分失败[/bold bright_yellow]")
 
         # 步骤4: 自动返航
-        console.print("\n[bold cyan]━━━ 步骤 4/5: 自动返航 ━━━[/bold cyan]")
-        console.print("[yellow]正在发送返航指令...[/yellow]")
+        console.print("\n[bold bright_cyan]━━━ 步骤 4/5: 自动返航 ━━━[/bold bright_cyan]")
+        console.print("[bright_yellow]正在发送返航指令...[/bright_yellow]")
 
         # 发送返航指令
         for runner in runners:
             caller = runner.caller
             callsign = runner.config['callsign']
-            console.print(f"[cyan][{callsign}] 发送返航指令...[/cyan]")
+            console.print(f"[bright_cyan][{callsign}] 发送返航指令...[/bright_cyan]")
             return_home(caller)
 
-        console.print("\n[bold green]✓ 所有无人机已触发返航[/bold green]")
+        console.print("\n[bold bright_green]✓ 所有无人机已触发返航[/bold bright_green]")
 
         # 步骤5: 悬停监控
-        console.print("\n[bold cyan]━━━ 步骤 5/5: 返航监控 ━━━[/bold cyan]")
+        console.print("\n[bold bright_cyan]━━━ 步骤 5/5: 返航监控 ━━━[/bold bright_cyan]")
         console.print(
-            "[yellow]💡 无人机正在返航，按 Ctrl+C 停止监控并退出[/yellow]\n")
+            "[bright_yellow]💡 无人机正在返航，按 Ctrl+C 停止监控并退出[/bright_yellow]\n")
 
         while True:
             time.sleep(1.0)
@@ -329,10 +209,10 @@ def main():
 
                 if h is not None:
                     height_info.append(
-                        f"[cyan]{callsign}[/cyan]: [green]{h:.2f}m[/green]")
+                        f"[bright_cyan]{callsign}[/bright_cyan]: [bright_green]{h:.2f}m[/bright_green]")
                 else:
                     height_info.append(
-                        f"[cyan]{callsign}[/cyan]: [dim]N/A[/dim]")
+                        f"[bright_cyan]{callsign}[/bright_cyan]: [dim]N/A[/dim]")
 
                 # 持续发送悬停指令
                 send_stick_control(mqtt)
@@ -341,7 +221,7 @@ def main():
                 f"[dim]{time.strftime('%H:%M:%S')}[/dim] | " + " | ".join(height_info))
 
     except KeyboardInterrupt:
-        console.print("\n[yellow]⚠ 收到中断信号 (Ctrl+C)[/yellow]")
+        console.print("\n[bright_yellow]⚠ 收到中断信号 (Ctrl+C)[/bright_yellow]")
     finally:
         # 清理资源
         if runners:
