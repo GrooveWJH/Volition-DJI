@@ -43,8 +43,18 @@ def _call_service(
                 console.print(f"[green]✓ {success_msg}[/green]")
             return result.get('data', {})
         else:
-            error_msg = result.get('message', str(result))
-            raise Exception(f"{method} 失败: {error_msg}")
+            # 提取详细错误信息
+            error_code = result.get('result', 'unknown')
+            error_msg = result.get('message', result.get('output', {}).get('msg', 'Unknown error'))
+
+            # 打印详细错误信息（仅针对错误情况）
+            console.print(f"[red]✗ 服务调用失败:[/red]")
+            console.print(f"  [yellow]方法:[/yellow] {method}")
+            console.print(f"  [yellow]错误码:[/yellow] {error_code}")
+            console.print(f"  [yellow]错误信息:[/yellow] {error_msg}")
+            console.print(f"  [dim]完整响应: {result}[/dim]")
+
+            raise Exception(f"{method} 失败 (code={error_code}): {error_msg}")
 
     except Exception as e:
         console.print(f"[red]✗ {method}: {e}[/red]")
@@ -202,7 +212,7 @@ def fly_to_point(
     height: float,
     max_speed: int = 12,
     fly_to_id: Optional[str] = None
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], str]:
     """
     飞向目标点
 
@@ -218,11 +228,11 @@ def fly_to_point(
         fly_to_id: 飞向目标点ID（可选，默认自动生成UUID）
 
     Returns:
-        服务返回数据
+        (服务返回数据, fly_to_id)
 
     Example:
         >>> # 飞向目标点
-        >>> fly_to_point(caller, latitude=39.0427514, longitude=117.7238255, height=100.0)
+        >>> result, fly_to_id = fly_to_point(caller, latitude=39.0427514, longitude=117.7238255, height=100.0)
         [cyan]飞向目标点...[/cyan]
         [green]✓ Fly-to 指令已发送[/green]
     """
@@ -244,7 +254,7 @@ def fly_to_point(
 
     console.print(f"[cyan]飞向目标点 (lat: {latitude:.6f}, lon: {longitude:.6f}, h: {height:.1f}m)...[/cyan]")
 
-    return _call_service(
+    result = _call_service(
         caller,
         "fly_to_point",
         {
@@ -260,6 +270,9 @@ def fly_to_point(
         },
         "Fly-to 指令已发送"
     )
+
+    # 返回结果和 fly_to_id，用于后续事件匹配
+    return (result, fly_to_id)
 
 
 # ========== DRC 杆量控制 ==========
@@ -609,11 +622,3 @@ def reset_gimbal(
 
     # 发送成功反馈
     console.print(f"[bright_green]✓ 云台{mode_name}指令已发送[/bright_green]")
-
-
-# ========== 扩展示例 ==========
-# 添加新服务只需 1-2 行！
-
-# def send_joystick(caller: ServiceCaller, pitch: float, roll: float, yaw: float, throttle: float) -> Dict[str, Any]:
-#     """发送虚拟摇杆指令"""
-#     return _call_service(caller, "drc_joystick", {"pitch": pitch, "roll": roll, "yaw": yaw, "throttle": throttle})

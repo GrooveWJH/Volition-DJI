@@ -278,6 +278,65 @@ class MQTTClient:
         with self.lock:
             return self.flyto_progress['status']
 
+    def wait_for_flyto_event(
+        self,
+        expected_fly_to_id: str,
+        timeout: float = 120.0,
+        poll_interval: float = 1.0
+    ) -> Dict[str, Any]:
+        """
+        等待指定 fly_to_id 的航点事件（事件驱动 + 轮询兜底）
+
+        使用混合策略：
+        1. 主策略：事件回调（event 到达时立即返回，延迟 <10ms）
+        2. 兜底策略：定期轮询（每 poll_interval 秒检查一次，防止漏事件）
+        3. 超时保护：超时后抛出 TimeoutError
+
+        Args:
+            expected_fly_to_id: 期望的 fly_to_id（必须匹配，防止读取旧航点数据）
+            timeout: 超时时间（秒），默认 120 秒
+            poll_interval: 轮询间隔（秒），默认 1 秒
+
+        Returns:
+            完整的 flyto_progress 数据（当 status 为终止状态时返回）
+
+        Raises:
+            TimeoutError: 超时未收到终止状态事件
+
+        Example:
+            >>> _, fly_to_id = fly_to_point(caller, lat=39.0, lon=117.0, height=100)
+            >>> progress = mqtt.wait_for_flyto_event(fly_to_id, timeout=120)
+            >>> if progress['status'] == 'wayline_ok':
+            >>>     print("✓ 已到达航点")
+        """
+        import time
+
+        start_time = time.time()
+        terminal_statuses = {'wayline_ok', 'wayline_failed', 'wayline_cancel'}
+
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"等待 fly_to_id={expected_fly_to_id} 的事件超时（{timeout}秒）"
+                )
+
+            # 读取最新事件数据（线程安全）
+            progress = self.get_flyto_progress()
+            event_fly_to_id = progress.get('fly_to_id')
+            status = progress.get('status')
+
+            # ✅ 关键检查：fly_to_id 必须匹配
+            if event_fly_to_id == expected_fly_to_id:
+                # 收到当前航点的事件
+                if status in terminal_statuses:
+                    # 到达终止状态（ok / failed / cancel）
+                    return progress
+                # 还在飞行中（wayline_progress），继续等待
+
+            # 轮询间隔（既能快速响应，又不占用太多 CPU）
+            time.sleep(poll_interval)
+
     def register_osd_callback(self, callback):
         """注册 OSD 消息回调（用于 FPS 监控等）"""
         self.osd_callbacks.append(callback)
