@@ -43,26 +43,26 @@ MQTT_CONFIG = {
 
 # 无人机配置列表（每架无人机有独立的直播地址）
 UAV_CONFIGS = [
-    {
-        'name': 'Drone001',
-        'sn': '9N9CN2J0012CXY',
-        'user_id': 'pilot_1',
-        'callsign': 'Alpha',
-        'rtmp_stream_key': 'drone001',  # RTMP 流名称（拼接到 base_url 后）
-        'video_index': 'normal-0',
-        'video_quality': 0,  # 0=自适应, 1=流畅, 2=标清, 3=高清, 4=超清
-        'zoom': {
-            'enabled': True,  # 是否启用变焦控制
-            'initial': 7,  # 初始变焦倍数
-            'step': 2,  # 变焦步进
-        }
-    },
+    # {
+    #     'name': 'Drone001',
+    #     'sn': '9N9CN2J0012CXY',
+    #     'user_id': 'pilot_1',
+    #     'callsign': 'Alpha',
+    #     'rtmp_stream_key': 'Drone001',  # RTMP 流名称（拼接到 base_url 后）
+    #     'video_index': 'normal-0',
+    #     'video_quality': 0,  # 0=自适应, 1=流畅, 2=标清, 3=高清, 4=超清
+    #     'zoom': {
+    #         'enabled': True,  # 是否启用变焦控制
+    #         'initial': 7,  # 初始变焦倍数
+    #         'step': 2,  # 变焦步进
+    #     }
+    # },
     {
         'name': 'Drone002',
         'sn': '9N9CN8400164WH',
         'user_id': 'pilot_2',
         'callsign': 'Bravo',
-        'rtmp_stream_key': 'drone002',
+        'rtmp_stream_key': 'Drone002',
         'video_index': 'normal-0',
         'video_quality': 0,
         'zoom': {
@@ -71,20 +71,20 @@ UAV_CONFIGS = [
             'step': 2,
         }
     },
-    {
-        'name': 'Drone003',
-        'sn': '9N9CN180011TJN',
-        'user_id': 'pilot_3',
-        'callsign': 'Charlie',
-        'rtmp_stream_key': 'drone003',
-        'video_index': 'normal-0',
-        'video_quality': 0,
-        'zoom': {
-            'enabled': True,
-            'initial': 10,
-            'step': 2,
-        }
-    },
+    # {
+    #     'name': 'Drone003',
+    #     'sn': '9N9CN180011TJN',
+    #     'user_id': 'pilot_3',
+    #     'callsign': 'Charlie',
+    #     'rtmp_stream_key': 'drone003',
+    #     'video_index': 'normal-0',
+    #     'video_quality': 0,
+    #     'zoom': {
+    #         'enabled': True,
+    #         'initial': 10,
+    #         'step': 2,
+    #     }
+    # },
 ]
 
 # RTMP 服务器配置

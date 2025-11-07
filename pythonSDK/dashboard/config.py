@@ -60,7 +60,7 @@ ENABLE_VRPN = False
 
 # 跳过 DRC 连接建立（适用于其他程序已经维持 DRC 状态的场景）
 # 设置为 True 时，只连接 MQTT 订阅数据，不请求控制权和进入 DRC 模式
-SKIP_DRC_SETUP = False
+SKIP_DRC_SETUP = True
 
 # ========== 心跳配置 ==========
 
@@ -82,8 +82,8 @@ IVAS_FEATURES = {
 
 # IVAS 服务器配置
 IVAS_SERVER = {
-    'base_url': 'http://localhost:5001',  # IVAS 服务器地址
-    'report_hz': 1.0,   # 位置和目标上报频率 (Hz)
+    'base_url': 'http://192.168.31.38:8888',  # IVAS 服务器地址
+    'report_hz': 5.0,   # 位置和目标上报频率 (Hz)
     'task_hz': 0.2,     # 任务轮询频率 (Hz)
 }
 

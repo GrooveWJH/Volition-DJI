@@ -112,7 +112,8 @@ class IVASAdapter:
         # 判断运动状态（水平速度 > 0.5 m/s 则认为在运动）
         motion = 1 if h_speed and h_speed > 0.5 else 0
 
-        return {
+        # 构造上报数据
+        position_data = {
             'deviceCode': self.device_code,
             'userX': lat or 0.0,  # 纬度
             'userY': lon or 0.0,  # 经度
@@ -124,6 +125,12 @@ class IVASAdapter:
             'roomId': 22,  # 任务 ID (固定传 22)
             'refPositionType': 0  # 设备类型 (固定传 0)
         }
+
+        # 实时打印上报的经纬高
+        if lat is not None and lon is not None:
+            print(f"[上报] [{self.uav_config['callsign']}] 纬度:{lat:.6f} 经度:{lon:.6f} 高度:{height:.2f}m")
+
+        return position_data
 
     def _handle_ivas_log(self, log_type: str, data: Any):
         """
