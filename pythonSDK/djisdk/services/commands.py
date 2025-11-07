@@ -542,15 +542,17 @@ def setup_multiple_drc_connections(
 # ========== 云台控制 ==========
 
 def reset_gimbal(
-    caller: ServiceCaller,
+    mqtt_client: MQTTClient,
     payload_index: str,
     reset_mode: int
-) -> Dict[str, Any]:
+) -> None:
     """
-    重置云台
+    重置云台（DRC 下行指令，无回包机制）
+
+    发送到 /drc/down topic，使用 seq 序列号（不是 tid）
 
     Args:
-        caller: 服务调用器
+        mqtt_client: MQTT 客户端（注意：不是 ServiceCaller）
         payload_index: 负载编号，格式为 {type-subtype-gimbalindex}
                       例如: "89-0-0" (type=89, subtype=0, gimbalindex=0)
         reset_mode: 重置模式类型
@@ -559,19 +561,14 @@ def reset_gimbal(
                    2 - 偏航回中（只回中yaw）
                    3 - 俯仰向下（只向下pitch）
 
-    Returns:
-        服务返回数据
-
     Example:
         >>> # 云台回中
-        >>> reset_gimbal(caller, payload_index="89-0-0", reset_mode=0)
-        [cyan]重置云台: 回中[/cyan]
-        [green]✓ 云台重置成功[/green]
+        >>> reset_gimbal(mqtt, payload_index="89-0-0", reset_mode=0)
+        [bright_green]✓ 云台回中[/bright_green]
 
         >>> # 云台向下
-        >>> reset_gimbal(caller, payload_index="89-0-0", reset_mode=1)
-        [cyan]重置云台: 向下[/cyan]
-        [green]✓ 云台重置成功[/green]
+        >>> reset_gimbal(mqtt, payload_index="89-0-0", reset_mode=1)
+        [bright_yellow]✓ 云台向下[/bright_yellow]
     """
     reset_mode_names = {
         0: "回中",
@@ -585,17 +582,24 @@ def reset_gimbal(
     if reset_mode not in reset_mode_names:
         raise ValueError(f"reset_mode 必须在 [0, 3] 范围内，当前值: {reset_mode}")
 
-    console.print(f"[cyan]重置云台: {mode_name}[/cyan]")
+    # 构建消息（使用 seq，不是 tid）
+    topic = f"thing/product/{mqtt_client.gateway_sn}/drc/down"
+    seq = int(time.time() * 1000)
 
-    return _call_service(
-        caller,
-        "drc_gimbal_reset",
-        {
+    payload = {
+        "seq": seq,
+        "method": "drc_gimbal_reset",
+        "data": {
             "payload_index": payload_index,
             "reset_mode": reset_mode
-        },
-        f"云台重置成功 ({mode_name})"
-    )
+        }
+    }
+
+    # 发送指令（QoS 0，无回包机制）
+    mqtt_client.client.publish(topic, json.dumps(payload), qos=0)
+
+    # 发送成功反馈
+    console.print(f"[bright_green]✓ 云台{mode_name}指令已发送[/bright_green]")
 
 
 # ========== 扩展示例 ==========

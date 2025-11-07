@@ -152,7 +152,7 @@ def main():
                         f"[bright_cyan]{time.strftime('%H:%M:%S')}[/bright_cyan] | "
                         f"[bright_green]↑ 云台回中[/bright_green]"
                     )
-                    reset_gimbal(caller, payload_index=payload_index, reset_mode=0)
+                    reset_gimbal(mqtt, payload_index=payload_index, reset_mode=0)
                     last_key_time = current_time
 
                 elif key == '\x1b[B':  # 下箭头
@@ -160,7 +160,7 @@ def main():
                         f"[bright_cyan]{time.strftime('%H:%M:%S')}[/bright_cyan] | "
                         f"[bright_yellow]↓ 云台向下[/bright_yellow]"
                     )
-                    reset_gimbal(caller, payload_index=payload_index, reset_mode=1)
+                    reset_gimbal(mqtt, payload_index=payload_index, reset_mode=1)
                     last_key_time = current_time
 
                 elif key == 'q' or key == '\x03':  # q 或 Ctrl+C
