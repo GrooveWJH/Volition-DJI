@@ -336,17 +336,21 @@ def setup_drc_connection(
     osd_frequency: int = 30,
     hsi_frequency: int = 10,
     heartbeat_interval: float = 1.0,
-    wait_for_user: bool = True
-) -> Tuple[MQTTClient, ServiceCaller, threading.Thread]:
+    wait_for_user: bool = True,
+    skip_drc_setup: bool = False
+) -> Tuple[MQTTClient, ServiceCaller, Optional[threading.Thread]]:
     """
     Setup complete DRC connection in one call.
 
-    Steps:
+    Steps (if skip_drc_setup=False):
     1. Connect MQTT
     2. Request control auth
     3. Wait for user confirmation (optional)
     4. Enter DRC mode
     5. Start heartbeat
+
+    Steps (if skip_drc_setup=True):
+    1. Connect MQTT only
 
     Args:
         gateway_sn: Gateway serial number
@@ -357,18 +361,18 @@ def setup_drc_connection(
         hsi_frequency: HSI data frequency (Hz)
         heartbeat_interval: Heartbeat interval (seconds)
         wait_for_user: Wait for user confirmation before entering DRC mode
+        skip_drc_setup: Skip control auth and DRC mode setup (only connect MQTT)
 
     Returns:
         (mqtt_client, service_caller, heartbeat_thread)
+        Note: heartbeat_thread is None if skip_drc_setup=True
 
     Example:
-        >>> mqtt, caller, heartbeat = setup_drc_connection(
-        ...     "1234567890ABC",
-        ...     {'host': '172.20.10.2', 'port': 1883, 'username': 'admin', 'password': 'pass'}
-        ... )
-        >>> # Use mqtt, caller for commands
-        >>> stop_heartbeat(heartbeat)
-        >>> mqtt.disconnect()
+        >>> # Full DRC setup
+        >>> mqtt, caller, heartbeat = setup_drc_connection("SN123", mqtt_config)
+
+        >>> # MQTT only
+        >>> mqtt, caller, _ = setup_drc_connection("SN123", mqtt_config, skip_drc_setup=True)
     """
     from ..services.heartbeat import start_heartbeat
     import uuid
@@ -381,6 +385,11 @@ def setup_drc_connection(
 
     # Step 2: Create ServiceCaller
     caller = ServiceCaller(mqtt)
+
+    # If skip_drc_setup, return early
+    if skip_drc_setup:
+        console.print("[bold yellow]仅连接 MQTT，跳过 DRC 模式设置[/bold yellow]")
+        return mqtt, caller, None
 
     try:
         # Step 3: Request control auth

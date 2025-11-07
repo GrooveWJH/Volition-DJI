@@ -129,7 +129,8 @@ def main():
         osd_frequency=OSD_FREQUENCY,
         hsi_frequency=HSI_FREQUENCY,
         heartbeat_interval=1.0,
-        wait_for_user=True
+        wait_for_user=True,
+        skip_drc_setup=True
     )
 
     video_id = None

@@ -18,6 +18,8 @@ from djisdk import (
 # ========== 配置 ==========
 UAV_CONFIGS = [
     {'sn': '9N9CN2J0012CXY', 'user_id': 'pilot1', 'callsign': 'Alpha'},
+    {'sn': '9N9CN8400164WH', 'user_id': 'pilot2', 'callsign': 'Bravo'},
+    {'sn': '9N9CN180011TJN', 'user_id': 'pilot3', 'callsign': 'Charlie'},
 ]
 
 MQTT_CONFIG = {
@@ -28,6 +30,8 @@ MQTT_CONFIG = {
 }
 
 # ========== 主流程 ==========
+
+
 def main():
     # 1. 加载航点
     waypoints = load_trajectory('Trajectory/uav1.json')
@@ -38,13 +42,15 @@ def main():
         uav_configs=UAV_CONFIGS,
         mqtt_config=MQTT_CONFIG,
         osd_frequency=100,
-        hsi_frequency=10
+        hsi_frequency=10,
+        skip_drc_setup=True,
     )
 
     try:
         # 3. 起飞到 30m
         takeoff_mission = create_takeoff_mission(target_height=30.0)
-        runners = run_parallel_missions(connections, takeoff_mission, UAV_CONFIGS)
+        runners = run_parallel_missions(
+            connections, takeoff_mission, UAV_CONFIGS)
         print("✓ 起飞完成")
 
         # 4. 飞行轨迹（这是关键函数！）
@@ -76,6 +82,7 @@ def main():
         print("\n中断退出")
     finally:
         cleanup_missions(runners)
+
 
 if __name__ == '__main__':
     main()
