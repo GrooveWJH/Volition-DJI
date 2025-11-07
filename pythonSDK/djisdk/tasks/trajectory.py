@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from rich.console import Console
 
-from ..services import fly_to_point
+from ..services import fly_to_point, reset_gimbal
 from .runner import MissionRunner
 
 console = Console()
@@ -196,9 +196,30 @@ def fly_trajectory_sequence(
         if wp_index < total_waypoints and hover_between_waypoints > 0:
             if show_progress:
                 console.print(
-                    f"[dim]等待 {hover_between_waypoints:.1f} 秒后继续下一个航点...[/dim]")
+                    f"[bright_cyan]━━━ 航点 {wp_index} 悬停操作 ━━━[/bright_cyan]")
+                console.print(
+                    f"[bright_yellow]悬停 {hover_between_waypoints:.1f} 秒，云台朝下[/bright_yellow]")
 
-            # 简单等待，不发送任何控制指令（fly_to_point 后飞机会自动悬停）
+            # 所有无人机云台朝下（reset_mode=1: yaw回中、pitch向下）
+            for runner in runners:
+                mqtt = runner.mqtt
+                callsign = runner.config.get('callsign', 'UAV')
+
+                # 跳过之前失败的无人机
+                if callsign not in fly_to_ids:
+                    continue
+
+                try:
+                    payload_index = mqtt.get_payload_index() or "88-0-0"
+                    if show_progress:
+                        console.print(f"[bright_cyan][{callsign}] 云台朝下...[/bright_cyan]")
+
+                    reset_gimbal(mqtt, payload_index=payload_index, reset_mode=1)
+                except Exception as e:
+                    if show_progress:
+                        console.print(f"[bright_yellow]⚠ [{callsign}] 云台控制失败: {e}[/bright_yellow]")
+
+            # 悬停等待（fly_to_point 后飞机会自动悬停）
             time.sleep(hover_between_waypoints)
 
     return all_success

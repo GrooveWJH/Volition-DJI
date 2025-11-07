@@ -30,7 +30,7 @@ UAV_CONFIGS = [
         'trajectory_file': 'Trajectory/uav1.json',  # 独立轨迹文件
         'flight_height': 100.0,  # 飞行高度（米）
         'max_speed': 15,  # 最大速度（m/s）
-        'hover_time': 5.0,  # 航点间悬停时间（秒）
+        'hover_time': 20.0,  # 航点间悬停时间（秒）- 悬停时云台朝下
         'camera': {
             'gimbal_mode': 1,  # 0=回中, 1=向下, 2=偏航回中, 3=俯仰向下
             'zoom_factor': 7,  # 变焦倍数（2-200）
