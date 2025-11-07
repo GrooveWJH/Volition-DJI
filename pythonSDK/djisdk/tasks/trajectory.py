@@ -106,7 +106,7 @@ def fly_trajectory_sequence(
                 f"[bright_yellow]目标: lat={lat:.7f}, lon={lon:.7f}, h={height:.1f}m[/bright_yellow]")
 
         # 发送 Fly-to 指令到所有无人机，并记录 fly_to_id
-        fly_to_ids = {}  # {callsign: (result_data, fly_to_id)}
+        fly_to_ids = {}  # {callsign: fly_to_id}
         for runner in runners:
             caller = runner.caller
             callsign = runner.config.get('callsign', 'UAV')
@@ -114,16 +114,15 @@ def fly_trajectory_sequence(
                 console.print(f"[bright_cyan][{callsign}] 飞向航点 {wp_index}...[/bright_cyan]")
 
             try:
-                result_data, fly_to_id = fly_to_point(
+                fly_to_id = fly_to_point(
                     caller, latitude=lat, longitude=lon, height=height, max_speed=max_speed
                 )
-                fly_to_ids[callsign] = (result_data, fly_to_id)
+                fly_to_ids[callsign] = fly_to_id
             except Exception as e:
-                # service call 失败，但不影响后续监控
+                # service call 失败，跳过此无人机（用缺失 key 表示）
                 console.print(f"[bright_yellow]⚠ [{callsign}] Fly-to service 调用失败[/bright_yellow]")
                 console.print(f"[dim]   原因: {e}[/dim]")
                 all_success = False
-                fly_to_ids[callsign] = (None, None)  # 标记为失败
 
         # 监控飞行进度（使用 wait_for_flyto_event）
         if show_progress:
@@ -132,13 +131,14 @@ def fly_trajectory_sequence(
         for runner in runners:
             mqtt = runner.mqtt
             callsign = runner.config.get('callsign', 'UAV')
-            result_data, fly_to_id = fly_to_ids.get(callsign, (None, None))
 
-            # 跳过 service call 失败的无人机
-            if fly_to_id is None:
+            # 跳过 service call 失败的无人机（用缺失 key 判断，不用 None）
+            if callsign not in fly_to_ids:
                 if show_progress:
                     console.print(f"[dim][{callsign}] 跳过监控（service call 失败）[/dim]")
                 continue
+
+            fly_to_id = fly_to_ids[callsign]
 
             # 等待航点事件（自动验证 fly_to_id，防止读取旧数据）
             try:
