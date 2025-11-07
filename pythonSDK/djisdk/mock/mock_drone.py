@@ -395,6 +395,7 @@ class MockHeartbeatThread(threading.Thread):
         super().__init__(daemon=True)
         self.stop_flag = threading.Event()
         self._mock_alive = True
+        self._started = False  # 标记是否已启动
 
     def is_alive(self) -> bool:
         """始终返回True（心跳正常）"""
@@ -405,7 +406,12 @@ class MockHeartbeatThread(threading.Thread):
         pass
 
     def start(self):
-        """覆盖start方法，避免实际启动线程"""
+        """覆盖start方法，避免实际启动线程（但标记为已启动状态）"""
+        self._started = True
+        # 不调用 super().start()，避免启动真实线程
+
+    def join(self, timeout=None):
+        """覆盖join方法，立即返回（因为没有真实线程在运行）"""
         pass
 
 
