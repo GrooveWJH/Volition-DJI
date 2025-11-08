@@ -38,18 +38,25 @@ UAV_CONFIGS = [
     # },
 ]
 
-# ========== 频率配置 ==========
+# ========== DRC 连接配置 ==========
 
-# OSD 数据频率（Hz）- 包含位置、速度、姿态、电池、GPS等
+# 跳过 DRC 连接建立（适用于其他程序已经维持 DRC 状态的场景）
+# 设置为 True 时，只连接 MQTT 订阅数据，不请求控制权和进入 DRC 模式
+SKIP_DRC_SETUP = True
+
+# OSD 数据频率（Hz）- 包含位置、速度、姿态、电池、GPS 等
 OSD_FREQUENCY = 40
 
 # 健康状态指标频率（Hz）- 包含传感器状态、错误码等
 HSI_FREQUENCY = 10
 
+# 心跳间隔（秒）
+HEARTBEAT_INTERVAL = 1.0
+
+# ========== GUI 显示配置 ==========
+
 # GUI 刷新频率（Hz）- 显式配置界面刷新率
 GUI_REFRESH_RATE = 60
-
-# ========== 监控配置 ==========
 
 # 离线超时时间（秒）- 超过此时间无消息则认为无人机离线
 OFFLINE_TIMEOUT = 2.0
@@ -58,19 +65,10 @@ OFFLINE_TIMEOUT = 2.0
 # 设置为 True 时，显示动捕位置、速度、加速度数据
 ENABLE_VRPN = False
 
-# 跳过 DRC 连接建立（适用于其他程序已经维持 DRC 状态的场景）
-# 设置为 True 时，只连接 MQTT 订阅数据，不请求控制权和进入 DRC 模式
-SKIP_DRC_SETUP = True
-
-# ========== 心跳配置 ==========
-
-# 心跳间隔（秒）
-HEARTBEAT_INTERVAL = 1.0
-
-# ========== IVAS 配置 ==========
+# ========== IVAS 集成配置 ==========
 
 # IVAS 功能总开关
-ENABLE_IVAS = True
+ENABLE_IVAS = False
 
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {

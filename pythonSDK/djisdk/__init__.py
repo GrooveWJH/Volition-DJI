@@ -10,7 +10,6 @@ from .services import (
     enter_drc_mode,
     exit_drc_mode,
     change_live_lens,
-    set_live_quality,
     start_live_push,
     stop_live_push,
     return_home,
@@ -35,6 +34,7 @@ from .utils import (
 from .live_utils import (
     start_live,
     stop_live,
+    set_live_quality,  # 使用带详细日志的版本
     zoom_control_loop,
 )
 from .primitives import (

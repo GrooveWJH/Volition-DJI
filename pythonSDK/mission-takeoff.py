@@ -46,9 +46,9 @@ MISSION_CONFIG = {
     'hsi_frequency': 10,
     'heartbeat_interval': 0.2,
     # 起飞参数
-    'target_height': 30.0,       # 目标高度（米），必须 >= 5.0m
+    'target_height': 100.0,       # 目标高度（米），必须 >= 5.0m
     'height_tolerance': 1.0,     # 高度容差（米）
-    'throttle_offset': 600,      # 油门偏移量
+    'throttle_offset': 660,      # 油门偏移量
 }
 
 

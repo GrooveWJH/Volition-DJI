@@ -92,13 +92,13 @@ def set_camera_zoom(
     Args:
         mqtt_client: MQTT 客户端
         payload_index: 相机枚举值（格式: {type-subtype-gimbalindex}，如 "88-0-0"）
-        zoom_factor: 变焦倍数（可见光: 2-200，红外: 2-20）
+        zoom_factor: 变焦倍数（可见光: 1-112，红外: 2-20）
         camera_type: 相机类型（"ir"=红外, "wide"=广角, "zoom"=变焦，默认 "zoom"）
         seq: 序列号（None 则自动生成时间戳）
 
     注意:
         - 无返回值（Fire-and-forget）
-        - 可见光相机变焦范围: 2-200
+        - 可见光相机变焦范围: 1-112
         - 红外相机变焦范围: 2-20
 
     示例:
@@ -119,9 +119,9 @@ def set_camera_zoom(
             console.print(f"[red]✗ 红外相机变焦倍数超出范围: {zoom_factor} (应在 2-20)[/red]")
             raise ValueError(f"For IR camera, zoom_factor must be in range [2, 20], got {zoom_factor}")
     else:  # zoom 或 wide
-        if not 2 <= zoom_factor <= 200:
-            console.print(f"[red]✗ 可见光相机变焦倍数超出范围: {zoom_factor} (应在 2-200)[/red]")
-            raise ValueError(f"For visible camera, zoom_factor must be in range [2, 200], got {zoom_factor}")
+        if not 1 <= zoom_factor <= 112:
+            console.print(f"[red]✗ 可见光相机变焦倍数超出范围: {zoom_factor} (应在 1-112)[/red]")
+            raise ValueError(f"For visible camera, zoom_factor must be in range [1, 112], got {zoom_factor}")
 
     # 生成 seq
     if seq is None:

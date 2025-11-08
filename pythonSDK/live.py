@@ -22,6 +22,7 @@ from djisdk import (
     wait_for_camera_data,
     start_live,
     stop_live,
+    set_live_quality,
 )
 from djisdk.services.drc_commands import set_camera_zoom
 import time
@@ -43,20 +44,20 @@ MQTT_CONFIG = {
 
 # 无人机配置列表（每架无人机有独立的直播地址）
 UAV_CONFIGS = [
-    # {
-    #     'name': 'Drone001',
-    #     'sn': '9N9CN2J0012CXY',
-    #     'user_id': 'pilot_1',
-    #     'callsign': 'Alpha',
-    #     'rtmp_stream_key': 'Drone001',  # RTMP 流名称（拼接到 base_url 后）
-    #     'video_index': 'normal-0',
-    #     'video_quality': 0,  # 0=自适应, 1=流畅, 2=标清, 3=高清, 4=超清
-    #     'zoom': {
-    #         'enabled': True,  # 是否启用变焦控制
-    #         'initial': 7,  # 初始变焦倍数
-    #         'step': 2,  # 变焦步进
-    #     }
-    # },
+    {
+        'name': 'Drone001',
+        'sn': '9N9CN2J0012CXY',
+        'user_id': 'pilot_1',
+        'callsign': 'Alpha',
+        'rtmp_stream_key': 'Drone001',  # RTMP 流名称（拼接到 base_url 后）
+        'video_index': 'normal-0',
+        'video_quality': 4,  # 0=自适应, 1=流畅, 2=标清, 3=高清, 4=超清
+        'zoom': {
+            'enabled': True,  # 是否启用变焦控制
+            'initial': 1,  # 初始变焦倍数
+            'step': 1,  # 变焦步进
+        }
+    },
     {
         'name': 'Drone002',
         'sn': '9N9CN8400164WH',
@@ -64,27 +65,27 @@ UAV_CONFIGS = [
         'callsign': 'Bravo',
         'rtmp_stream_key': 'Drone002',
         'video_index': 'normal-0',
-        'video_quality': 0,
+        'video_quality': 4,
         'zoom': {
             'enabled': True,
-            'initial': 5,
-            'step': 2,
+            'initial': 1,
+            'step': 1,
         }
     },
-    # {
-    #     'name': 'Drone003',
-    #     'sn': '9N9CN180011TJN',
-    #     'user_id': 'pilot_3',
-    #     'callsign': 'Charlie',
-    #     'rtmp_stream_key': 'drone003',
-    #     'video_index': 'normal-0',
-    #     'video_quality': 0,
-    #     'zoom': {
-    #         'enabled': True,
-    #         'initial': 10,
-    #         'step': 2,
-    #     }
-    # },
+    {
+        'name': 'Drone003',
+        'sn': '9N9CN180011TJN',
+        'user_id': 'pilot_3',
+        'callsign': 'Charlie',
+        'rtmp_stream_key': 'Drone003',
+        'video_index': 'normal-0',
+        'video_quality': 4,
+        'zoom': {
+            'enabled': True,
+            'initial': 1,
+            'step': 1,
+        }
+    },
 ]
 
 # RTMP 服务器配置
@@ -168,12 +169,23 @@ def start_live_for_uav(mqtt, caller, config):
         console.print(f"[{callsign}] 等待相机数据...")
         wait_for_camera_data(mqtt, max_wait=10)
 
-        # 2. 构建 RTMP URL
+        # 2. 构建 video_id
+        from djisdk.utils import build_video_id
+        video_id = build_video_id(mqtt, config['video_index'])
+        console.print(f"[{callsign}] Video ID: {video_id}")
+
+        # 3. 构建 RTMP URL
         rtmp_url = f"{RTMP_BASE_URL}{config['rtmp_stream_key']}"
         console.print(f"[{callsign}] 推流地址: {rtmp_url}")
 
-        # 3. 启动直播
-        video_id = start_live(
+        # 4. 先设置直播清晰度（在启动直播之前）
+        try:
+            set_live_quality(caller, video_id, config['video_quality'])
+        except Exception as e:
+            console.print(f"[yellow]⚠ [{callsign}] 设置清晰度失败: {e}[/yellow]")
+
+        # 5. 启动直播
+        video_id_result = start_live(
             caller,
             mqtt,
             rtmp_url,
@@ -181,8 +193,8 @@ def start_live_for_uav(mqtt, caller, config):
             config['video_quality']
         )
 
-        if video_id:
-            # 4. 设置初始变焦
+        if video_id_result:
+            # 6. 设置初始变焦
             zoom_config = config.get('zoom', {})
             if zoom_config.get('enabled', False):
                 initial_zoom = zoom_config.get('initial', 7)
@@ -190,8 +202,8 @@ def start_live_for_uav(mqtt, caller, config):
                 console.print(f"[{callsign}] 设置初始变焦 {initial_zoom}x")
                 set_camera_zoom(mqtt, payload_index, initial_zoom, camera_type="zoom")
 
-            console.print(f"[green]✓ [{callsign}] 直播已启动 (video_id: {video_id})[/green]")
-            return video_id
+            console.print(f"[green]✓ [{callsign}] 直播已启动 (video_id: {video_id_result})[/green]")
+            return video_id_result
         else:
             console.print(f"[red]✗ [{callsign}] 直播启动失败[/red]")
             return None
@@ -252,7 +264,7 @@ def main():
         mqtt_config=MQTT_CONFIG,
         osd_frequency=OSD_FREQUENCY,
         hsi_frequency=HSI_FREQUENCY,
-        skip_drc_setup=True
+        skip_drc_setup=False
     )
 
     console.print(f"\n[green]✓ 已连接 {len(connections)} 架无人机[/green]\n")

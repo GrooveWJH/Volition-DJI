@@ -186,6 +186,92 @@ def stop_live(caller, video_id: str) -> bool:
         return False
 
 
+def set_live_quality(caller, video_id: str, video_quality: int) -> bool:
+    """
+    设置直播清晰度（带详细 MQTT 消息打印）
+
+    Args:
+        caller: 服务调用器
+        video_id: 直播视频流的 ID，格式为 {sn}/{camera_index}/{video_index}
+        video_quality: 清晰度等级
+            0 - 自适应
+            1 - 流畅 (960x540, 512Kbps)
+            2 - 标清 (1280x720, 1Mbps)
+            3 - 高清 (1280x720, 1.5Mbps)
+            4 - 超清 (1920x1080, 3Mbps)
+
+    Returns:
+        是否成功设置
+
+    Example:
+        >>> success = set_live_quality(caller, "1234567890ABC/88-0-0/normal-0", 4)
+        >>> if success:
+        ...     print("清晰度已设置为超清")
+    """
+    quality_names = {0: "自适应", 1: "流畅", 2: "标清", 3: "高清", 4: "超清"}
+    quality_name = quality_names.get(video_quality, "未知")
+
+    console.print("\n[bold cyan]========== 设置直播清晰度 ==========[/bold cyan]")
+    console.print(f"[cyan]Video ID:[/cyan] {video_id}")
+    console.print(f"[cyan]清晰度:[/cyan] {quality_name}")
+
+    # 构造请求数据
+    request_data = {
+        "video_id": video_id,
+        "video_quality": video_quality
+    }
+
+    # 构造完整的 MQTT 请求消息（模拟）
+    tid = str(uuid.uuid4())
+    full_request = {
+        "bid": tid,
+        "data": request_data,
+        "tid": tid,
+        "timestamp": int(time.time() * 1000),
+        "method": "live_set_quality"
+    }
+
+    # 打印发送的请求
+    print_json_message("📤 发送 MQTT 请求 (live_set_quality)", full_request, "blue")
+
+    try:
+        result = caller.call("live_set_quality", request_data)
+
+        # 构造完整的 MQTT 响应消息（模拟）
+        full_response = {
+            "bid": tid,
+            "data": result,
+            "tid": tid,
+            "timestamp": int(time.time() * 1000),
+            "method": "live_set_quality"
+        }
+
+        # 打印接收的响应
+        print_json_message("📥 接收 MQTT 响应 (live_set_quality)",
+                           full_response, "green")
+
+        # 判定成功：data.result == 0
+        if result.get('result') == 0:
+            console.print(f"\n[bold green]✓ 清晰度已设置为 {quality_name}！[/bold green]")
+
+            # 显示额外信息（如果有）
+            output = result.get('output', {})
+            if output:
+                console.print(f"[dim]输出信息: {output}[/dim]")
+            return True
+        else:
+            error_code = result.get('result', 'unknown')
+            error_msg = result.get('message', '无错误信息')
+            console.print(f"\n[bold red]✗ 设置清晰度失败[/bold red]")
+            console.print(f"[red]错误码: {error_code}[/red]")
+            console.print(f"[red]错误信息: {error_msg}[/red]")
+            return False
+
+    except Exception as e:
+        console.print(f"\n[bold red]✗ 请求异常: {e}[/bold red]")
+        return False
+
+
 def zoom_control_loop(
     mqtt_client,
     payload_index: str,

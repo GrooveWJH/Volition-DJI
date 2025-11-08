@@ -134,15 +134,34 @@ def change_live_lens(
     )
 
 
-def set_live_quality(caller: ServiceCaller, video_quality: int) -> Dict[str, Any]:
-    """设置直播清晰度 (0-自适应, 1-流畅, 2-标清, 3-高清, 4-超清)"""
+def set_live_quality(caller: ServiceCaller, video_id: str, video_quality: int) -> Dict[str, Any]:
+    """
+    设置直播清晰度
+
+    Args:
+        caller: 服务调用器
+        video_id: 直播视频流的 ID，格式为 {sn}/{camera_index}/{video_index}
+        video_quality: 清晰度等级
+            0 - 自适应
+            1 - 流畅 (960x540, 512Kbps)
+            2 - 标清 (1280x720, 1Mbps)
+            3 - 高清 (1280x720, 1.5Mbps)
+            4 - 超清 (1920x1080, 3Mbps)
+
+    Returns:
+        服务返回数据
+
+    Example:
+        >>> # 设置为超清
+        >>> set_live_quality(caller, "1234567890ABC/88-0-0/normal-0", 4)
+    """
     quality_names = {0: "自适应", 1: "流畅", 2: "标清", 3: "高清", 4: "超清"}
     quality_name = quality_names.get(video_quality, "未知")
-    console.print(f"[cyan]设置直播清晰度: {quality_name}[/cyan]")
+    console.print(f"[cyan]设置直播清晰度: {quality_name} (video_id: {video_id})[/cyan]")
     return _call_service(
         caller,
         "live_set_quality",
-        {"video_quality": video_quality},
+        {"video_id": video_id, "video_quality": video_quality},
         f"清晰度已设置为 {quality_name}"
     )
 

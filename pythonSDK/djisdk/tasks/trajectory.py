@@ -124,9 +124,9 @@ def fly_trajectory_sequence(
                 console.print(f"[dim]   原因: {e}[/dim]")
                 all_success = False
 
-        # 监控飞行进度（使用 wait_for_flyto_event）
+        # 监控飞行进度（实时打印距离、时间等信息）
         if show_progress:
-            console.print(f"[dim]监控飞行进度...[/dim]\n")
+            console.print(f"[dim]监控飞行进度（实时显示）...[/dim]\n")
 
         for runner in runners:
             mqtt = runner.mqtt
@@ -140,44 +140,89 @@ def fly_trajectory_sequence(
 
             fly_to_id = fly_to_ids[callsign]
 
-            # 等待航点事件（自动验证 fly_to_id，防止读取旧数据）
+            # 实时监控飞行进度（自己实现循环，打印实时信息）
             try:
                 if debug:
                     console.print(f"[dim]🐛 [{callsign}] 等待 fly_to_id={fly_to_id[:8]}... 的事件[/dim]")
 
-                progress = mqtt.wait_for_flyto_event(
-                    expected_fly_to_id=fly_to_id,
-                    timeout=120.0,  # 2 分钟超时
-                    poll_interval=1.0  # 1 秒轮询
-                )
+                start_time = time.time()
+                terminal_statuses = {'wayline_ok', 'wayline_failed', 'wayline_cancel'}
+                last_print_time = 0
+                print_interval = 1.0  # 每秒打印一次进度
 
-                status = progress.get('status')
-                result_code = progress.get('result')
+                while True:
+                    elapsed = time.time() - start_time
+                    if elapsed > 120.0:  # 2分钟超时
+                        raise TimeoutError(
+                            f"[{callsign}] 等待 fly_to_id={fly_to_id[:8]}... 的事件超时（120秒）"
+                        )
 
-                # 调试：打印完整事件数据
-                if debug:
-                    console.print(f"[dim]🐛 [{callsign}] 收到事件: {progress}[/dim]")
+                    # 读取最新飞行进度数据
+                    progress = mqtt.get_flyto_progress()
+                    event_fly_to_id = progress.get('fly_to_id')
+                    status = progress.get('status')
 
-                # 检查终止状态
-                if status == 'wayline_ok':
-                    if show_progress:
-                        console.print(
-                            f"[bold bright_green]✓ [{callsign}] 已到达航点 {wp_index}！[/bold bright_green]"
-                        )
-                elif status == 'wayline_failed':
-                    if show_progress:
-                        console.print(
-                            f"[bold bright_red]✗ [{callsign}] 飞向航点 {wp_index} 失败[/bold bright_red]"
-                        )
-                        console.print(f"[dim]   result_code: {result_code}[/dim]")
-                    all_success = False
-                elif status == 'wayline_cancel':
-                    if show_progress:
-                        console.print(
-                            f"[bold bright_yellow]⚠ [{callsign}] 飞向航点 {wp_index} 取消[/bold bright_yellow]"
-                        )
-                        console.print(f"[dim]   result_code: {result_code}[/dim]")
-                    all_success = False
+                    # ✅ 关键检查：fly_to_id 必须匹配（防止读取旧航点数据）
+                    if event_fly_to_id == fly_to_id:
+                        # 收到当前航点的事件
+
+                        # 实时打印飞行信息（每秒一次）
+                        current_time = time.time()
+                        if status == 'wayline_progress' and show_progress:
+                            if current_time - last_print_time >= print_interval:
+                                remaining_distance = progress.get('remaining_distance')
+                                remaining_time = progress.get('remaining_time')
+                                way_point_index = progress.get('way_point_index')
+
+                                # 构建进度信息字符串
+                                info_parts = []
+                                if remaining_distance is not None:
+                                    info_parts.append(f"剩余距离: {remaining_distance:.1f}m")
+                                if remaining_time is not None:
+                                    info_parts.append(f"剩余时间: {remaining_time:.1f}s")
+                                if way_point_index is not None:
+                                    info_parts.append(f"航点索引: {way_point_index}")
+
+                                info_str = " | ".join(info_parts) if info_parts else "飞行中..."
+
+                                console.print(
+                                    f"[bright_cyan]→ [{callsign}] 飞向航点 {wp_index}: {info_str}[/bright_cyan]"
+                                )
+                                last_print_time = current_time
+
+                        # 调试：打印完整事件数据
+                        if debug and status in terminal_statuses:
+                            console.print(f"[dim]🐛 [{callsign}] 收到终止事件: {progress}[/dim]")
+
+                        # 检查是否到达终止状态
+                        if status in terminal_statuses:
+                            result_code = progress.get('result')
+
+                            if status == 'wayline_ok':
+                                if show_progress:
+                                    console.print(
+                                        f"[bold bright_green]✓ [{callsign}] 已到达航点 {wp_index}！[/bold bright_green]"
+                                    )
+                            elif status == 'wayline_failed':
+                                if show_progress:
+                                    console.print(
+                                        f"[bold bright_red]✗ [{callsign}] 飞向航点 {wp_index} 失败[/bold bright_red]"
+                                    )
+                                    console.print(f"[dim]   result_code: {result_code}[/dim]")
+                                all_success = False
+                            elif status == 'wayline_cancel':
+                                if show_progress:
+                                    console.print(
+                                        f"[bold bright_yellow]⚠ [{callsign}] 飞向航点 {wp_index} 取消[/bold bright_yellow]"
+                                    )
+                                    console.print(f"[dim]   result_code: {result_code}[/dim]")
+                                all_success = False
+
+                            # 到达终止状态，退出循环
+                            break
+
+                    # 短暂休眠（避免过度占用 CPU）
+                    time.sleep(0.1)
 
             except TimeoutError as e:
                 console.print(f"[bold bright_red]✗ [{callsign}] 航点 {wp_index} 超时[/bold bright_red]")

@@ -2,7 +2,7 @@
 """
 多无人机相机同步控制工具
 
-键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q退出
+键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q/Ctrl+C退出
 """
 import sys
 import time
@@ -18,9 +18,9 @@ from djisdk import setup_multiple_drc_connections, stop_heartbeat, reset_gimbal,
 MQTT_CONFIG = {'host': 'grve.me', 'port': 1883, 'username': 'dji', 'password': 'lab605605'}
 
 UAV_CONFIGS = [
-    # {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'zoom': {'current': 7, 'step': 2, 'min': 2, 'max': 200}},
-    {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'zoom': {'current': 5, 'step': 2, 'min': 2, 'max': 200}},
-    # {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'zoom': {'current': 10, 'step': 2, 'min': 2, 'max': 200}},
+    {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'zoom': {'current': 7, 'step': 1, 'min': 1, 'max': 112}},
+    # {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
+    # {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
 ]
 
 # ========== 全局状态 ==========
@@ -159,7 +159,7 @@ def keyboard_loop():
                 ch2 = getch()
                 if ch2 == '[':
                     ch = '\x1b[' + getch()
-            if ch == 'q':
+            if ch == 'q' or ch == '\x03':  # q 或 Ctrl+C
                 log(">>> 退出")
                 stop_flag = True
                 break
@@ -176,13 +176,13 @@ def main():
     print("\n=== 多无人机相机同步控制 ===\n")
     print("正在连接...")
 
-    connections = setup_multiple_drc_connections(UAV_CONFIGS, MQTT_CONFIG, osd_frequency=1, hsi_frequency=1, skip_drc_setup=False)
+    connections = setup_multiple_drc_connections(UAV_CONFIGS, MQTT_CONFIG, osd_frequency=1, hsi_frequency=1, skip_drc_setup=True)
     print(f"✓ {len(connections)} 架已连接\n")
 
     for (mqtt, caller, heartbeat), config in zip(connections, UAV_CONFIGS):
         uav_states[config['callsign']] = {'mqtt': mqtt, 'caller': caller, 'heartbeat': heartbeat, 'config': config}
 
-    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q退出\n")
+    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q/Ctrl+C退出\n")
 
     try:
         # 启动状态监控
