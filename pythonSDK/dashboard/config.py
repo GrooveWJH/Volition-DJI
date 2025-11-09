@@ -18,31 +18,31 @@ MQTT_CONFIG = {
 
 # UAV 配置 - 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
 UAV_CONFIGS = [
-    {
-        'sn': '9N9CN2J0012CXY',
-        'user_id': 'pilot_1',
-        'callsign': 'Pilot 1',
-        'vrpn_device': 'Drone001@192.168.31.100'
-    },
+    # {
+    #     'sn': '9N9CN2J0012CXY',
+    #     'user_id': 'pilot_1',
+    #     'callsign': 'Pilot 1',
+    #     'vrpn_device': 'Drone001@192.168.31.100'
+    # },
     # {
     #     'sn': '9N9CN8400164WH',
     #     'user_id': 'pilot_2',
     #     'callsign': 'Pilot 2',
     #     'vrpn_device': 'Drone002@192.168.31.100'
     # },
-    # {
-    #     'sn': '9N9CN180011TJN',
-    #     'user_id': 'pilot_3',
-    #     'callsign': 'Pilot 3',
-    #     'vrpn_device': 'Drone003@192.168.31.100'
-    # },
+    {
+        'sn': '9N9CN180011TJN',
+        'user_id': 'pilot_3',
+        'callsign': 'Pilot 3',
+        'vrpn_device': 'Drone003@192.168.31.100'
+    },
 ]
 
 # ========== DRC 连接配置 ==========
 
 # 跳过 DRC 连接建立（适用于其他程序已经维持 DRC 状态的场景）
 # 设置为 True 时，只连接 MQTT 订阅数据，不请求控制权和进入 DRC 模式
-SKIP_DRC_SETUP = True
+SKIP_DRC_SETUP = False
 
 # OSD 数据频率（Hz）- 包含位置、速度、姿态、电池、GPS 等
 OSD_FREQUENCY = 40

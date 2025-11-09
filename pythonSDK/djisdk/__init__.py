@@ -51,6 +51,8 @@ from .tasks import (
     load_trajectory,
     fly_trajectory_sequence,
     create_trajectory_mission,
+    create_takeoff_table,
+    create_trajectory_table,
 )
 
 __version__ = '1.0.0'
@@ -102,4 +104,6 @@ __all__ = [
     'load_trajectory',
     'fly_trajectory_sequence',
     'create_trajectory_mission',
+    'create_takeoff_table',
+    'create_trajectory_table',
 ]

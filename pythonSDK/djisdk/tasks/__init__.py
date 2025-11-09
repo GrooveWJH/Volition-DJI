@@ -10,6 +10,7 @@ from .trajectory import (
     fly_trajectory_sequence,
     create_trajectory_mission
 )
+from .display import create_takeoff_table, create_trajectory_table
 
 __all__ = [
     'MissionRunner',
@@ -19,4 +20,6 @@ __all__ = [
     'load_trajectory',
     'fly_trajectory_sequence',
     'create_trajectory_mission',
+    'create_takeoff_table',
+    'create_trajectory_table',
 ]

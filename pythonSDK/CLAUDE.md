@@ -46,6 +46,173 @@ Business Layer (pure functions)
 
 **Key Insight**: 4 separate service files (478 lines, 90% duplication) → 1 unified file (167 lines, 0% duplication)
 
+## 🔄 CODE REUSE PRINCIPLES - CRITICAL!
+
+### djisdk as a Reusable Library
+
+**MOST IMPORTANT**: `djisdk/` is NOT just a module in this project - it's a **standalone, reusable library** used across multiple applications!
+
+### Current Usage Scenarios
+
+The djisdk library is actively reused in:
+
+1. **control/** - PID control system imports djisdk for drone communication
+2. **control_mpc/** - MPC controller imports djisdk for drone communication
+3. **main.py** - Display system imports djisdk for telemetry
+4. **Future projects** - Any Python project needing DJI drone control
+
+```python
+# All these applications use the SAME djisdk library
+from djisdk import MQTTClient, ServiceCaller, start_heartbeat
+from djisdk import request_control_auth, enter_drc_mode, send_joystick
+```
+
+### Decision Tree: Where to Put Code?
+
+**BEFORE adding/modifying ANY code, ask:**
+
+#### ✅ Add to djisdk/ IF:
+- It's a **DJI Cloud API service call** (e.g., new camera command, gimbal control)
+- It's **general drone communication logic** (MQTT, request/response handling)
+- It's **reusable across ANY drone application** (not specific to PID/MPC/display)
+- It has **NO dependencies on application logic** (no PID gains, no waypoints, no logging formats)
+
+#### ❌ Keep in application code (control/, main.py, etc.) IF:
+- It's **control strategy specific** (PID gains, MPC parameters, waypoint logic)
+- It's **application UI/display logic** (Rich formatting for main.py, Plotly visualization)
+- It's **data logging/analysis** (CSV format, file paths, visualization style)
+- It uses **application-specific configuration** (control frequencies, threshold values)
+- It **depends on external systems** (VRPN motion capture, specific sensor setups)
+
+### Real-World Examples
+
+#### ✅ CORRECT: Generic DJI Service → Add to djisdk
+
+**Scenario**: Need to control gimbal angle
+
+```python
+# djisdk/services/commands.py (CORRECT - reusable across all apps)
+
+def set_gimbal_angle(caller: ServiceCaller, pitch: float, roll: float, yaw: float) -> Dict[str, Any]:
+    """Set gimbal angle (degrees)"""
+    return _call_service(caller, "drc_gimbal_angle",
+                        {"pitch": pitch, "roll": roll, "yaw": yaw},
+                        f"Gimbal set to pitch={pitch}°")
+```
+
+**Why?** Generic DJI API wrapper - useful for ANY application (inspection, tracking, photography, etc.)
+
+#### ❌ WRONG: Application Logic → Keep in application
+
+**Scenario**: Gimbal control with PID-specific logic
+
+```python
+# control/gimbal_controller.py (CORRECT - app-specific)
+
+from djisdk import set_gimbal_angle
+from control.config import GIMBAL_TRACK_GAIN
+
+def track_target_with_gimbal(caller, target_position, drone_position):
+    """Point gimbal at target using control gains"""
+    angle_error = calculate_angle(target_position, drone_position)
+    pitch = angle_error * GIMBAL_TRACK_GAIN  # Application-specific logic
+    set_gimbal_angle(caller, pitch=pitch, roll=0, yaw=0)
+```
+
+**Why?** Uses application-specific config (GIMBAL_TRACK_GAIN) and control logic - NOT reusable.
+
+#### ❌ ANTI-PATTERN: Don't Do This!
+
+```python
+# ❌ WRONG: Adding PID logic to djisdk
+# djisdk/services/control.py  <- NO!
+
+def control_position_with_pid(caller, target, current, kp, kd):
+    """Control drone position using PID"""  # <- Application logic in library!
+    error = target - current
+    output = kp * error + kd * derivative(error)
+    send_joystick(caller, pitch=output, ...)
+```
+
+**Why wrong?** PID control is application-specific - other users might use MPC, LQR, or manual control!
+
+### API Stability Rules
+
+#### When Modifying djisdk, You MUST:
+
+1. **Maintain backward compatibility** - Existing applications (control/, control_mpc/, main.py) must continue working
+2. **Add, don't change** - Add new functions instead of changing existing signatures
+3. **Use optional parameters** - New parameters should have sensible defaults
+4. **Document breaking changes** - If unavoidable, document migration path
+
+#### Good API Evolution
+
+```python
+# ✅ GOOD: Add optional parameter with default
+def enter_drc_mode(caller, mqtt_broker, osd_frequency=30, hsi_frequency=10,
+                   camera_frequency=5):  # New optional param
+    """..."""
+    # Existing code still works: enter_drc_mode(caller, broker)
+```
+
+```python
+# ❌ BAD: Change required parameter
+def enter_drc_mode(caller, mqtt_broker, config_dict):  # Changed signature!
+    """..."""
+    # BREAKS all existing code!
+```
+
+### Decoupling Guidelines
+
+#### ✅ djisdk Should:
+- Use **standard Python types** (str, int, float, dict, list)
+- Depend only on **minimal external libraries** (paho-mqtt, rich for console)
+- Have **zero knowledge** of applications using it
+- Provide **thin wrappers** around DJI API (no business logic)
+
+#### ❌ djisdk Should NEVER:
+- Import from `control/`, `control_mpc/`, or any application module
+- Hard-code application-specific values (PID gains, file paths, etc.)
+- Make assumptions about how it will be used (e.g., "users always want logging")
+- Include UI/display logic beyond basic console status messages
+
+### Testing Impact
+
+**When modifying djisdk**, you MUST ensure:
+
+```bash
+# 1. djisdk tests pass
+python tests/run_tests.py
+
+# 2. ALL applications still work
+python control/main.py          # PID control works
+python control_mpc/mpc_main.py  # MPC control works
+python main.py                   # Display system works
+```
+
+**If ANY application breaks** → Your change violates reusability!
+
+### Quick Reference
+
+| Code Type | Location | Example |
+|-----------|----------|---------|
+| DJI API wrapper | `djisdk/services/commands.py` | `send_joystick()`, `enter_drc_mode()` |
+| Control algorithm | `control/controller.py` | PID, waypoint navigation |
+| System identification | `control_mpc/system_id.py` | PRBS signal generation |
+| Data logging | `control/logger.py` | CSV format, file management |
+| Visualization | `control/visualize.py` | Plotly charts |
+| MQTT connection | `djisdk/core/mqtt_client.py` | Connection management |
+| Configuration | `control/config.py`, `dashboard/config.py` | App-specific settings |
+
+### Remember
+
+**"Is this code useful for ANY drone application, or just THIS specific application?"**
+
+- ANY application → djisdk/
+- THIS application → application directory (control/, etc.)
+
+When in doubt, **keep it OUT of djisdk** - it's easier to move reusable code INTO djisdk later than to remove application-specific code that leaked in!
+
 ## Development Commands
 
 ### Essential Commands
@@ -577,6 +744,14 @@ finally:
 
 Before committing code, verify:
 
+### Code Reuse (CRITICAL!)
+- [ ] **Proper separation**: DJI API wrappers in `djisdk/`, application logic in `control/` etc.
+- [ ] **No coupling**: djisdk does NOT import from application modules
+- [ ] **No app-specific logic in djisdk**: No PID gains, waypoints, file paths, or control strategies
+- [ ] **Backward compatibility**: Existing applications (control/, control_mpc/, main.py) still work
+- [ ] **All tests pass**: Both `python tests/run_tests.py` AND all application entry points work
+- [ ] **API evolution**: New parameters are optional with sensible defaults
+
 ### Simplicity
 - [ ] No unnecessary abstraction
 - [ ] No complex design patterns
@@ -637,9 +812,11 @@ TEST_REPORT.md               # Test completion report
 
 1. **Simplicity wins** - 2 classes, pure functions, no patterns
 2. **Eliminate duplication** - `_call_service()` wrapper is the key
-3. **Test everything** - 92% coverage is not optional
-4. **Stay focused** - Don't add features nobody asked for
-5. **Trust the pattern** - When in doubt, look at existing services
+3. **Code reuse is sacred** - djisdk is a library, NOT an application module
+4. **Separation of concerns** - API wrappers in djisdk/, application logic stays out
+5. **Test everything** - 92% coverage is not optional
+6. **Stay focused** - Don't add features nobody asked for
+7. **Trust the pattern** - When in doubt, look at existing services
 
 ---
 

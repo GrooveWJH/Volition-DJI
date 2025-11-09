@@ -122,7 +122,8 @@ def run_parallel_missions(
     connections: List[Tuple[MQTTClient, ServiceCaller, threading.Thread]],
     mission_func: Callable[[MissionRunner], None],
     uav_configs: List[Dict[str, Any]],
-    countdown: int = 3
+    countdown: int = 3,
+    show_monitor: bool = True
 ) -> List[MissionRunner]:
     """
     并行运行多个无人机任务并实时监控
@@ -132,6 +133,7 @@ def run_parallel_missions(
         mission_func: 任务函数，接收 MissionRunner 作为参数
         uav_configs: 无人机配置列表
         countdown: 启动倒计时（秒）
+        show_monitor: 是否显示实时监控表格（默认 True）
 
     Returns:
         任务执行器列表
@@ -164,18 +166,30 @@ def run_parallel_missions(
     for runner in runners:
         runner.run(mission_func)
 
-    # 实时监控
-    try:
-        with Live(create_status_table(runners), refresh_per_second=4, console=console) as live:
+    # 实时监控（可选）
+    if show_monitor:
+        try:
+            with Live(create_status_table(runners), refresh_per_second=4, console=console) as live:
+                while True:
+                    if all(not r.running for r in runners):
+                        break
+                    live.update(create_status_table(runners))
+                    time.sleep(0.25)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]⚠ 收到中断信号，停止所有任务...[/yellow]")
+            for runner in runners:
+                runner.stop()
+    else:
+        # 不显示监控，仅等待任务完成
+        try:
             while True:
                 if all(not r.running for r in runners):
                     break
-                live.update(create_status_table(runners))
-                time.sleep(0.25)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]⚠ 收到中断信号，停止所有任务...[/yellow]")
-        for runner in runners:
-            runner.stop()
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]⚠ 收到中断信号，停止所有任务...[/yellow]")
+            for runner in runners:
+                runner.stop()
 
     return runners
 

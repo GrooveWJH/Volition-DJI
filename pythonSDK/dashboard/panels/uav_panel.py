@@ -5,9 +5,12 @@ UAV 面板模块
 - DJI OSD 数据（GPS、电池、速度、姿态等）
 - 实时频率追踪
 - 离线状态检测
+- 航点任务进度（通过文件共享）
 - IVAS 日志显示
 """
 import time
+import json
+from pathlib import Path
 from typing import Dict, Any, Optional
 from rich.panel import Panel
 from rich.table import Table
@@ -177,6 +180,52 @@ def create_uav_panel(
             table.add_row("HSI高度:", "[dim]暂无数据[/dim]")
     else:
         table.add_row("HSI高度:", "[bright_yellow]传感器未激活[/bright_yellow]")
+
+    # ========== 航点任务进度显示（进程间通信：文件共享）==========
+    # 从共享文件读取任务元数据（总航点数等）
+    mission_metadata = None
+    try:
+        mission_state_file = Path('/tmp/djisdk_mission_state.json')
+        if mission_state_file.exists():
+            with open(mission_state_file, 'r') as f:
+                mission_state = json.load(f)
+            mission_metadata = mission_state.get(config.get('callsign'))
+    except Exception:
+        pass  # 文件读取失败时静默忽略（优雅降级）
+
+    # 从 MQTT 读取实时航点进度数据
+    flyto_progress = mqtt.get_flyto_progress()
+    flyto_status = flyto_progress.get('status') if flyto_progress else None
+
+    # 只有在执行航线任务时才显示（wayline_progress 状态）
+    if flyto_status == 'wayline_progress':
+        add_separator()
+
+        # 提取进度数据
+        way_point_index = flyto_progress.get('way_point_index')
+        remaining_distance = flyto_progress.get('remaining_distance')
+        remaining_time = flyto_progress.get('remaining_time')
+        total_waypoints = mission_metadata.get('total_waypoints') if mission_metadata else None
+
+        # 显示航点进度
+        if way_point_index is not None:
+            if total_waypoints:
+                # 有总数：显示 "3/10" 格式
+                table.add_row("航点进度:", f"[bright_cyan]{way_point_index}/{total_waypoints}[/bright_cyan]")
+            else:
+                # 无总数：只显示当前航点索引（优雅降级）
+                table.add_row("当前航点:", f"[bright_cyan]{way_point_index}[/bright_cyan]")
+
+        # 显示剩余距离
+        if remaining_distance is not None:
+            table.add_row("剩余距离:", f"[bright_green]{remaining_distance:.1f}m[/bright_green]")
+
+        # 显示预计时间
+        if remaining_time is not None:
+            table.add_row("预计时间:", f"[bright_yellow]{remaining_time:.1f}s[/bright_yellow]")
+
+        # 显示飞行状态
+        table.add_row("飞行状态:", "[bright_magenta]航线飞行中[/bright_magenta]")
 
     # IVAS 日志区域（使用独立的矩形框）
     if ivas_adapter:
