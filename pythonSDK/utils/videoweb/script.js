@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     const videoSources = [
-        { name: 'Drone001', url: 'http://grve.me:8888/live/Drone001/index.m3u8' },
-        { name: 'Drone002', url: 'http://grve.me:8888/live/Drone002/index.m3u8' },
-        { name: 'Drone003', url: 'http://grve.me:8888/live/Drone003/index.m3u8' }
+        { name: 'Drone001', url: 'http://81.70.222.38:8888/live/Drone001/index.m3u8' },
+        { name: 'Drone002', url: 'http://81.70.222.38:8888/live/Drone002/index.m3u8' },
+        { name: 'Drone003', url: 'http://81.70.222.38:8888/live/Drone003/index.m3u8' }
     ];
 
     const videoContainer = document.getElementById('video-container');
