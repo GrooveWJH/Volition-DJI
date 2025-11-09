@@ -5,6 +5,14 @@
 支持多架无人机同时执行不同的轨迹文件。
 每架无人机可以指定独立的轨迹文件、飞行参数和相机设置。
 """
+import os
+import time
+import json
+import threading
+import concurrent.futures
+from rich.console import Console
+from rich.table import Table
+from rich.live import Live
 from djisdk import (
     setup_multiple_drc_connections,
     run_parallel_missions,
@@ -18,12 +26,6 @@ from djisdk import (
 )
 from djisdk.services import reset_gimbal
 from djisdk.services.drc_commands import set_camera_zoom
-import time
-import json
-import concurrent.futures
-from rich.console import Console
-from rich.table import Table
-from rich.live import Live
 
 console = Console()
 
@@ -80,7 +82,6 @@ MQTT_CONFIG = {
 }
 
 # 起飞参数（所有无人机共用）
-TAKEOFF_HEIGHT = 20.0  # 起飞高度（米）
 TAKEOFF_TOLERANCE = 0.5  # 高度容差（米）
 TAKEOFF_THROTTLE = 500  # 油门偏移量
 
@@ -92,17 +93,11 @@ SHOW_PROGRESS = False  # 是否在 fly_trajectory_sequence 内部显示详细进
 
 
 def execute_single_trajectory(runner, config):
-    """
-    执行单架无人机的轨迹飞行任务（在独立线程中运行）
-
-    Args:
-        runner: MissionRunner 对象
-        config: 无人机配置（包含 trajectory_file, flight_height 等）
-    """
+    """执行单架无人机的轨迹飞行任务（在独立线程中运行）"""
     callsign = config.get('callsign', 'UAV')
 
     try:
-        # 1. 加载该无人机的轨迹文件
+        # 1. 加载轨迹文件
         trajectory_file = config.get('trajectory_file')
         if not trajectory_file:
             runner.data['task_status'] = '未指定轨迹'
@@ -116,7 +111,6 @@ def execute_single_trajectory(runner, config):
         mqtt = runner.mqtt
         camera_config = config.get('camera', {})
         payload_index = mqtt.get_payload_index() or "88-0-0"
-
         gimbal_mode = camera_config.get('gimbal_mode', 1)
         zoom_factor = camera_config.get('zoom_factor', 7)
 
@@ -124,45 +118,36 @@ def execute_single_trajectory(runner, config):
         set_camera_zoom(mqtt, payload_index=payload_index, zoom_factor=zoom_factor, camera_type="zoom")
         time.sleep(1)  # 等待相机设置生效
 
-        # 3. 启动进度监控线程（更新 runner.data）
-        import threading
+        # 3. 启动进度监控线程
         stop_monitor = threading.Event()
 
         def monitor_progress():
-            """后台监控线程：更新 runner.data（仅更新距离和时间，航点索引由 fly_trajectory_sequence 维护）"""
+            """后台监控线程：更新距离和时间（航点索引由 fly_trajectory_sequence 维护）"""
             while not stop_monitor.is_set():
                 try:
                     progress = mqtt.get_flyto_progress()
                     if progress and progress.get('status') == 'wayline_progress':
-                        # 只更新剩余距离和时间，不覆盖 current_waypoint
                         runner.data['remaining_distance'] = progress.get('remaining_distance')
                         runner.data['remaining_time'] = progress.get('remaining_time')
                         runner.data['task_status'] = '飞行中'
                     else:
-                        # 清除临时数据
                         runner.data.pop('remaining_distance', None)
                         runner.data.pop('remaining_time', None)
                 except Exception:
-                    pass  # 忽略监控线程的异常
-                time.sleep(0.5)  # 更频繁更新（用于表格显示）
+                    pass
+                time.sleep(0.5)
 
         monitor_thread = threading.Thread(target=monitor_progress, daemon=True)
         monitor_thread.start()
 
         # 4. 执行轨迹飞行
-        flight_height = config.get('flight_height', 100.0)
-        max_speed = config.get('max_speed', 12)
-        hover_time = config.get('hover_time', 5.0)
-
-        runner.data['task_status'] = '开始飞行'
-
         success = fly_trajectory_sequence(
             runners=[runner],
             waypoints=waypoints,
-            height=flight_height,
-            max_speed=max_speed,
-            hover_between_waypoints=hover_time,
-            show_progress=False,  # 关闭内部详细打印
+            height=config.get('flight_height', 100.0),
+            max_speed=config.get('max_speed', 12),
+            hover_between_waypoints=config.get('hover_time', 5.0),
+            show_progress=False,
             debug=False
         )
 
@@ -170,16 +155,15 @@ def execute_single_trajectory(runner, config):
         stop_monitor.set()
         monitor_thread.join(timeout=1)
 
+        # 更新状态
         if success:
             runner.data['task_status'] = f'完成 ({len(waypoints)}航点)'
             runner.data['current_waypoint'] = len(waypoints)
         else:
             runner.data['task_status'] = '任务失败'
 
-        # 清除临时数据
         runner.data.pop('remaining_distance', None)
         runner.data.pop('remaining_time', None)
-
         return success
 
     except Exception as e:
@@ -208,24 +192,27 @@ def main():
     runners = None
 
     try:
-        # 2. 统一起飞
-        console.print(f"[bold bright_magenta][2/5] 起飞到 {TAKEOFF_HEIGHT}m...[/bold bright_magenta]")
-        takeoff_mission = create_takeoff_mission(
-            target_height=TAKEOFF_HEIGHT,
-            height_tolerance=TAKEOFF_TOLERANCE,
-            throttle_offset=TAKEOFF_THROTTLE
-        )
+        # 2. 分别起飞到各自指定高度
+        console.print("[bold bright_magenta][2/5] 起飞到各自指定高度...[/bold bright_magenta]")
+
+        # 为每架无人机创建独立的起飞任务（根据各自的 flight_height）
+        takeoff_missions = [
+            create_takeoff_mission(
+                target_height=config['flight_height'],
+                height_tolerance=TAKEOFF_TOLERANCE,
+                throttle_offset=TAKEOFF_THROTTLE
+            ) for config in UAV_CONFIGS
+        ]
+
+        # 显示各无人机的目标高度
+        for config in UAV_CONFIGS:
+            callsign = config['callsign']
+            height = config['flight_height']
+            console.print(f"[bright_cyan]  [{callsign}] 目标高度: {height}m[/bright_cyan]")
 
         # 启动起飞任务（不显示内部监控）
-        runners = run_parallel_missions(
-            connections,
-            takeoff_mission,
-            UAV_CONFIGS,
-            countdown=3,
-            show_monitor=False  # 我们自己显示监控表格
-        )
+        runners = run_parallel_missions(connections, takeoff_missions, UAV_CONFIGS, countdown=3, show_monitor=False)
 
-        # 使用 Rich Live 显示起飞进度（使用 djisdk 提供的表格生成函数）
         # 实时监控起飞进度
         with Live(create_takeoff_table(runners), refresh_per_second=4, console=console) as live:
             while any(r.running for r in runners):
@@ -234,7 +221,7 @@ def main():
 
         console.print("[bright_green]✓ 起飞完成[/bright_green]\n")
 
-        # 3. 写入任务元数据（供 dashboard 显示总进度）
+        # 3. 准备轨迹任务
         console.print("[bold bright_magenta][3/5] 准备轨迹任务...[/bold bright_magenta]")
 
         # 创建航点摘要表格
@@ -255,24 +242,19 @@ def main():
                     waypoints = load_trajectory(trajectory_file)
                     mission_state[callsign] = {
                         'total_waypoints': len(waypoints),
-                        'current_waypoint': 0,  # ✅ 初始化为 0（准备中）
-                        'task_status': '准备中',  # ✅ 初始化状态
+                        'current_waypoint': 0,
+                        'task_status': '准备中',
                         'trajectory_file': trajectory_file,
                         'timestamp': time.time()
                     }
-                    waypoints_table.add_row(
-                        callsign,
-                        str(len(waypoints)),
-                        trajectory_file,
-                        f"{flight_height}m"
-                    )
+                    waypoints_table.add_row(callsign, str(len(waypoints)), trajectory_file, f"{flight_height}m")
                 except Exception as e:
                     console.print(f"[bright_red]  [{callsign}] ⚠ 加载轨迹失败: {e}[/bright_red]")
 
         console.print(waypoints_table)
         console.print()
 
-        # 写入共享状态文件（进程间通信）
+        # 写入状态文件（供 dashboard 使用）
         try:
             with open('/tmp/djisdk_mission_state.json', 'w') as f:
                 json.dump(mission_state, f, indent=2)
@@ -282,11 +264,9 @@ def main():
             console.print(f"[bright_yellow]⚠ 写入状态文件失败: {e}[/bright_yellow]")
             console.print("[dim]  Dashboard 将只显示当前航点索引（降级模式）[/dim]\n")
 
-        # 4. 并行执行各自的轨迹飞行（真正的并发）
+        # 4. 并行执行轨迹飞行
         console.print(f"[bold bright_magenta][4/5] 开始轨迹飞行（{len(runners)} 架并行）...[/bold bright_magenta]")
 
-        # 使用 djisdk 提供的表格生成函数进行实时监控
-        # 启动所有轨迹飞行任务
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(runners)) as executor:
             # 初始化 runner.data
             for runner, config in zip(runners, UAV_CONFIGS):
@@ -295,25 +275,23 @@ def main():
                 runner.data['current_waypoint'] = 0
                 runner.data['task_status'] = '准备中'
 
+            # 提交所有飞行任务
             futures = {
                 executor.submit(execute_single_trajectory, runner, config): config
                 for runner, config in zip(runners, UAV_CONFIGS)
             }
 
-            # 使用 Rich Live 实时显示进度
+            # 实时监控进度
             with Live(create_trajectory_table(runners, mission_state), refresh_per_second=2, console=console) as live:
                 all_success = True
                 completed_count = 0
 
                 while completed_count < len(runners):
-                    # 更新表格
                     live.update(create_trajectory_table(runners, mission_state))
-
-                    # 检查完成的任务
                     done_futures = [f for f in futures if f.done()]
                     completed_count = len(done_futures)
 
-                    # 检查是否有新完成的任务
+                    # 检查新完成的任务
                     for future in done_futures:
                         if future not in getattr(create_trajectory_table, '_processed', set()):
                             config = futures[future]
@@ -326,7 +304,6 @@ def main():
                                 console.print(f"[bright_red]✗ [{callsign}] 线程异常: {e}[/bright_red]")
                                 all_success = False
 
-                            # 标记为已处理
                             if not hasattr(create_trajectory_table, '_processed'):
                                 create_trajectory_table._processed = set()
                             create_trajectory_table._processed.add(future)
@@ -338,7 +315,7 @@ def main():
         else:
             console.print("\n[bold bright_yellow]⚠ 部分无人机轨迹飞行失败[/bold bright_yellow]\n")
 
-        # 5. 统一返航
+        # 5. 返航
         console.print("[bold bright_magenta][5/5] 返航...[/bold bright_magenta]")
         for runner in runners:
             callsign = runner.config.get('callsign', 'UAV')
@@ -346,13 +323,12 @@ def main():
             console.print(f"[bright_cyan]  [{callsign}] 返航指令已发送[/bright_cyan]")
         console.print("[bright_green]✓ 所有返航指令已发送[/bright_green]\n")
 
-        # 清理任务状态文件
+        # 清理状态文件
         try:
-            import os
             os.remove('/tmp/djisdk_mission_state.json')
             console.print("[bright_green]✓ 任务状态文件已清理[/bright_green]\n")
         except Exception:
-            pass  # 忽略清理失败
+            pass
 
         # 6. 悬停监控
         console.print("[bright_yellow]按 Ctrl+C 退出...[/bright_yellow]")
@@ -362,12 +338,10 @@ def main():
     except KeyboardInterrupt:
         console.print("\n[bright_yellow]中断退出[/bright_yellow]")
     finally:
-        # 清理任务状态文件
         try:
-            import os
             os.remove('/tmp/djisdk_mission_state.json')
         except Exception:
-            pass  # 忽略清理失败
+            pass
 
         if runners:
             cleanup_missions(runners)

@@ -24,18 +24,18 @@ UAV_CONFIGS = [
         'callsign': 'Pilot 1',
         'vrpn_device': 'Drone001@192.168.31.100'
     },
-    {
-        'sn': '9N9CN8400164WH',
-        'user_id': 'pilot_2',
-        'callsign': 'Pilot 2',
-        'vrpn_device': 'Drone002@192.168.31.100'
-    },
-    {
-        'sn': '9N9CN180011TJN',
-        'user_id': 'pilot_3',
-        'callsign': 'Pilot 3',
-        'vrpn_device': 'Drone003@192.168.31.100'
-    },
+    # {
+    #     'sn': '9N9CN8400164WH',
+    #     'user_id': 'pilot_2',
+    #     'callsign': 'Pilot 2',
+    #     'vrpn_device': 'Drone002@192.168.31.100'
+    # },
+    # {
+    #     'sn': '9N9CN180011TJN',
+    #     'user_id': 'pilot_3',
+    #     'callsign': 'Pilot 3',
+    #     'vrpn_device': 'Drone003@192.168.31.100'
+    # },
 ]
 
 # ========== DRC 连接配置 ==========
@@ -68,7 +68,7 @@ ENABLE_VRPN = False
 # ========== IVAS 集成配置 ==========
 
 # IVAS 功能总开关
-ENABLE_IVAS = False
+ENABLE_IVAS = True
 
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {

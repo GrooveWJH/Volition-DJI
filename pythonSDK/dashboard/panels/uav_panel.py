@@ -7,13 +7,19 @@ UAV 面板模块
 - 离线状态检测
 - 航点任务进度（通过文件共享）
 - IVAS 日志显示
+
+重构后设计（Linus "Good Taste"）：
+- 数据聚合：UAVState 统一管理所有数据源
+- 单一职责：每个函数只负责一个显示区域
+- 清晰数据流：构建状态 → 渲染 UI（无重复数据获取）
 """
 import time
-import json
-from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from rich.panel import Panel
 from rich.table import Table
+from rich.console import Group
+
+from ..state import UAVState
 
 
 def create_battery_bar(percent: int) -> str:
@@ -91,10 +97,19 @@ def create_uav_panel(
     ivas_adapter=None
 ) -> Panel:
     """
-    为单个无人机创建实时监控面板（包含频率、离线状态和IVAS日志）
+    为单个无人机创建实时监控面板
+
+    重构后的三阶段设计：
+    1. 数据聚合：构建 UAVState 快照（所有数据获取逻辑集中在一处）
+    2. UI 渲染：调用辅助函数构建各个显示区域（单一职责）
+    3. 面板包装：使用 UAVState 的样式方法（消除重复条件判断）
+
+    UI 布局改进：
+    - IVAS 日志显示在主表格下方（而非表格右列）
+    - 宽度与主表格一致，避免左侧空白
 
     Args:
-        uav_client: 无人机客户端数据 (mqtt, caller, heartbeat, ivas)
+        uav_client: 无人机客户端数据 (mqtt, caller, heartbeat, connection_manager, ivas)
         config: 无人机配置 (sn, user_id, callsign)
         elapsed: 运行时间（秒）
         offline_timeout: 离线超时时间（秒）
@@ -103,117 +118,147 @@ def create_uav_panel(
     Returns:
         Rich Panel 对象
     """
-    mqtt = uav_client['mqtt']
-    heartbeat = uav_client['heartbeat']
-    uav_id = uav_client['id']
+    # ========== 阶段 1: 构建状态快照（数据聚合）==========
+    state = UAVState.from_uav_client(uav_client, config, elapsed, offline_timeout, ivas_adapter)
 
-    # 获取数据
-    lat, lon, height = mqtt.get_position()
-    relative_height = mqtt.get_relative_height()
-    attitude_head = mqtt.get_attitude_head()
-    h_speed, speed_x, speed_y, speed_z = mqtt.get_speed()
-    local_height = mqtt.get_local_height()
-    is_hsi_ok = mqtt.is_local_height_ok()
-    battery_percent = mqtt.get_battery_percent()
-    flight_mode_name = mqtt.get_flight_mode_name()
-    aircraft_sn = mqtt.get_aircraft_sn()
-
-    # 获取连接管理器（如果有）
-    connection_manager = uav_client.get('connection_manager')
-
-    # 心跳状态检查：优先使用连接管理器的心跳线程
-    if connection_manager:
-        # 有连接管理器：使用管理器维护的心跳线程引用
-        current_heartbeat = connection_manager.get_heartbeat_thread()
-        is_heartbeat_alive = current_heartbeat and current_heartbeat.is_alive()
-    else:
-        # 无连接管理器：使用外部传入的心跳线程
-        heartbeat = uav_client['heartbeat']
-        is_heartbeat_alive = heartbeat and heartbeat.is_alive()
-
-    # 新增：获取频率和在线状态
-    osd_frequency = mqtt.get_osd_frequency()
-    is_online = mqtt.is_online(timeout=offline_timeout)
-
-    # 创建表格 - 前卫配色：洋红标题 + 亮白数据
+    # ========== 阶段 2: 创建 UI（只负责格式化显示）==========
     table = Table.grid(padding=(0, 2))
     table.add_column(style="bold bright_magenta", justify="right")
     table.add_column(style="bold bright_white")
 
-    # 分割线函数
+    # 分隔线函数（避免重复代码）
     def add_separator():
         table.add_row("", "[dim]" + "─" * 30 + "[/dim]")
 
-    # 基本信息 - 前卫配色：亮青色数据
-    table.add_row("网关序列号:", f"[bright_cyan]{config['sn']}[/bright_cyan]")
-    if aircraft_sn:
-        table.add_row("无人机SN:", f"[bright_blue]{aircraft_sn}[/bright_blue]")
-    table.add_row("呼号:", f"[bright_cyan]{config['callsign']}[/bright_cyan]")
-    table.add_row("运行时间:", f"[bright_green]{elapsed}[/bright_green] 秒")
-    add_separator()
+    # 基本信息区域
+    _add_basic_info(table, state, add_separator)
 
-    # OSD 频率和在线状态 - 前卫配色：霓虹色系
-    if is_online:
-        freq_color = "bright_green" if osd_frequency >= 90 else "bright_yellow" if osd_frequency >= 50 else "bright_red"
-        table.add_row("OSD 频率:", f"[{freq_color}]{osd_frequency:.1f}[/{freq_color}] Hz")
-        table.add_row("连接状态:", "[bright_green]✓ 在线[/bright_green]")
+    # 连接状态区域
+    _add_connection_status(table, state, add_separator, offline_timeout)
+
+    # 飞行数据区域（模式、电池、位置、速度、HSI）
+    _add_flight_data(table, state, add_separator)
+
+    # 任务进度区域
+    _add_mission_progress(table, state, add_separator)
+
+    # ========== 组合内容（主表格 + IVAS 日志）==========
+    # 如果有 IVAS 日志，将其显示在主表格下方（宽度一致）
+    if state.ivas_logs:
+        ivas_panel = _create_ivas_panel(state.ivas_logs)
+        content = Group(table, ivas_panel)
     else:
-        table.add_row("OSD 频率:", f"[dim]{osd_frequency:.1f}[/dim] Hz")
+        content = table
+
+    # ========== 阶段 3: 包装面板（使用状态方法）==========
+    return Panel(
+        content,
+        title=state.get_panel_title(),
+        border_style=state.get_panel_color(),
+        padding=(1, 2)
+    )
+
+
+# ========== 辅助函数：每个只负责一块显示逻辑 ==========
+
+
+def _add_basic_info(table: Table, state: UAVState, add_separator):
+    """
+    基本信息区域
+
+    显示：
+    - 网关序列号
+    - 无人机SN（如果有）
+    - 呼号
+    - 运行时间
+    """
+    table.add_row("网关序列号:", f"[bright_cyan]{state.sn}[/bright_cyan]")
+    if state.aircraft_sn:
+        table.add_row("无人机SN:", f"[bright_blue]{state.aircraft_sn}[/bright_blue]")
+    table.add_row("呼号:", f"[bright_cyan]{state.callsign}[/bright_cyan]")
+    table.add_row("运行时间:", f"[bright_green]{state.elapsed}[/bright_green] 秒")
+    add_separator()
+
+
+def _add_connection_status(table: Table, state: UAVState, add_separator, offline_timeout: float):
+    """
+    连接状态区域
+
+    显示：
+    - OSD 频率（带颜色）
+    - 连接状态（在线/离线）
+    - 心跳状态
+    """
+    # OSD 频率和在线状态
+    freq_color = state.get_freq_color()
+    table.add_row("OSD 频率:", f"[{freq_color}]{state.osd_frequency:.1f}[/{freq_color}] Hz")
+
+    if state.is_online:
+        table.add_row("连接状态:", state.get_connection_status_text())
+    else:
         table.add_row("连接状态:", f"[bright_red]✗ 离线 (>{offline_timeout}s)[/bright_red]")
+
     add_separator()
 
-    # 心跳状态 - 前卫配色：霓虹绿/红
-    heartbeat_status = "[bright_green]✓ 正常[/bright_green]" if is_heartbeat_alive else "[bright_red]✗ 异常[/bright_red]"
-    table.add_row("心跳状态:", heartbeat_status)
+    # 心跳状态
+    table.add_row("心跳状态:", state.get_heartbeat_status_text())
     add_separator()
 
-    # 飞行模式 - 前卫配色：多彩霓虹色系
-    mode_color = "bright_green"
-    if flight_mode_name in ["自动返航", "自动降落", "强制降落"]:
-        mode_color = "bright_yellow"
-    elif flight_mode_name in ["未连接", "未知"]:
-        mode_color = "bright_red"
-    elif flight_mode_name in ["手动飞行", "虚拟摇杆状态", "指令飞行"]:
-        mode_color = "bright_cyan"
 
-    table.add_row("飞行模式:", f"[{mode_color}]{flight_mode_name}[/{mode_color}]")
+def _add_flight_data(table: Table, state: UAVState, add_separator):
+    """
+    飞行数据区域
+
+    显示：
+    - 飞行模式（带颜色）
+    - 电池电量（进度条）
+    - GPS 位置（经纬度、高度）
+    - 航向角
+    - 速度数据（水平速度、三轴分量）
+    - HSI 高度
+    """
+    # 飞行模式
+    mode_color = state.get_mode_color()
+    table.add_row("飞行模式:", f"[{mode_color}]{state.flight_mode_name}[/{mode_color}]")
     add_separator()
 
     # 电池电量
-    if battery_percent is not None:
-        battery_display = create_battery_bar(battery_percent)
+    if state.battery_percent is not None:
+        battery_display = create_battery_bar(state.battery_percent)
         table.add_row("电池电量:", battery_display)
     else:
         table.add_row("电池电量:", "[dim]暂无数据[/dim]")
 
     add_separator()
 
-    # GPS 位置数据（经纬度）- 前卫配色：亮蓝色坐标
+    # GPS 位置数据
+    lat, lon, height = state.position
     if lat is not None and lon is not None:
         table.add_row("纬度:", f"[bright_blue]{lat:.8f}[/bright_blue]°")
         table.add_row("经度:", f"[bright_blue]{lon:.8f}[/bright_blue]°")
     else:
         table.add_row("GPS 位置:", "[bright_red]无信号[/bright_red]")
 
-    # 全局高度 - 前卫配色：亮绿色高度 + 亮洋红色相对高度
+    # 全局高度
     if height is not None:
         table.add_row("全局高度:", f"[bright_green]{height:.2f}[/bright_green] 米")
-        if relative_height is not None:
-            table.add_row("距起飞点高:", f"[bright_magenta]{relative_height:.2f}[/bright_magenta] 米")
+        if state.relative_height is not None:
+            table.add_row("距起飞点高:", f"[bright_magenta]{state.relative_height:.2f}[/bright_magenta] 米")
         else:
             table.add_row("距起飞点高:", "[dim]计算中...[/dim]")
     else:
         table.add_row("全局高度:", "[dim]暂无数据[/dim]")
 
-    # 航向角 - 前卫配色：亮青色
-    if attitude_head is not None:
-        table.add_row("航向角:", f"[bright_cyan]{attitude_head:.2f}[/bright_cyan]°")
+    # 航向角
+    if state.attitude_head is not None:
+        table.add_row("航向角:", f"[bright_cyan]{state.attitude_head:.2f}[/bright_cyan]°")
     else:
         table.add_row("航向角:", "[dim]暂无数据[/dim]")
 
     add_separator()
 
-    # 速度数据 - 前卫配色：亮洋红色主速度 + 亮青色分量
+    # 速度数据
+    h_speed, speed_x, speed_y, speed_z = state.speed
     if h_speed is not None:
         table.add_row("水平速度:", f"[bright_magenta]{h_speed:.2f}[/bright_magenta] m/s")
         if speed_x is not None and speed_y is not None and speed_z is not None:
@@ -225,115 +270,95 @@ def create_uav_panel(
 
     add_separator()
 
-    # HSI 数据（HSI高度，原始单位：厘米）- 前卫配色：亮蓝色
-    if is_hsi_ok:
-        if local_height is not None:
-            height_in_meters = local_height / 100.0  # 厘米转米
+    # HSI 数据
+    if state.is_hsi_ok:
+        if state.local_height is not None:
+            height_in_meters = state.local_height / 100.0  # 厘米转米
             table.add_row("HSI高度:", f"[bright_blue]{height_in_meters:.2f}[/bright_blue] 米 [bright_green]✓[/bright_green]")
         else:
             table.add_row("HSI高度:", "[dim]暂无数据[/dim]")
     else:
         table.add_row("HSI高度:", "[bright_yellow]传感器未激活[/bright_yellow]")
 
-    # ========== 航点任务进度显示（进程间通信：文件共享）==========
-    # 从共享文件读取任务元数据（总航点数等）
-    mission_metadata = None
-    try:
-        mission_state_file = Path('/tmp/djisdk_mission_state.json')
-        if mission_state_file.exists():
-            with open(mission_state_file, 'r') as f:
-                mission_state = json.load(f)
-            mission_metadata = mission_state.get(config.get('callsign'))
-    except Exception:
-        pass  # 文件读取失败时静默忽略（优雅降级）
 
-    # ✅ 任务进度：只要任务元数据存在就显示（不依赖 MQTT 飞行状态）
-    if mission_metadata:
-        add_separator()
+def _add_mission_progress(table: Table, state: UAVState, add_separator):
+    """
+    任务进度区域
 
-        # 从文件读取持久化的任务进度
-        current_waypoint = mission_metadata.get('current_waypoint', 0)
-        total_waypoints = mission_metadata.get('total_waypoints', 0)
-        task_status = mission_metadata.get('task_status', '未知')
+    显示：
+    - 航点进度条（如果有任务元数据）
+    - 任务状态
+    - 实时飞行数据（剩余距离、预计时间）
+    """
+    if not state.mission_metadata:
+        return
 
-        # 显示航点进度条（类似电量条）
-        if total_waypoints > 0:
-            waypoint_bar = create_waypoint_progress_bar(current_waypoint, total_waypoints)
-            table.add_row("航点进度:", waypoint_bar)
+    add_separator()
 
-        # 显示任务状态
-        table.add_row("任务状态:", f"[bright_magenta]{task_status}[/bright_magenta]")
+    # 从文件读取持久化的任务进度
+    current_waypoint = state.mission_metadata.get('current_waypoint', 0)
+    total_waypoints = state.mission_metadata.get('total_waypoints', 0)
+    task_status = state.mission_metadata.get('task_status', '未知')
 
-        # ========== 实时飞行数据（来自 MQTT，可选显示）==========
-        flyto_progress = mqtt.get_flyto_progress()
-        if flyto_progress and flyto_progress.get('status') == 'wayline_progress':
-            remaining_distance = flyto_progress.get('remaining_distance')
-            remaining_time = flyto_progress.get('remaining_time')
+    # 显示航点进度条
+    if total_waypoints > 0:
+        waypoint_bar = create_waypoint_progress_bar(current_waypoint, total_waypoints)
+        table.add_row("航点进度:", waypoint_bar)
 
-            # 显示实时剩余距离和时间（仅在飞行中显示）
-            if remaining_distance is not None:
-                table.add_row("剩余距离:", f"[bright_green]{remaining_distance:.1f}m[/bright_green]")
-            if remaining_time is not None:
-                table.add_row("预计时间:", f"[bright_yellow]{remaining_time:.1f}s[/bright_yellow]")
+    # 显示任务状态
+    table.add_row("任务状态:", f"[bright_magenta]{task_status}[/bright_magenta]")
 
-    # IVAS 日志区域（使用独立的矩形框）
-    if ivas_adapter:
-        add_separator()
+    # 实时飞行数据（来自 MQTT，可选显示）
+    if state.flyto_progress and state.flyto_progress.get('status') == 'wayline_progress':
+        remaining_distance = state.flyto_progress.get('remaining_distance')
+        remaining_time = state.flyto_progress.get('remaining_time')
 
-        # 创建IVAS日志的独立表格（带边框）
-        ivas_table = Table.grid(padding=(0, 1))
-        ivas_table.add_column(style="dim")
+        # 显示实时剩余距离和时间（仅在飞行中显示）
+        if remaining_distance is not None:
+            table.add_row("剩余距离:", f"[bright_green]{remaining_distance:.1f}m[/bright_green]")
+        if remaining_time is not None:
+            table.add_row("预计时间:", f"[bright_yellow]{remaining_time:.1f}s[/bright_yellow]")
 
-        logs = ivas_adapter.get_recent_logs(5)
-        if logs:
-            for log in logs:
-                time_str = time.strftime("%H:%M:%S", time.localtime(log['time']))
-                log_type = log['type']
-                message = log['message']
 
-                # 根据类型选择颜色 - 前卫配色：霓虹色系
-                if log_type == 'success':
-                    color = 'bright_green'
-                elif log_type == 'error':
-                    color = 'bright_red'
-                else:  # 'info'
-                    color = 'bright_cyan'
+def _create_ivas_panel(logs: list) -> Panel:
+    """
+    创建 IVAS 日志面板（独立显示在主表格下方）
 
-                ivas_table.add_row(f"[{color}]{time_str}[/{color}] {message}")
-        else:
-            ivas_table.add_row("[dim]暂无日志[/dim]")
+    显示最近 5 条 IVAS 日志，带时间戳和颜色分类。
 
-        # 使用Panel包装IVAS日志，创建矩形框 - 前卫配色：亮洋红边框
-        ivas_panel = Panel(
-            ivas_table,
-            title="[bold bright_magenta]IVAS 日志[/bold bright_magenta]",
-            border_style="bright_magenta",
-            padding=(0, 1),
-            expand=False
-        )
+    Args:
+        logs: IVAS 日志列表
 
-        # 将整个IVAS Panel作为一行添加到主表格（跨两列）
-        table.add_row("", ivas_panel)
+    Returns:
+        Rich Panel 对象（宽度会自动与主表格一致）
+    """
+    # 创建 IVAS 日志表格
+    ivas_table = Table.grid(padding=(0, 1))
+    ivas_table.add_column(style="dim")
 
-    # 面板标题和边框颜色（离线状态优先显示）- 前卫配色：霓虹色系边框
-    # 使用已获取的 connection_manager（在文件开头已获取）
-    if connection_manager and connection_manager.is_reconnecting():
-        # 重连中：黄色边框
-        panel_color = "bright_yellow"
-        title = f"[bold]无人机 #{uav_id}[/bold] [bright_yellow]🔄 重连中...[/bright_yellow]"
-    elif not is_online:
-        panel_color = "bright_red"
-        title = f"[bold]无人机 #{uav_id}[/bold] [bright_red]● 离线[/bright_red]"
-    elif not is_heartbeat_alive:
-        panel_color = "bright_yellow"
-        title = f"[bold]无人机 #{uav_id}[/bold] [bright_yellow]⚠ 心跳异常[/bright_yellow]"
+    if logs:
+        for log in logs:
+            time_str = time.strftime("%H:%M:%S", time.localtime(log['time']))
+            log_type = log['type']
+            message = log['message']
+
+            # 根据类型选择颜色 - 前卫配色：霓虹色系
+            color_map = {
+                'success': 'bright_green',
+                'error': 'bright_red',
+                'info': 'bright_cyan'
+            }
+            color = color_map.get(log_type, 'bright_cyan')
+
+            ivas_table.add_row(f"[{color}]{time_str}[/{color}] {message}")
     else:
-        panel_color = "bright_magenta"
-        title = f"[bold]无人机 #{uav_id}[/bold]"
+        ivas_table.add_row("[dim]暂无日志[/dim]")
 
+    # 使用 Panel 包装 IVAS 日志
     return Panel(
-        table,
-        title=title,
-        border_style=panel_color,
-        padding=(1, 2)
+        ivas_table,
+        title="[bold bright_magenta]IVAS 日志[/bold bright_magenta]",
+        border_style="bright_magenta",
+        padding=(0, 1),
+        expand=True  # 自动扩展以匹配父容器宽度
     )
