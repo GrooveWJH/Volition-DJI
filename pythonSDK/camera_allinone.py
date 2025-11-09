@@ -19,8 +19,8 @@ MQTT_CONFIG = {'host': 'grve.me', 'port': 1883, 'username': 'dji', 'password': '
 
 UAV_CONFIGS = [
     {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'zoom': {'current': 7, 'step': 1, 'min': 1, 'max': 112}},
-    # {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
-    # {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
+    {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
+    {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
 ]
 
 # ========== 全局状态 ==========

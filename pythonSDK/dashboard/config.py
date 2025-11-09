@@ -18,18 +18,18 @@ MQTT_CONFIG = {
 
 # UAV 配置 - 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
 UAV_CONFIGS = [
-    # {
-    #     'sn': '9N9CN2J0012CXY',
-    #     'user_id': 'pilot_1',
-    #     'callsign': 'Pilot 1',
-    #     'vrpn_device': 'Drone001@192.168.31.100'
-    # },
-    # {
-    #     'sn': '9N9CN8400164WH',
-    #     'user_id': 'pilot_2',
-    #     'callsign': 'Pilot 2',
-    #     'vrpn_device': 'Drone002@192.168.31.100'
-    # },
+    {
+        'sn': '9N9CN2J0012CXY',
+        'user_id': 'pilot_1',
+        'callsign': 'Pilot 1',
+        'vrpn_device': 'Drone001@192.168.31.100'
+    },
+    {
+        'sn': '9N9CN8400164WH',
+        'user_id': 'pilot_2',
+        'callsign': 'Pilot 2',
+        'vrpn_device': 'Drone002@192.168.31.100'
+    },
     {
         'sn': '9N9CN180011TJN',
         'user_id': 'pilot_3',

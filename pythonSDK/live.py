@@ -264,7 +264,7 @@ def main():
         mqtt_config=MQTT_CONFIG,
         osd_frequency=OSD_FREQUENCY,
         hsi_frequency=HSI_FREQUENCY,
-        skip_drc_setup=False
+        skip_drc_setup=True
     )
 
     console.print(f"\n[green]✓ 已连接 {len(connections)} 架无人机[/green]\n")

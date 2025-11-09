@@ -41,6 +41,48 @@ def create_battery_bar(percent: int) -> str:
     return f"[{color}]{bar} {percent}%[/{color}]"
 
 
+def create_waypoint_progress_bar(current: int, total: int) -> str:
+    """
+    创建航点进度条（类似电量条）
+
+    Args:
+        current: 当前航点序号 (1-based, 0表示准备中)
+        total: 总航点数
+
+    Returns:
+        带颜色的进度条字符串
+
+    Example:
+        >>> create_waypoint_progress_bar(3, 10)
+        '[bright_green]██[/bright_green][bright_yellow]█[/bright_yellow][dim]░░░░░░░[/dim] [bright_cyan][3/10][/bright_cyan]'
+
+        显示效果：███░░░░░░░ [3/10]
+                  ↑  ↑ ↑
+                  绿 黄 灰
+    """
+    if total == 0:
+        return "[dim]暂无任务[/dim]"
+
+    # 限制当前航点在有效范围内
+    current = max(0, min(current, total))
+
+    # 已完成的航点（绿色）
+    completed = current - 1 if current > 0 else 0
+    completed_bar = f"[bright_green]{'█' * completed}[/bright_green]" if completed > 0 else ""
+
+    # 当前航点（黄色）- 只在 current > 0 时显示
+    current_bar = f"[bright_yellow]█[/bright_yellow]" if current > 0 else ""
+
+    # 未完成的航点（灰色）
+    remaining = total - current
+    remaining_bar = f"[dim]{'░' * remaining}[/dim]" if remaining > 0 else ""
+
+    # 数字显示
+    progress_text = f"[bright_cyan][{current}/{total}][/bright_cyan]"
+
+    return f"{completed_bar}{current_bar}{remaining_bar} {progress_text}"
+
+
 def create_uav_panel(
     uav_client: Dict[str, Any],
     config: Dict[str, str],
@@ -73,9 +115,21 @@ def create_uav_panel(
     local_height = mqtt.get_local_height()
     is_hsi_ok = mqtt.is_local_height_ok()
     battery_percent = mqtt.get_battery_percent()
-    is_heartbeat_alive = heartbeat and heartbeat.is_alive()
     flight_mode_name = mqtt.get_flight_mode_name()
     aircraft_sn = mqtt.get_aircraft_sn()
+
+    # 获取连接管理器（如果有）
+    connection_manager = uav_client.get('connection_manager')
+
+    # 心跳状态检查：优先使用连接管理器的心跳线程
+    if connection_manager:
+        # 有连接管理器：使用管理器维护的心跳线程引用
+        current_heartbeat = connection_manager.get_heartbeat_thread()
+        is_heartbeat_alive = current_heartbeat and current_heartbeat.is_alive()
+    else:
+        # 无连接管理器：使用外部传入的心跳线程
+        heartbeat = uav_client['heartbeat']
+        is_heartbeat_alive = heartbeat and heartbeat.is_alive()
 
     # 新增：获取频率和在线状态
     osd_frequency = mqtt.get_osd_frequency()
@@ -193,39 +247,34 @@ def create_uav_panel(
     except Exception:
         pass  # 文件读取失败时静默忽略（优雅降级）
 
-    # 从 MQTT 读取实时航点进度数据
-    flyto_progress = mqtt.get_flyto_progress()
-    flyto_status = flyto_progress.get('status') if flyto_progress else None
-
-    # 只有在执行航线任务时才显示（wayline_progress 状态）
-    if flyto_status == 'wayline_progress':
+    # ✅ 任务进度：只要任务元数据存在就显示（不依赖 MQTT 飞行状态）
+    if mission_metadata:
         add_separator()
 
-        # 提取进度数据
-        way_point_index = flyto_progress.get('way_point_index')
-        remaining_distance = flyto_progress.get('remaining_distance')
-        remaining_time = flyto_progress.get('remaining_time')
-        total_waypoints = mission_metadata.get('total_waypoints') if mission_metadata else None
+        # 从文件读取持久化的任务进度
+        current_waypoint = mission_metadata.get('current_waypoint', 0)
+        total_waypoints = mission_metadata.get('total_waypoints', 0)
+        task_status = mission_metadata.get('task_status', '未知')
 
-        # 显示航点进度
-        if way_point_index is not None:
-            if total_waypoints:
-                # 有总数：显示 "3/10" 格式
-                table.add_row("航点进度:", f"[bright_cyan]{way_point_index}/{total_waypoints}[/bright_cyan]")
-            else:
-                # 无总数：只显示当前航点索引（优雅降级）
-                table.add_row("当前航点:", f"[bright_cyan]{way_point_index}[/bright_cyan]")
+        # 显示航点进度条（类似电量条）
+        if total_waypoints > 0:
+            waypoint_bar = create_waypoint_progress_bar(current_waypoint, total_waypoints)
+            table.add_row("航点进度:", waypoint_bar)
 
-        # 显示剩余距离
-        if remaining_distance is not None:
-            table.add_row("剩余距离:", f"[bright_green]{remaining_distance:.1f}m[/bright_green]")
+        # 显示任务状态
+        table.add_row("任务状态:", f"[bright_magenta]{task_status}[/bright_magenta]")
 
-        # 显示预计时间
-        if remaining_time is not None:
-            table.add_row("预计时间:", f"[bright_yellow]{remaining_time:.1f}s[/bright_yellow]")
+        # ========== 实时飞行数据（来自 MQTT，可选显示）==========
+        flyto_progress = mqtt.get_flyto_progress()
+        if flyto_progress and flyto_progress.get('status') == 'wayline_progress':
+            remaining_distance = flyto_progress.get('remaining_distance')
+            remaining_time = flyto_progress.get('remaining_time')
 
-        # 显示飞行状态
-        table.add_row("飞行状态:", "[bright_magenta]航线飞行中[/bright_magenta]")
+            # 显示实时剩余距离和时间（仅在飞行中显示）
+            if remaining_distance is not None:
+                table.add_row("剩余距离:", f"[bright_green]{remaining_distance:.1f}m[/bright_green]")
+            if remaining_time is not None:
+                table.add_row("预计时间:", f"[bright_yellow]{remaining_time:.1f}s[/bright_yellow]")
 
     # IVAS 日志区域（使用独立的矩形框）
     if ivas_adapter:
@@ -267,8 +316,7 @@ def create_uav_panel(
         table.add_row("", ivas_panel)
 
     # 面板标题和边框颜色（离线状态优先显示）- 前卫配色：霓虹色系边框
-    # 新增：检测重连状态
-    connection_manager = uav_client.get('connection_manager')
+    # 使用已获取的 connection_manager（在文件开头已获取）
     if connection_manager and connection_manager.is_reconnecting():
         # 重连中：黄色边框
         panel_color = "bright_yellow"

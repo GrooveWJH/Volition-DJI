@@ -129,12 +129,12 @@ def execute_single_trajectory(runner, config):
         stop_monitor = threading.Event()
 
         def monitor_progress():
-            """后台监控线程：更新 runner.data"""
+            """后台监控线程：更新 runner.data（仅更新距离和时间，航点索引由 fly_trajectory_sequence 维护）"""
             while not stop_monitor.is_set():
                 try:
                     progress = mqtt.get_flyto_progress()
                     if progress and progress.get('status') == 'wayline_progress':
-                        runner.data['current_waypoint'] = progress.get('way_point_index', 0)
+                        # 只更新剩余距离和时间，不覆盖 current_waypoint
                         runner.data['remaining_distance'] = progress.get('remaining_distance')
                         runner.data['remaining_time'] = progress.get('remaining_time')
                         runner.data['task_status'] = '飞行中'
@@ -255,6 +255,8 @@ def main():
                     waypoints = load_trajectory(trajectory_file)
                     mission_state[callsign] = {
                         'total_waypoints': len(waypoints),
+                        'current_waypoint': 0,  # ✅ 初始化为 0（准备中）
+                        'task_status': '准备中',  # ✅ 初始化状态
                         'trajectory_file': trajectory_file,
                         'timestamp': time.time()
                     }

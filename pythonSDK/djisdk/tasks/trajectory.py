@@ -9,6 +9,8 @@
 """
 import time
 import json
+import tempfile
+import shutil
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from rich.console import Console
@@ -17,6 +19,54 @@ from ..services import fly_to_point, reset_gimbal
 from .runner import MissionRunner
 
 console = Console()
+
+# 任务状态文件路径（进程间共享）
+MISSION_STATE_FILE = Path('/tmp/djisdk_mission_state.json')
+
+
+def _update_mission_state_file(runner: MissionRunner, wp_index: int, task_status: str):
+    """
+    更新任务状态文件（原子写入，进程安全）
+
+    Args:
+        runner: MissionRunner 对象
+        wp_index: 当前航点索引（1-based）
+        task_status: 任务状态描述（如"飞行中"、"完成"等）
+
+    Note:
+        - 使用原子写入（temp file + rename）防止部分读取
+        - 静默失败（写入失败不影响任务执行）
+        - Dashboard 通过读取此文件显示任务进度
+    """
+    try:
+        callsign = runner.config.get('callsign', 'UAV')
+
+        # 读取现有文件（保留其他无人机数据）
+        mission_state = {}
+        if MISSION_STATE_FILE.exists():
+            with open(MISSION_STATE_FILE, 'r') as f:
+                mission_state = json.load(f)
+
+        # 更新当前无人机数据
+        mission_state[callsign] = {
+            'current_waypoint': wp_index,
+            'total_waypoints': runner.data.get('total_waypoints', 0),
+            'task_status': task_status,
+            'timestamp': time.time(),
+            'trajectory_file': runner.config.get('trajectory_file', '')
+        }
+
+        # 原子写入（先写临时文件，再重命名）
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, dir='/tmp', prefix='djisdk_mission_') as tmp_file:
+            json.dump(mission_state, tmp_file, indent=2)
+            tmp_path = tmp_file.name
+
+        # 原子替换
+        shutil.move(tmp_path, MISSION_STATE_FILE)
+
+    except Exception:
+        # 静默失败：文件写入失败不影响任务执行
+        pass
 
 
 def load_trajectory(filepath: str) -> List[Dict[str, Any]]:
@@ -98,6 +148,12 @@ def fly_trajectory_sequence(
         wp_id = waypoint.get('id', wp_index)
         lat = waypoint['lat']
         lon = waypoint['lon']
+
+        # 更新所有 runner 的当前航点索引（供外部监控和 dashboard 显示）
+        for runner in runners:
+            runner.data['current_waypoint'] = wp_index
+            # ✅ 立即写入文件（Dashboard 通过文件读取任务进度）
+            _update_mission_state_file(runner, wp_index, '飞行中')
 
         if show_progress:
             console.print(
@@ -266,6 +322,11 @@ def fly_trajectory_sequence(
 
             # 悬停等待（fly_to_point 后飞机会自动悬停）
             time.sleep(hover_between_waypoints)
+
+    # ✅ 任务完成，更新最终状态
+    for runner in runners:
+        final_status = f'完成 ({total_waypoints}航点)' if all_success else '任务失败'
+        _update_mission_state_file(runner, total_waypoints, final_status)
 
     return all_success
 

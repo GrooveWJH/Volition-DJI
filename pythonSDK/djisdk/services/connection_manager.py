@@ -110,6 +110,15 @@ class DRCConnectionManager:
         """判断是否正在重连"""
         return self.get_state() == ConnectionState.RECONNECTING
 
+    def get_heartbeat_thread(self):
+        """
+        获取当前心跳线程引用（线程安全）
+
+        Returns:
+            当前心跳线程对象，如果没有则返回 None
+        """
+        return self.heartbeat_thread
+
     def _set_state(self, new_state: str):
         """
         设置连接状态并触发回调（线程安全）
