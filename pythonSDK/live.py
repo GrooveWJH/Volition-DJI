@@ -100,8 +100,12 @@ STOP_LIVE_ON_EXIT = True
 
 # ========== 全局状态 ==========
 
-# 存储每架无人机的状态
-uav_states = {}  # {sn: {'mqtt': ..., 'caller': ..., 'video_id': ..., 'zoom_level': ...}}
+# 画质名称映射
+QUALITY_NAMES = {0: '自适应', 1: '流畅', 2: '标清', 3: '高清', 4: '超清'}
+
+# 分离固定连接和可变状态
+connections = {}  # {sn: {'mqtt': ..., 'caller': ..., 'heartbeat': ..., 'config': ...}}
+live_states = {}  # {sn: {'video_id': None, 'quality': 0}}
 stop_event = threading.Event()  # 用于停止所有控制线程
 
 
@@ -151,7 +155,7 @@ def select_uavs():
 
 def start_live_for_uav(mqtt, caller, config):
     """
-    为单架无人机启动直播
+    为单架无人机启动直播（永远用质量 0 - 自适应）
 
     Args:
         mqtt: MQTTClient
@@ -161,7 +165,6 @@ def start_live_for_uav(mqtt, caller, config):
     Returns:
         video_id or None
     """
-    sn = config['sn']
     callsign = config['callsign']
 
     try:
@@ -169,40 +172,21 @@ def start_live_for_uav(mqtt, caller, config):
         console.print(f"[{callsign}] 等待相机数据...")
         wait_for_camera_data(mqtt, max_wait=10)
 
-        # 2. 构建 video_id
-        from djisdk.utils import build_video_id
-        video_id = build_video_id(mqtt, config['video_index'])
-        console.print(f"[{callsign}] Video ID: {video_id}")
-
-        # 3. 构建 RTMP URL
+        # 2. 构建 RTMP URL
         rtmp_url = f"{RTMP_BASE_URL}{config['rtmp_stream_key']}"
         console.print(f"[{callsign}] 推流地址: {rtmp_url}")
 
-        # 4. 先设置直播清晰度（在启动直播之前）
-        try:
-            set_live_quality(caller, video_id, config['video_quality'])
-        except Exception as e:
-            console.print(f"[yellow]⚠ [{callsign}] 设置清晰度失败: {e}[/yellow]")
-
-        # 5. 启动直播
+        # 3. 启动直播（永远用质量 0 = 自适应）
         video_id_result = start_live(
             caller,
             mqtt,
             rtmp_url,
             config['video_index'],
-            config['video_quality']
+            quality=0  # 永远用自适应启动
         )
 
         if video_id_result:
-            # 6. 设置初始变焦
-            zoom_config = config.get('zoom', {})
-            if zoom_config.get('enabled', False):
-                initial_zoom = zoom_config.get('initial', 7)
-                payload_index = mqtt.get_payload_index() or "88-0-0"
-                console.print(f"[{callsign}] 设置初始变焦 {initial_zoom}x")
-                set_camera_zoom(mqtt, payload_index, initial_zoom, camera_type="zoom")
-
-            console.print(f"[green]✓ [{callsign}] 直播已启动 (video_id: {video_id_result})[/green]")
+            console.print(f"[green]✓ [{callsign}] 直播已启动 (video_id: {video_id_result}, 质量: 自适应)[/green]")
             return video_id_result
         else:
             console.print(f"[red]✗ [{callsign}] 直播启动失败[/red]")
@@ -228,6 +212,92 @@ def zoom_control_thread(mqtt, config):
     pass
 
 
+def read_key_nonblocking():
+    """
+    跨平台非阻塞键盘读取
+
+    Returns:
+        str: 读取到的按键字符，如果没有按键返回 None
+    """
+    if sys.platform == 'win32':
+        import msvcrt
+        if msvcrt.kbhit():
+            return msvcrt.getch().decode('utf-8')
+    else:
+        import select
+        dr, dw, de = select.select([sys.stdin], [], [], 0)
+        if dr:
+            return sys.stdin.read(1)
+    return None
+
+
+def change_all_quality(new_quality):
+    """
+    修改所有无人机的直播质量
+
+    Args:
+        new_quality: 新的质量等级 (0-4)
+    """
+    quality_name = QUALITY_NAMES.get(new_quality, '未知')
+    console.print(f"\n[bold cyan]切换所有直播到质量 {new_quality} ({quality_name})[/bold cyan]")
+
+    success_count = 0
+    total_count = 0
+
+    for sn, state in live_states.items():
+        if not state['video_id']:
+            continue  # 跳过未启动的
+
+        total_count += 1
+        conn = connections[sn]
+        callsign = conn['config']['callsign']
+
+        try:
+            set_live_quality(conn['caller'], state['video_id'], new_quality)
+            state['quality'] = new_quality  # 更新状态
+            success_count += 1
+            console.print(f"  [green]✓ {callsign}[/green]")
+        except Exception as e:
+            console.print(f"  [red]✗ {callsign}: {e}[/red]")
+
+    console.print(f"[green]完成: {success_count}/{total_count} 架无人机已切换[/green]\n")
+
+    # 刷新显示
+    display_live_status()
+
+
+def main_loop():
+    """
+    主循环 - 监听键盘输入控制画质
+
+    监听 0-4 键切换画质，Ctrl+C 退出
+    """
+    console.print("\n[bold yellow]所有直播运行中...[/bold yellow]")
+    console.print("[dim]按 0-4 切换清晰度:[/dim]")
+    console.print("[dim]  0=自适应 | 1=流畅 | 2=标清 | 3=高清 | 4=超清[/dim]")
+    console.print("[dim]按 Ctrl+C 退出[/dim]\n")
+
+    # Unix/macOS: 设置终端为原始模式（非阻塞输入）
+    old_settings = None
+    if sys.platform != 'win32':
+        import termios
+        import tty
+        old_settings = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+
+    try:
+        while True:
+            key = read_key_nonblocking()
+            if key and key in '01234':
+                change_all_quality(int(key))
+            time.sleep(0.1)  # 100ms 轮询
+    finally:
+        # 恢复终端设置
+        if old_settings:
+            import termios
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+
 def display_live_status():
     """显示所有无人机的直播状态"""
     table = Table(title="[bold cyan]直播状态监控[/bold cyan]",
@@ -237,10 +307,17 @@ def display_live_status():
     table.add_column("直播状态", style="green")
     table.add_column("推流地址", style="blue")
 
-    for sn, state in uav_states.items():
-        callsign = state['config']['callsign']
-        status = "🟢 运行中" if state['video_id'] else "🔴 未启动"
-        rtmp_url = f"{RTMP_BASE_URL}{state['config']['rtmp_stream_key']}"
+    for sn, state in live_states.items():
+        conn = connections[sn]
+        callsign = conn['config']['callsign']
+
+        if state['video_id']:
+            quality_name = QUALITY_NAMES[state['quality']]
+            status = f"🟢 运行中 ({quality_name})"
+        else:
+            status = "🔴 未启动"
+
+        rtmp_url = f"{RTMP_BASE_URL}{conn['config']['rtmp_stream_key']}"
         table.add_row(callsign, sn, status, rtmp_url)
 
     console.print(table)
@@ -251,7 +328,7 @@ def display_live_status():
 def main():
     console.print("\n" + "=" * 70)
     console.print("[bold cyan]DJI 无人机 RTMP 直播工具 - 多机版本[/bold cyan]")
-    console.print("=" * 70 + "\n")
+    console.print("==" * 70 + "\n")
 
     # 步骤 1: 选择无人机
     selected_uavs = select_uavs()
@@ -259,7 +336,7 @@ def main():
     # 步骤 2: 建立 DRC 连接
     console.print("\n[bold cyan]========== 建立 DRC 连接 ==========[/bold cyan]\n")
 
-    connections = setup_multiple_drc_connections(
+    conn_list = setup_multiple_drc_connections(
         uav_configs=selected_uavs,
         mqtt_config=MQTT_CONFIG,
         osd_frequency=OSD_FREQUENCY,
@@ -267,18 +344,20 @@ def main():
         skip_drc_setup=True
     )
 
-    console.print(f"\n[green]✓ 已连接 {len(connections)} 架无人机[/green]\n")
+    console.print(f"\n[green]✓ 已连接 {len(conn_list)} 架无人机[/green]\n")
 
-    # 初始化全局状态
-    for (mqtt, caller, heartbeat), config in zip(connections, selected_uavs):
+    # 初始化全局状态：分离连接和状态
+    for (mqtt, caller, heartbeat), config in zip(conn_list, selected_uavs):
         sn = config['sn']
-        uav_states[sn] = {
+        connections[sn] = {
             'mqtt': mqtt,
             'caller': caller,
             'heartbeat': heartbeat,
-            'config': config,
+            'config': config
+        }
+        live_states[sn] = {
             'video_id': None,
-            'zoom_level': config.get('zoom', {}).get('initial', 7)
+            'quality': 0  # 初始质量：自适应
         }
 
     try:
@@ -290,18 +369,18 @@ def main():
             futures = {
                 executor.submit(
                     start_live_for_uav,
-                    state['mqtt'],
-                    state['caller'],
-                    state['config']
+                    conn['mqtt'],
+                    conn['caller'],
+                    conn['config']
                 ): sn
-                for sn, state in uav_states.items()
+                for sn, conn in connections.items()
             }
 
             for future in concurrent.futures.as_completed(futures):
                 sn = futures[future]
                 try:
                     video_id = future.result()
-                    uav_states[sn]['video_id'] = video_id
+                    live_states[sn]['video_id'] = video_id
                 except Exception as e:
                     console.print(f"[red]✗ {sn} 启动异常: {e}[/red]")
 
@@ -309,13 +388,8 @@ def main():
         console.print("\n[bold cyan]========== 直播状态 ==========[/bold cyan]\n")
         display_live_status()
 
-        # 步骤 5: 持续监控
-        console.print("\n[bold yellow]所有直播运行中...[/bold yellow]")
-        console.print("[dim]按 Ctrl+C 停止直播并退出[/dim]\n")
-
-        while True:
-            time.sleep(5)
-            # 可以定期更新状态
+        # 步骤 5: 进入主循环（键盘控制画质）
+        main_loop()
 
     except KeyboardInterrupt:
         console.print("\n\n[yellow]收到中断信号[/yellow]")
@@ -327,22 +401,23 @@ def main():
         # 停止所有直播
         if STOP_LIVE_ON_EXIT:
             console.print("[cyan]停止直播推流...[/cyan]")
-            for sn, state in uav_states.items():
+            for sn, state in live_states.items():
                 if state['video_id']:
-                    callsign = state['config']['callsign']
+                    conn = connections[sn]
+                    callsign = conn['config']['callsign']
                     try:
-                        stop_live(state['caller'], state['video_id'])
+                        stop_live(conn['caller'], state['video_id'])
                         console.print(f"[green]✓ [{callsign}] 直播已停止[/green]")
                     except Exception as e:
                         console.print(f"[red]✗ [{callsign}] 停止直播失败: {e}[/red]")
 
         # 停止心跳和 MQTT 连接
         console.print("[cyan]断开连接...[/cyan]")
-        for sn, state in uav_states.items():
-            callsign = state['config']['callsign']
+        for sn, conn in connections.items():
+            callsign = conn['config']['callsign']
             try:
-                stop_heartbeat(state['heartbeat'])
-                state['mqtt'].disconnect()
+                stop_heartbeat(conn['heartbeat'])
+                conn['mqtt'].disconnect()
                 console.print(f"[green]✓ [{callsign}] 连接已断开[/green]")
             except Exception as e:
                 console.print(f"[red]✗ [{callsign}] 断开失败: {e}[/red]")
