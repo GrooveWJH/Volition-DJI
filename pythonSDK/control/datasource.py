@@ -109,7 +109,7 @@ class UWBDataSource(DataSource):
     def __init__(self, uwb_client, mqtt_client):
         """
         Args:
-            uwb_client: UWB客户端实例
+            uwb_client: UWB客户端实例 (uwb_client.UWBClient)
             mqtt_client: MQTT客户端实例（用于获取无人机航向角）
         """
         self.uwb_client = uwb_client
@@ -117,16 +117,8 @@ class UWBDataSource(DataSource):
 
     def get_position(self) -> Optional[Tuple[float, float, float]]:
         """从UWB获取位置"""
-        # 假设UWB客户端有类似VRPN的接口
-        if hasattr(self.uwb_client, 'position'):
-            pos = self.uwb_client.position
-            if pos is None:
-                return None
-            return tuple(pos)
-        elif hasattr(self.uwb_client, 'get_position'):
-            return self.uwb_client.get_position()
-        else:
-            raise AttributeError("UWB客户端缺少position属性或get_position()方法")
+        # UWB客户端已经提供了标准的 get_position() 接口
+        return self.uwb_client.get_position()
 
     def get_yaw(self) -> Optional[float]:
         """从无人机MQTT数据获取Yaw角"""
@@ -134,8 +126,7 @@ class UWBDataSource(DataSource):
 
     def stop(self):
         """停止UWB客户端"""
-        if hasattr(self.uwb_client, 'stop'):
-            self.uwb_client.stop()
+        self.uwb_client.stop()
 
 
 class HybridDataSource(DataSource):
@@ -162,13 +153,8 @@ class HybridDataSource(DataSource):
                 return None
             return tuple(pose.position)
         elif self.position_type == 'uwb':
-            if hasattr(self.position_client, 'position'):
-                pos = self.position_client.position
-                if pos is None:
-                    return None
-                return tuple(pos)
-            elif hasattr(self.position_client, 'get_position'):
-                return self.position_client.get_position()
+            # UWB 客户端已经提供了标准的 get_position() 接口
+            return self.position_client.get_position()
         return None
 
     def get_yaw(self) -> Optional[float]:

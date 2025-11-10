@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from djisdk import MQTTClient, start_heartbeat, stop_heartbeat, send_stick_control
 from vrpn import VRPNClient
-from uwb import UWBClient, MockUWBClient
+from uwb_client import UWBClient
 from rich.console import Console
 from rich.panel import Panel
 
@@ -122,11 +122,24 @@ def main():
             vrpn_client = VRPNClient(device_name=VRPN_DEVICE)
             console.print(f"[green]✓ VRPN客户端已连接: {VRPN_DEVICE}[/green]")
         elif POSITION_SOURCE == 'uwb':
-            # 用户需要根据实际UWB系统修改此处
-            # 示例: uwb_client = UWBClient('drone1', host='192.168.31.200', port=8888)
-            uwb_client = MockUWBClient('drone1', x=0.0, y=0.0, z=0.5)  # 使用Mock测试
-            console.print(f"[yellow]⚠ 使用 Mock UWB 客户端（测试模式）[/yellow]")
-            console.print(f"[dim]提示: 修改 plane_main.py 以使用真实 UWB 客户端[/dim]")
+            # 从 UWB_DEVICE 解析参数（格式: uwb://host:port/node_id 或简单的 node_id）
+            # 示例: "uwb://192.168.31.200:8888/drone1" 或 "2"
+            import re
+            match = re.match(r'uwb://([^:]+):(\d+)/(.+)', UWB_DEVICE)
+            if match:
+                # 网络模式（预留，暂不支持）
+                console.print(f"[yellow]⚠ 网络模式暂不支持，使用默认串口模式[/yellow]")
+                uwb_client = UWBClient(target_node_id=2, use_smoothing=True)
+            else:
+                # 直接串口模式，UWB_DEVICE 是节点 ID
+                try:
+                    node_id = int(UWB_DEVICE) if UWB_DEVICE.isdigit() else 2
+                except:
+                    node_id = 2
+                uwb_client = UWBClient(target_node_id=node_id, use_smoothing=True)
+
+            console.print(f"[green]✓ UWB客户端已启动: 节点 ID={uwb_client.target_node_id}, 平滑={'ON' if uwb_client.use_smoothing else 'OFF'}[/green]")
+            console.print(f"[dim]提示: UWB 从串口 {uwb_client.serial_port} 读取数据[/dim]")
         else:
             raise ValueError(f"未知的位置数据源: {POSITION_SOURCE}")
     except Exception as e:

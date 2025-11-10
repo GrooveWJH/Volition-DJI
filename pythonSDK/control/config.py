@@ -9,13 +9,16 @@ VRPN_DEVICE = 'Drone001@192.168.31.100'
 
 # ========== 数据源配置 ==========
 # 几何定位源选择: 'vrpn' 或 'uwb'
-POSITION_SOURCE = 'vrpn'  # 位置数据来源
+POSITION_SOURCE = 'uwb'  # 位置数据来源
 
 # UWB 设备配置（当 POSITION_SOURCE = 'uwb' 时使用）
-UWB_DEVICE = 'uwb://192.168.31.200:8888/drone1'  # UWB 设备地址
+# 格式1: 节点ID（整数或字符串），例如: '2' 或 2
+# 格式2: 完整URL（预留），例如: 'uwb://192.168.31.200:8888/2'
+UWB_DEVICE = '2'  # UWB 目标节点 ID (TAG节点)
 
 # 航向角数据源选择: 'vrpn' 或 'drone'
-YAW_SOURCE = 'vrpn'  # 'vrpn' = 从动捕系统获取, 'drone' = 从无人机自身获取
+# 注意: UWB 只提供位置，不提供航向角，所以航向角必须选 'drone' 或 'vrpn'
+YAW_SOURCE = 'drone'  # 'vrpn' = 从动捕系统获取, 'drone' = 从无人机自身获取
 
 # ========== MQTT配置 ==========
 MQTT_CONFIG = {

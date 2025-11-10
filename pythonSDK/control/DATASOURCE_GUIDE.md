@@ -107,95 +107,262 @@ YAW_SOURCE = 'vrpn'
 
 ## UWB 配置指南
 
-### 1. 修改 UWB 设备地址
+### 1. 准备工作
 
-在 `control/config.py` 中：
+确保：
+- ✅ UWB 设备已连接到串口 `/dev/ttyACM0`
+- ✅ 串口权限已配置（参考 `uwb/SERIAL_PERMISSION_FIX.md`）
+- ✅ 已安装依赖: `pip install pyserial numpy`
 
-```python
-UWB_DEVICE = 'uwb://192.168.31.200:8888/drone1'
-```
-
-格式：`uwb://<host>:<port>/<device_name>`
-
-### 2. 实现 UWB 客户端
-
-项目提供了 UWB 客户端模板（`uwb.py`），你需要根据实际 UWB 系统修改通信协议。
-
-**模板位置**：`uwb.py`
-
-**需要修改的部分**：`_receive_loop()` 方法
-
-#### 示例 1: UDP 接收（默认模板）
+### 2. 配置 control/config.py
 
 ```python
-# uwb.py: _receive_loop() 方法
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('0.0.0.0', self.port))
+# 使用 UWB 定位 + 无人机航向角
+POSITION_SOURCE = 'uwb'
+YAW_SOURCE = 'drone'
 
-while self._running:
-    data, addr = sock.recvfrom(1024)
-    message = data.decode('utf-8').strip()
-    # 解析格式: "drone1,1.23,4.56,0.50"
-    parts = message.split(',')
-    if len(parts) >= 4 and parts[0] == self.device_name:
-        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
-        self.position = (x, y, z)
+# UWB 目标节点 ID (TAG 节点通常是 2)
+UWB_DEVICE = '2'
 ```
 
-#### 示例 2: TCP 客户端
+**UWB_DEVICE 配置说明**：
+- 格式：字符串或整数的节点 ID
+- 示例：`'2'`, `2`, `'3'`
+- 对应 UWB TAG 节点的 ID（可通过 `python uwb/getdata.py` 查看）
 
-```python
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect((self.host, self.port))
+### 3. 测试 UWB 连接
 
-while self._running:
-    data = sock.recv(1024)
-    # 解析数据...
-```
-
-#### 示例 3: HTTP 轮询
-
-```python
-import requests
-
-while self._running:
-    response = requests.get(f"http://{self.host}:{self.port}/position/{self.device_name}")
-    data = response.json()
-    self.position = (data['x'], data['y'], data['z'])
-    time.sleep(0.1)
-```
-
-### 3. 测试 UWB 客户端
+**步骤 1：测试串口读取**
 
 ```bash
-# 测试 Mock UWB（固定位置）
-python -c "from uwb import MockUWBClient; c = MockUWBClient('drone1', 1.0, 2.0, 0.5); print(c.get_position()); c.stop()"
+# 测试原始数据读取（30Hz打印）
+python uwb/getdata.py
 
-# 测试真实 UWB（需要先修改实现）
-python uwb.py
+# 测试带平滑的数据读取（30Hz打印，实时显示原始和平滑数据）
+python uwb/getdata_smoothed.py
+```
+
+**预期输出**：
+```
+[10:30:15] Frame #1 (TAG) | Anchors: 4 | Tags: 1 | Voltage: 3.87V
+  [TAG    ] ID= 2 | XYZ = ( 1.234,  0.567,  0.050)m | Dist = 2.45m
+```
+
+**步骤 2：测试 uwb_client.py**
+
+```bash
+# 测试 uwb_client 模块（后台线程读取 + 平滑）
+python uwb_client.py
+```
+
+**预期输出**：
+```
+[UWB] Client started: /dev/ttyACM0 @ 1500000
+[UWB] Target node ID: 2
+[UWB] Smoothing: enabled
+
+Reading UWB position data (Ctrl+C to stop)...
+
+[0123] Position: ( 1.2340,  0.5670,  0.0500)m
 ```
 
 ### 4. 在控制程序中使用 UWB
 
-**方式 1: 使用 Mock UWB（测试）**
-
-`control/plane_main.py` 中已默认使用 Mock UWB：
-
-```python
-uwb_client = MockUWBClient('drone1', x=0.0, y=0.0, z=0.5)
+```bash
+# 确保 config.py 配置正确
+python control/plane_main.py
 ```
 
-**方式 2: 使用真实 UWB**
+**程序会自动**：
+1. 从串口 `/dev/ttyACM0` 读取 UWB 数据
+2. 过滤目标节点 ID (例如 2)
+3. 应用移动平均滤波（X轴5点，Y轴3点，Z轴3点）
+4. 剔除异常值（3σ原则）
+5. 提供 `datasource.get_position()` 接口
 
-修改 `control/plane_main.py` 第 126 行：
+**控制程序输出示例**：
+```
+━━━ 步骤 1/3: 连接位置数据源 (UWB) ━━━
+[UWB] Client started: /dev/ttyACM0 @ 1500000
+[UWB] Target node ID: 2
+[UWB] Smoothing: enabled
+✓ UWB客户端已启动: 节点 ID=2, 平滑=ON
+提示: UWB 从串口 /dev/ttyACM0 读取数据
+
+━━━ 步骤 2/3: 连接MQTT ━━━
+✓ MQTT已连接: 192.168.31.73:1883
+
+━━━ 步骤 3/3: 启动心跳 ━━━
+✓ 心跳已启动 (5.0Hz)
+
+━━━ 创建数据源接口 ━━━
+✓ 数据源已创建: 位置=UWB
+```
+
+### 5. UWB 技术细节
+
+#### 数据源
+
+- **串口**: `/dev/ttyACM0`
+- **波特率**: 1500000
+- **协议**: 896 字节帧，包含 30 个节点数据
+- **更新频率**: ~100Hz（原始数据）
+
+#### 平滑算法
+
+基于 `uwb/statistics.py` 的实测统计数据：
+
+| 轴 | 标准差 σ | 滤波窗口 | 异常值阈值 (3σ) |
+|----|---------|---------|-----------------|
+| X  | 28.6mm  | 5 点    | 85.8mm          |
+| Y  | 12.9mm  | 3 点    | 38.7mm          |
+| Z  | 未测量  | 3 点    | 50.0mm          |
+
+**平滑流程**：
+1. 异常值检测（与历史均值比较）
+2. 异常值替换（使用上一个有效值）
+3. 移动平均滤波（滑动窗口）
+
+#### 节点角色
+
+| 角色    | ID 范围 | 说明 |
+|---------|---------|------|
+| ANCHOR  | 固定    | 基站，提供参考位置 |
+| TAG     | 2, 3, …  | 移动标签，需要定位的目标 |
+| CONSOLE | 1       | 控制台 |
+
+通常**无人机使用 TAG 节点 (ID=2)**。
+
+### 6. 故障排查
+
+#### 问题 1: 串口权限错误
+
+```
+[UWB] ERROR: Failed to open serial port: [Errno 13] Permission denied: '/dev/ttyACM0'
+```
+
+**解决方案**：
+```bash
+# 方案 1: 临时添加权限
+sudo chmod 666 /dev/ttyACM0
+
+# 方案 2: 永久添加用户到 dialout 组（推荐）
+sudo usermod -aG dialout $USER
+# 注销并重新登录
+
+# 方案 3: 使用 udev 规则（参考 uwb/SERIAL_PERMISSION_FIX.md）
+```
+
+#### 问题 2: 没有数据输出
+
+```
+[0000] Waiting for UWB data...
+```
+
+**检查清单**：
+- [ ] UWB 设备是否已连接到 `/dev/ttyACM0`
+  ```bash
+  ls -l /dev/ttyACM*
+  ```
+- [ ] UWB 设备是否已开机
+- [ ] 节点 ID 是否正确
+  ```bash
+  # 运行 getdata.py 查看所有节点 ID
+  python uwb/getdata.py
+  ```
+- [ ] 串口是否被其他程序占用
+  ```bash
+  lsof /dev/ttyACM0
+  ```
+
+#### 问题 3: 位置数据跳变
+
+如果位置数据不稳定、频繁跳变：
+
+**原因**：
+- UWB 信号遮挡
+- 多径效应
+- 基站位置变化
+
+**解决方案**：
+1. 调整平滑参数（`uwb_client.py` 中的滤波窗口）
+2. 检查 UWB 基站布局
+3. 参考 `uwb/滤波器参数调节指南.md`
+
+#### 问题 4: 航向角不准确
+
+因为 UWB 只提供位置，航向角来自无人机磁罗盘。
+
+**现象**：
+- 位置控制正常，航向角控制不准确
+- 航向角漂移
+
+**解决方案**：
+- 校准无人机磁罗盘
+- 使用 VRPN 作为航向角数据源（如果可用）
+  ```python
+  POSITION_SOURCE = 'uwb'
+  YAW_SOURCE = 'vrpn'  # 使用 VRPN 航向角
+  ```
+- 调整 Yaw PID 参数以适应磁罗盘精度
+
+### 7. 高级配置
+
+#### 修改目标节点 ID
+
+如果需要跟踪不同的 TAG 节点：
 
 ```python
-# 替换这一行:
-uwb_client = MockUWBClient('drone1', x=0.0, y=0.0, z=0.5)
-
-# 改为:
-uwb_client = UWBClient('drone1', host='192.168.31.200', port=8888)
+# control/config.py
+UWB_DEVICE = '3'  # 跟踪 ID=3 的节点
 ```
+
+#### 禁用平滑（获取原始数据）
+
+编辑 `control/plane_main.py`:
+
+```python
+# 第 139 行附近
+uwb_client = UWBClient(target_node_id=node_id, use_smoothing=False)  # 禁用平滑
+```
+
+#### 调整平滑参数
+
+编辑 `uwb_client.py`:
+
+```python
+# 第 37-42 行
+FILTER_WINDOW_X = 7      # 增大窗口 = 更平滑但延迟更大
+FILTER_WINDOW_Y = 5
+OUTLIER_THRESHOLD_X = 0.120  # 增大阈值 = 容忍更大的跳变
+```
+
+### 8. 性能优化
+
+#### 控制延迟
+
+| 组件 | 延迟 | 说明 |
+|------|------|------|
+| UWB 数据更新 | ~10ms | 100Hz 更新率 |
+| 串口读取 | ~5ms | 后台线程 |
+| 平滑滤波 | 20-50ms | 取决于窗口大小 |
+| 控制循环 | 20ms | 50Hz |
+| **总延迟** | **~55-85ms** | 可接受 |
+
+如果需要更低延迟：
+- 减小平滑窗口 (`FILTER_WINDOW_X/Y`)
+- 禁用平滑 (`use_smoothing=False`)
+- 增加控制频率 (`CONTROL_FREQUENCY = 100`)
+
+#### 数据质量
+
+| 指标 | UWB (带平滑) | VRPN |
+|------|--------------|------|
+| 更新率 | ~100Hz | ~120Hz |
+| 位置精度 | 10-30mm | 1-5mm |
+| 延迟 | ~55-85ms | ~10-20ms |
+| 覆盖范围 | 大 (100m+) | 小 (10m) |
+| 室外可用 | ✅ | ❌ |
 
 ---
 
