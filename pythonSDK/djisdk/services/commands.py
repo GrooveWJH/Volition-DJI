@@ -124,13 +124,31 @@ def change_live_lens(
     video_id: str,
     video_type: str = "normal"
 ) -> Dict[str, Any]:
-    """切换直播镜头"""
-    console.print(f"[cyan]切换直播镜头: {video_id} ({video_type})[/cyan]")
+    """
+    切换直播镜头
+
+    Args:
+        caller: 服务调用器
+        video_id: 直播视频流的 ID，格式为 {sn}/{camera_index}/{video_index}
+        video_type: 镜头类型 ("normal", "thermal", "wide", "zoom")
+
+    Returns:
+        服务返回数据
+
+    Example:
+        >>> # 切换到变焦镜头
+        >>> change_live_lens(caller, "SN123/39-0-7/zoom-0", "zoom")
+        >>> # 切换到广角镜头
+        >>> change_live_lens(caller, "SN123/39-0-7/wide-0", "wide")
+    """
+    lens_names = {"normal": "默认", "thermal": "红外", "wide": "广角", "zoom": "变焦"}
+    lens_name = lens_names.get(video_type, video_type)
+    console.print(f"[cyan]切换直播镜头: {video_id} → {lens_name}[/cyan]")
     return _call_service(
         caller,
-        "drc_live_lens_change",
+        "live_lens_change",
         {"video_id": video_id, "video_type": video_type},
-        f"镜头已切换到 {video_id}"
+        f"镜头已切换到{lens_name}"
     )
 
 
