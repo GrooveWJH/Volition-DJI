@@ -16,7 +16,7 @@ console = Console()
 
 # 任务菜单配置
 MISSIONS = {
-    '1': {'name': '起飞10米', 'mission': 1, 'needs_coords': False},
+    '1': {'name': '起飞到预设高度', 'mission': 1, 'needs_coords': False},
     '2': {'name': '降落', 'mission': 2, 'needs_coords': False},
     '3': {'name': '返航', 'mission': 3, 'needs_coords': False},
     '4': {'name': '飞向指定点', 'mission': 4, 'needs_coords': True},

@@ -4,11 +4,11 @@ IVAS 任务执行器 - 将 IVAS 任务映射到 djisdk 操作
 负责接收 IVAS 任务数据并执行对应的无人机操作。
 
 任务类型映射：
-1: 起飞10米 (原地起飞)
+1: 起飞到预设高度 (从 uav_config['flight_height'] 读取)
 2: 降落 (持续下拉油门)
 3: 返航 (一键返航)
 4: 飞向指定点 (需要 lat/lon/alt)
-5-7: 执行预设轨迹任务 (Trajectory/uav1-3.json)
+5-7: 执行预设轨迹任务 (Trajectory/uav1-3.json，使用预设高度)
 """
 import time
 import os
@@ -56,7 +56,7 @@ def execute_ivas_task(
     try:
         # 任务分发
         if mission == 1:
-            _task_takeoff_10m(mqtt_client, caller, heartbeat_thread, callsign, runner)
+            _task_takeoff(mqtt_client, caller, heartbeat_thread, uav_config, runner)
         elif mission == 2:
             _task_land(mqtt_client, callsign, runner)
         elif mission == 3:
@@ -78,15 +78,19 @@ def execute_ivas_task(
         raise
 
 
-def _task_takeoff_10m(mqtt, caller, heartbeat, callsign: str, runner=None):
-    """任务1: 起飞到10米"""
-    console.print(f"[cyan][{callsign}] 开始起飞到10米...[/cyan]")
+def _task_takeoff(mqtt, caller, heartbeat, uav_config: Dict[str, Any], runner=None):
+    """任务1: 起飞到预设高度"""
+    # 从配置读取起飞高度，默认 20.0 米
+    target_height = uav_config.get('flight_height', 20.0)
+    callsign = uav_config.get('callsign', '未知')
+
+    console.print(f"[cyan][{callsign}] 开始起飞到预设高度 {target_height}m...[/cyan]")
 
     # 使用 djisdk 起飞任务
     takeoff_mission = create_takeoff_mission(
-        target_height=10.0,
+        target_height=target_height,
         height_tolerance=0.5,
-        throttle_offset=300
+        throttle_offset=660  # 最大杆量以加快上升速度
     )
 
     # 使用外部传入的 runner（用于中断），如果没有则创建新的

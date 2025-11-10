@@ -25,6 +25,7 @@ UAV_CONFIGS = [
         'user_id': 'pilot_1',
         'callsign': 'Pilot 1',
         'vrpn_device': 'Drone001@192.168.31.100',
+        'flight_height': 90.0,  # 起飞和航点飞行高度（米）
         'ivas': {
             'device_code': 1,
             'account': 'ZSDX001',
@@ -36,6 +37,7 @@ UAV_CONFIGS = [
         'user_id': 'pilot_2',
         'callsign': 'Pilot 2',
         'vrpn_device': 'Drone002@192.168.31.100',
+        'flight_height': 100.0,  # 起飞和航点飞行高度（米）
         'ivas': {
             'device_code': 2,
             'account': 'ZSDX002',
@@ -47,6 +49,7 @@ UAV_CONFIGS = [
         'user_id': 'pilot_3',
         'callsign': 'Pilot 3',
         'vrpn_device': 'Drone003@192.168.31.100',
+        'flight_height': 110.0,  # 起飞和航点飞行高度（米）
         'ivas': {
             'device_code': 3,
             'account': 'ZSDX003',
