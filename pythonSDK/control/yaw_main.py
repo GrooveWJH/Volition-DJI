@@ -4,18 +4,21 @@ Yaw角PID控制器 - 主程序
 使用统一的control模块重构版本
 
 功能：
-- 使用VRPN姿态数据作为反馈
+- 支持多种航向角数据源（VRPN或无人机自身姿态）
 - 通过PID算法控制无人机旋转到目标Yaw角
 - 只控制Yaw角，不控制位置和高度
 - 支持多个目标角度循环测试
 
 使用方法：
-1. 手动让无人机起飞到1m高度
-2. 启动本程序: python control/yaw_main.py
-3. 无人机按顺序旋转到各个目标角度
-4. 每到达一个角度，等待按 Enter 键
-5. 自动前往下一个目标角度，循环往复
-6. 按 Ctrl+C 退出程序
+1. 在 control/config.py 中配置数据源:
+   - YAW_SOURCE: 'vrpn' 或 'drone'
+   - POSITION_SOURCE: 'vrpn' 或 'uwb' (本程序不使用位置)
+2. 手动让无人机起飞到1m高度
+3. 启动本程序: python control/yaw_main.py
+4. 无人机按顺序旋转到各个目标角度
+5. 每到达一个角度，等待按 Enter 键
+6. 自动前往下一个目标角度，循环往复
+7. 按 Ctrl+C 退出程序
 """
 
 import time
@@ -28,13 +31,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from djisdk import MQTTClient, start_heartbeat, stop_heartbeat, send_stick_control
 from vrpn import VRPNClient
+from uwb import UWBClient, MockUWBClient
 from rich.console import Console
 from rich.panel import Panel
 
 # 导入control模块
 from control.config import *
-from control.controller import YawOnlyController, quaternion_to_yaw, get_yaw_error
+from control.controller import YawOnlyController, get_yaw_error
 from control.logger import DataLogger
+from control.datasource import create_datasource
 
 
 def generate_random_angle(current_angle, min_diff=30):
@@ -69,8 +74,16 @@ def main():
 
     auto_mode_info = "[yellow]自动模式: 已启用[/yellow]" if AUTO_NEXT_TARGET else "[dim]手动模式: 到达后需按Enter[/dim]"
 
+    # 显示数据源配置
+    data_source_info = f"[yellow]航向角源: {YAW_SOURCE.upper()}[/yellow]"
+    if YAW_SOURCE == 'vrpn':
+        data_source_info += f" ({VRPN_DEVICE})"
+    elif YAW_SOURCE == 'drone':
+        data_source_info += " (无人机自身姿态)"
+
     console.print(Panel.fit(
         "[bold cyan]Yaw角PID控制器 - 重构版本[/bold cyan]\n"
+        f"{data_source_info}\n"
         f"{mode_info}\n"
         f"{auto_mode_info}\n"
         f"[dim]到达阈值: ±{TOLERANCE_YAW:.1f}°[/dim]\n"
@@ -78,13 +91,20 @@ def main():
         border_style="cyan"
     ))
 
-    # 1. 连接VRPN客户端
-    console.print("\n[cyan]━━━ 步骤 1/3: 连接VRPN动捕系统 ━━━[/cyan]")
+    # 1. 连接航向角数据源（VRPN或MQTT）
+    console.print(f"\n[cyan]━━━ 步骤 1/3: 连接航向角数据源 ({YAW_SOURCE.upper()}) ━━━[/cyan]")
+    vrpn_client = None
+
     try:
-        vrpn_client = VRPNClient(device_name=VRPN_DEVICE)
-        console.print(f"[green]✓ VRPN客户端已连接: {VRPN_DEVICE}[/green]")
+        if YAW_SOURCE == 'vrpn':
+            vrpn_client = VRPNClient(device_name=VRPN_DEVICE)
+            console.print(f"[green]✓ VRPN客户端已连接: {VRPN_DEVICE}[/green]")
+        elif YAW_SOURCE == 'drone':
+            console.print(f"[green]✓ 将从无人机自身姿态获取航向角[/green]")
+        else:
+            raise ValueError(f"未知的航向角数据源: {YAW_SOURCE}")
     except Exception as e:
-        console.print(f"[red]✗ VRPN连接失败: {e}[/red]")
+        console.print(f"[red]✗ 航向角数据源连接失败: {e}[/red]")
         return 1
 
     # 2. 连接MQTT客户端
@@ -95,13 +115,32 @@ def main():
         console.print(f"[green]✓ MQTT已连接: {MQTT_CONFIG['host']}:{MQTT_CONFIG['port']}[/green]")
     except Exception as e:
         console.print(f"[red]✗ MQTT连接失败: {e}[/red]")
-        vrpn_client.stop()
+        if vrpn_client:
+            vrpn_client.stop()
         return 1
 
     # 3. 启动心跳
     console.print("\n[cyan]━━━ 步骤 3/3: 启动心跳 ━━━[/cyan]")
     heartbeat_thread = start_heartbeat(mqtt_client, interval=0.2)
     console.print("[green]✓ 心跳已启动 (5.0Hz)[/green]")
+
+    # 4. 创建统一数据源
+    console.print("\n[cyan]━━━ 创建数据源接口 ━━━[/cyan]")
+    try:
+        datasource = create_datasource(
+            position_source=POSITION_SOURCE,  # yaw_main 不使用位置，但需要提供配置
+            yaw_source=YAW_SOURCE,
+            vrpn_client=vrpn_client,
+            mqtt_client=mqtt_client
+        )
+        console.print(f"[green]✓ 数据源已创建: 航向角={YAW_SOURCE.upper()}[/green]")
+    except Exception as e:
+        console.print(f"[red]✗ 数据源创建失败: {e}[/red]")
+        stop_heartbeat(heartbeat_thread)
+        mqtt_client.disconnect()
+        if vrpn_client:
+            vrpn_client.stop()
+        return 1
 
     # 4. 初始化控制器和目标
     controller = YawOnlyController(
@@ -145,14 +184,13 @@ def main():
         while True:
             loop_start = time.time()
 
-            # 读取VRPN姿态
-            pose = vrpn_client.pose
-            if pose is None:
-                console.print("[yellow]⚠ 等待VRPN数据...[/yellow]")
+            # 读取航向角数据（使用统一数据源接口）
+            current_yaw = datasource.get_yaw()
+            if current_yaw is None:
+                console.print("[yellow]⚠ 等待航向角数据...[/yellow]")
                 time.sleep(0.1)
                 continue
 
-            current_yaw = quaternion_to_yaw(pose.quaternion)
             error_yaw = get_yaw_error(target_yaw, current_yaw)
             abs_error = abs(error_yaw)
 
@@ -281,8 +319,11 @@ def main():
         console.print("[green]✓ 心跳已停止[/green]")
         mqtt_client.disconnect()
         console.print("[green]✓ MQTT已断开[/green]")
-        vrpn_client.stop()
-        console.print("[green]✓ VRPN已断开[/green]")
+
+        # 停止数据源
+        datasource.stop()
+        console.print(f"[green]✓ 数据源已停止 ({YAW_SOURCE.upper()})[/green]")
+
         console.print("\n[bold green]✓ 已安全退出[/bold green]\n")
     return 0
 

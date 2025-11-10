@@ -27,6 +27,7 @@ python control/visualize.py data/yaw/latest
 **Complete documentation:** [`docs/README.md`](docs/README.md)
 
 - **[Control Module Guide](docs/CONTROL_MODULE_GUIDE.md)** - Position & yaw control system
+- **[Data Source Configuration](control/DATASOURCE_GUIDE.md)** - Configure VRPN/UWB/Drone data sources
 - **[PID Tuning Guide](docs/PID_TUNING_GUIDE.md)** - How to tune PID parameters
 - **[Data Logging](docs/DATA_LOGGING_README.md)** - Logging and visualization
 - **[Mock Simulator](docs/MOCK_SIMULATOR_GUIDE.md)** - Test without hardware
@@ -36,15 +37,19 @@ python control/visualize.py data/yaw/latest
 ```
 pythonSDK/
 ├── control/              # PID control system
-│   ├── main.py          # Plane + Yaw control
+│   ├── main.py          # Plane + Yaw control (disabled)
+│   ├── plane_main.py    # Position control only
 │   ├── yaw_main.py      # Yaw-only control
+│   ├── datasource.py    # Data source abstraction (VRPN/UWB)
 │   ├── visualize.py     # Data visualization (with PID components!)
 │   ├── pid.py           # PID controller
 │   ├── controller.py    # Control strategies
 │   ├── logger.py        # Data logging
-│   └── config.py        # Configuration
+│   ├── config.py        # Configuration (incl. data sources)
+│   └── DATASOURCE_GUIDE.md  # Data source configuration guide
 ├── djisdk/              # DJI Cloud API SDK
 ├── vrpn/                # VRPN motion capture client
+├── uwb.py               # UWB positioning client (template)
 ├── utils/               # Utility scripts
 └── docs/                # Documentation
 ```
@@ -59,6 +64,7 @@ pythonSDK/
 - ✅ Real-time data logging
 - ✅ **PID component visualization** (P, I, D terms)
 - ✅ "latest" directory for quick access
+- ✅ **Flexible data sources** (VRPN/UWB for position, VRPN/Drone for yaw)
 
 ### DJI SDK
 - ✅ Minimal design (2 core classes, ~150 lines)
@@ -76,6 +82,10 @@ pythonSDK/
 Edit `control/config.py` to configure:
 
 ```python
+# Data sources
+POSITION_SOURCE = 'vrpn'  # 'vrpn' or 'uwb'
+YAW_SOURCE = 'vrpn'       # 'vrpn' or 'drone'
+
 # PID parameters
 KP_XY = 150.0   # Position control
 KD_XY = 200.0
@@ -87,8 +97,11 @@ CONTROL_FREQUENCY = 50  # Hz
 
 # Connection settings
 VRPN_DEVICE = "DJI_Mini4Pro"
+UWB_DEVICE = "uwb://192.168.31.200:8888/drone1"
 MQTT_CONFIG = {...}
 ```
+
+**See [Data Source Configuration Guide](control/DATASOURCE_GUIDE.md) for detailed setup.**
 
 ## 📊 Data Visualization
 
@@ -192,6 +205,13 @@ python control/visualize.py data/latest
 ```
 
 ## 📝 Recent Updates
+
+### 2024-11-10: Flexible Data Source Configuration
+- ✅ Support for multiple position data sources (VRPN, UWB)
+- ✅ Support for multiple yaw data sources (VRPN, Drone attitude)
+- ✅ Unified data source abstraction layer
+- ✅ UWB client template for custom positioning systems
+- ✅ Comprehensive data source configuration guide
 
 ### 2024-10-30: PID Component Logging & Visualization
 - ✅ PID controller now returns P, I, D components

@@ -4,7 +4,7 @@
 使用统一的control模块重构版本
 
 功能：
-- 使用VRPN位置数据作为反馈
+- 支持多种位置数据源（VRPN或UWB）
 - 通过PID算法控制无人机飞到目标XY位置
 - 只控制XY平面位置，不控制Yaw角和高度
 - 支持多个航点循环测试
@@ -14,12 +14,15 @@
 - Y轴（左方向，y变大）→ Roll杆量（负值）
 
 使用方法：
-1. 手动让无人机起飞到1m高度
-2. 启动本程序: python control/plane_main.py
-3. 无人机按顺序飞到各个航点
-4. 每到达一个航点，等待按 Enter 键（或自动模式下自动前往下一个）
-5. 循环往复
-6. 按 Ctrl+C 退出程序
+1. 在 control/config.py 中配置数据源:
+   - POSITION_SOURCE: 'vrpn' 或 'uwb'
+   - YAW_SOURCE: 'vrpn' 或 'drone' (本程序不使用Yaw)
+2. 手动让无人机起飞到1m高度
+3. 启动本程序: python control/plane_main.py
+4. 无人机按顺序飞到各个航点
+5. 每到达一个航点，等待按 Enter 键（或自动模式下自动前往下一个）
+6. 循环往复
+7. 按 Ctrl+C 退出程序
 """
 
 import time
@@ -32,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from djisdk import MQTTClient, start_heartbeat, stop_heartbeat, send_stick_control
 from vrpn import VRPNClient
+from uwb import UWBClient, MockUWBClient
 from rich.console import Console
 from rich.panel import Panel
 
@@ -39,6 +43,7 @@ from rich.panel import Panel
 from control.config import *
 from control.controller import PlaneController
 from control.logger import DataLogger
+from control.datasource import create_datasource
 
 
 def generate_random_waypoint(current_x, current_y, min_distance=0.5, max_distance=2.0):
@@ -89,8 +94,16 @@ def main():
         features.append(f"[green]PID重置[/green] (mask:{pid_reset_cfg['reset_mask']}, 触发距离:<{pid_reset_cfg['trigger_distance']}m, 静音:{pid_reset_cfg['mute_duration']}s)")
     features_info = " | ".join(features) if features else "[dim]基础PID控制[/dim]"
 
+    # 显示数据源配置
+    data_source_info = f"[yellow]位置源: {POSITION_SOURCE.upper()}[/yellow]"
+    if POSITION_SOURCE == 'vrpn':
+        data_source_info += f" ({VRPN_DEVICE})"
+    elif POSITION_SOURCE == 'uwb':
+        data_source_info += f" ({UWB_DEVICE})"
+
     console.print(Panel.fit(
         "[bold cyan]平面位置PID控制器 - 重构版本[/bold cyan]\n"
+        f"{data_source_info}\n"
         f"{mode_info}\n"
         f"{auto_mode_info}\n"
         f"[dim]到达阈值: {TOLERANCE_XY*100:.1f} cm[/dim]\n"
@@ -99,13 +112,25 @@ def main():
         border_style="cyan"
     ))
 
-    # 1. 连接VRPN客户端
-    console.print("\n[cyan]━━━ 步骤 1/3: 连接VRPN动捕系统 ━━━[/cyan]")
+    # 1. 连接位置数据源（VRPN或UWB）
+    console.print(f"\n[cyan]━━━ 步骤 1/3: 连接位置数据源 ({POSITION_SOURCE.upper()}) ━━━[/cyan]")
+    vrpn_client = None
+    uwb_client = None
+
     try:
-        vrpn_client = VRPNClient(device_name=VRPN_DEVICE)
-        console.print(f"[green]✓ VRPN客户端已连接: {VRPN_DEVICE}[/green]")
+        if POSITION_SOURCE == 'vrpn':
+            vrpn_client = VRPNClient(device_name=VRPN_DEVICE)
+            console.print(f"[green]✓ VRPN客户端已连接: {VRPN_DEVICE}[/green]")
+        elif POSITION_SOURCE == 'uwb':
+            # 用户需要根据实际UWB系统修改此处
+            # 示例: uwb_client = UWBClient('drone1', host='192.168.31.200', port=8888)
+            uwb_client = MockUWBClient('drone1', x=0.0, y=0.0, z=0.5)  # 使用Mock测试
+            console.print(f"[yellow]⚠ 使用 Mock UWB 客户端（测试模式）[/yellow]")
+            console.print(f"[dim]提示: 修改 plane_main.py 以使用真实 UWB 客户端[/dim]")
+        else:
+            raise ValueError(f"未知的位置数据源: {POSITION_SOURCE}")
     except Exception as e:
-        console.print(f"[red]✗ VRPN连接失败: {e}[/red]")
+        console.print(f"[red]✗ 位置数据源连接失败: {e}[/red]")
         return 1
 
     # 2. 连接MQTT客户端
@@ -116,13 +141,37 @@ def main():
         console.print(f"[green]✓ MQTT已连接: {MQTT_CONFIG['host']}:{MQTT_CONFIG['port']}[/green]")
     except Exception as e:
         console.print(f"[red]✗ MQTT连接失败: {e}[/red]")
-        vrpn_client.stop()
+        if vrpn_client:
+            vrpn_client.stop()
+        if uwb_client:
+            uwb_client.stop()
         return 1
 
     # 3. 启动心跳
     console.print("\n[cyan]━━━ 步骤 3/3: 启动心跳 ━━━[/cyan]")
     heartbeat_thread = start_heartbeat(mqtt_client, interval=0.2)
     console.print("[green]✓ 心跳已启动 (5.0Hz)[/green]")
+
+    # 4. 创建统一数据源
+    console.print("\n[cyan]━━━ 创建数据源接口 ━━━[/cyan]")
+    try:
+        datasource = create_datasource(
+            position_source=POSITION_SOURCE,
+            yaw_source=YAW_SOURCE,  # plane_main 不使用yaw，但需要提供配置
+            vrpn_client=vrpn_client,
+            mqtt_client=mqtt_client,
+            uwb_client=uwb_client
+        )
+        console.print(f"[green]✓ 数据源已创建: 位置={POSITION_SOURCE.upper()}[/green]")
+    except Exception as e:
+        console.print(f"[red]✗ 数据源创建失败: {e}[/red]")
+        stop_heartbeat(heartbeat_thread)
+        mqtt_client.disconnect()
+        if vrpn_client:
+            vrpn_client.stop()
+        if uwb_client:
+            uwb_client.stop()
+        return 1
 
     # 4. 初始化控制器和航点
     controller = PlaneController(
@@ -141,10 +190,11 @@ def main():
     if PLANE_USE_RANDOM_WAYPOINTS:
         # 随机模式：获取当前位置作为起点
         console.print("[yellow]等待初始位置数据...[/yellow]")
-        while vrpn_client.pose is None:
+        position = None
+        while position is None:
+            position = datasource.get_position()
             time.sleep(0.1)
-        pose = vrpn_client.pose
-        current_x, current_y = pose.position[0], pose.position[1]
+        current_x, current_y, _ = position
         target_waypoint = (0, 0)  # 第一个目标是原点
         waypoint_index = 0
     else:
@@ -182,13 +232,13 @@ def main():
             loop_start = time.time()
             loop_count += 1
 
-            # 读取VRPN位置
-            pose = vrpn_client.pose
-            if pose is None:
+            # 读取位置数据（使用统一数据源接口）
+            position = datasource.get_position()
+            if position is None:
                 time.sleep(0.1)
                 continue
 
-            current_x, current_y = pose.position[0], pose.position[1]
+            current_x, current_y, _ = position
             target_x, target_y = target_waypoint
             distance = controller.get_distance(target_x, target_y, current_x, current_y)
 
@@ -391,8 +441,11 @@ def main():
         console.print("[green]✓ 心跳已停止[/green]")
         mqtt_client.disconnect()
         console.print("[green]✓ MQTT已断开[/green]")
-        vrpn_client.stop()
-        console.print("[green]✓ VRPN已断开[/green]")
+
+        # 停止数据源
+        datasource.stop()
+        console.print(f"[green]✓ 数据源已停止 ({POSITION_SOURCE.upper()})[/green]")
+
         console.print("\n[bold green]✓ 已安全退出[/bold green]\n")
     return 0
 
