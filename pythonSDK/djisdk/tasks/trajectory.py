@@ -87,7 +87,7 @@ def load_trajectory(filepath: str) -> List[Dict[str, Any]]:
         json.JSONDecodeError: JSON 格式错误
         ValueError: 数据格式错误
 
-    Example:
+    Example:fly_trajectory_sequence()
         >>> waypoints = load_trajectory('Trajectory/uav1.json')
         >>> print(f"加载了 {len(waypoints)} 个航点")
     """

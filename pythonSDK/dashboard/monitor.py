@@ -27,7 +27,6 @@ from .config import (
     ENABLE_IVAS,
     IVAS_FEATURES,
     IVAS_SERVER,
-    IVAS_ACCOUNTS,
 )
 from .panels import create_dashboard_layout
 from .ivas_adapter import IVASAdapter
@@ -148,37 +147,47 @@ def setup_connections(console: Console):
                 vrpn_clients = []  # 清空列表
 
         # === 阶段 3: 初始化 IVAS 客户端（如果启用）===
-        if ENABLE_IVAS and IVAS_FEATURES.get('position_report', False):
+        # 只要有任意 IVAS 功能启用，就启动 Adapter
+        has_any_ivas_feature = any(IVAS_FEATURES.values())
+        if ENABLE_IVAS and has_any_ivas_feature:
             console.rule("[bold bright_blue]初始化 IVAS 系统[/bold bright_blue]")
             for i, uav in enumerate(uav_clients):
-                if i < len(IVAS_ACCOUNTS):
-                    account = IVAS_ACCOUNTS[i]
-                    config = UAV_CONFIGS[i]
+                config = UAV_CONFIGS[i]
 
-                    try:
-                        console.print(f"[bright_cyan]初始化 IVAS 适配器 #{i+1} ({account['account']})...[/bright_cyan]")
+                # 检查是否配置了 IVAS
+                if 'ivas' not in config:
+                    console.print(f"[yellow]⚠ {config['callsign']} 未配置 IVAS，跳过[/yellow]")
+                    continue
 
-                        # 创建 IVAS 适配器
-                        adapter = IVASAdapter(
-                            device_code=account['device_code'],
-                            mqtt_client=uav['mqtt'],
-                            ivas_config={
-                                **IVAS_SERVER,
-                                'account': account['account'],
-                                'password': account['password'],
-                            },
-                            uav_config=config
-                        )
+                ivas_config = config['ivas']
 
-                        # 启动 IVAS 客户端后台线程
-                        adapter.start()
+                try:
+                    console.print(f"[bright_cyan]初始化 IVAS 适配器 #{i+1} ({ivas_config['account']})...[/bright_cyan]")
 
-                        ivas_adapters.append(adapter)
-                        uav['ivas'] = adapter  # 绑定到 UAV 客户端
+                    # 创建 IVAS 适配器
+                    adapter = IVASAdapter(
+                        device_code=ivas_config['device_code'],
+                        mqtt_client=uav['mqtt'],
+                        ivas_config={
+                            **IVAS_SERVER,
+                            'account': ivas_config['account'],
+                            'password': ivas_config['password'],
+                        },
+                        uav_config=config,
+                        service_caller=uav['caller'],
+                        heartbeat_thread=uav['heartbeat'],
+                        features=IVAS_FEATURES  # 传递功能配置
+                    )
 
-                        console.print(f"[bright_green]✓ IVAS 适配器 #{i+1} 已启动[/bright_green]")
-                    except Exception as e:
-                        console.print(f"[bright_red]✗ IVAS 初始化失败: {e}[/bright_red]")
+                    # 启动 IVAS 客户端后台线程
+                    adapter.start()
+
+                    ivas_adapters.append(adapter)
+                    uav['ivas'] = adapter  # 绑定到 UAV 客户端
+
+                    console.print(f"[bright_green]✓ IVAS 适配器 #{i+1} 已启动[/bright_green]")
+                except Exception as e:
+                    console.print(f"[bright_red]✗ IVAS 初始化失败: {e}[/bright_red]")
 
             if ivas_adapters:
                 console.print(f"\n[bold bright_green]✓ IVAS 系统已就绪 ({len(ivas_adapters)} 个设备)[/bold bright_green]")

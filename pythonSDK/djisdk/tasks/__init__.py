@@ -11,6 +11,7 @@ from .trajectory import (
     create_trajectory_mission
 )
 from .display import create_takeoff_table, create_trajectory_table
+from .ivas_executor import execute_ivas_task
 
 __all__ = [
     'MissionRunner',
@@ -22,4 +23,5 @@ __all__ = [
     'create_trajectory_mission',
     'create_takeoff_table',
     'create_trajectory_table',
+    'execute_ivas_task',
 ]

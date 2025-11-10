@@ -23,7 +23,6 @@ from .config import (
     ENABLE_IVAS,
     IVAS_FEATURES,
     IVAS_SERVER,
-    IVAS_ACCOUNTS,
 )
 
 __all__ = [
@@ -41,7 +40,6 @@ __all__ = [
     'ENABLE_IVAS',
     'IVAS_FEATURES',
     'IVAS_SERVER',
-    'IVAS_ACCOUNTS',
 ]
 
 __version__ = '1.0.0'

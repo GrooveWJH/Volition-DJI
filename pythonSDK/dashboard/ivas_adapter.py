@@ -37,7 +37,10 @@ class IVASAdapter:
         device_code: int,
         mqtt_client,
         ivas_config: Dict[str, Any],
-        uav_config: Dict[str, str]
+        uav_config: Dict[str, str],
+        service_caller=None,
+        heartbeat_thread=None,
+        features: Optional[Dict[str, bool]] = None
     ):
         """
         初始化 IVAS 适配器
@@ -47,10 +50,16 @@ class IVASAdapter:
             mqtt_client: DJI MQTT 客户端（数据源）
             ivas_config: IVAS 配置（包含 base_url, report_hz, task_hz, account, password）
             uav_config: 无人机配置（包含 sn, callsign 等，用于日志显示）
+            service_caller: djisdk ServiceCaller（用于任务执行）
+            heartbeat_thread: 心跳线程（用于任务执行）
+            features: 功能开关字典 {'position_report': bool, 'target_report': bool, 'task_receive': bool}
         """
         self.device_code = device_code
         self.mqtt = mqtt_client
+        self.caller = service_caller
+        self.heartbeat_thread = heartbeat_thread
         self.uav_config = uav_config
+        self.features = features or {}  # 存储功能配置
 
         # 日志队列（简单列表，滚动窗口，最多保留10条）
         self.log_queue = []
@@ -60,6 +69,10 @@ class IVASAdapter:
         # 最新任务数据
         self.latest_task = None
         self.task_lock = threading.Lock()
+
+        # 任务执行器（后台线程）
+        self.task_executor_thread = None
+        self.current_runner = None  # 当前执行任务的 runner（用于中断）
 
         # 基准位置（用于生成坐标范围，取第一次有效GPS位置）
         self.base_lat = None
@@ -79,6 +92,7 @@ class IVASAdapter:
             base_url=ivas_config['base_url'],
             report_hz=ivas_config['report_hz'],
             task_hz=ivas_config['task_hz'],
+            features=self.features  # 传递功能配置
         )
 
         # 覆盖 IVAS Client 的数据生成方法（使用真实数据）
@@ -163,7 +177,7 @@ class IVASAdapter:
             if isinstance(data, dict) and data.get('code') == 200 and data.get('data'):
                 task_data = data['data']
                 mission_names = {
-                    1: "原地起飞5米", 2: "原地降落", 3: "返航", 4: "前往指定点",
+                    1: "原地起飞10米", 2: "原地降落", 3: "返航", 4: "前往指定点",
                     5: "多航点任务1", 6: "多航点任务2", 7: "多航点任务3"
                 }
                 mission = task_data.get('mission', 0)
@@ -176,6 +190,9 @@ class IVASAdapter:
                 # 存储最新任务
                 with self.task_lock:
                     self.latest_task = task_data
+
+                # 立即在后台线程执行任务
+                self._execute_task_in_background(task_data)
             else:
                 # 无任务或任务为空
                 return  # 不记录日志
@@ -246,3 +263,69 @@ class IVASAdapter:
         """
         self.ivas_client.stop()
         self._add_log('info', "IVAS Client 已停止")
+
+    def _execute_task_in_background(self, task_data: Dict[str, Any]):
+        """
+        在后台线程执行 IVAS 任务（新任务会中断旧任务）
+
+        策略：
+        - 如果有旧任务正在执行，立即停止它
+        - 然后在后台线程执行新任务
+
+        Args:
+            task_data: IVAS 任务数据
+        """
+        # 检查是否具备执行条件
+        if self.caller is None:
+            self._add_log('warning', "任务执行器未初始化（缺少 ServiceCaller），跳过任务执行")
+            return
+
+        # 停止旧任务（如果存在）
+        if self.current_runner and self.current_runner.running:
+            self._add_log('info', "停止旧任务，准备执行新任务")
+            self.current_runner.stop()  # 设置 running=False 并等待线程结束
+
+        # 等待旧线程结束（最多等待2秒）
+        if self.task_executor_thread and self.task_executor_thread.is_alive():
+            self.task_executor_thread.join(timeout=2.0)
+            if self.task_executor_thread.is_alive():
+                self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
+
+        # 在后台线程执行新任务
+        try:
+            from djisdk.tasks.ivas_executor import execute_ivas_task
+            from djisdk.tasks.runner import MissionRunner
+
+            self._add_log('info', f"开始执行任务 {task_data.get('mission')}")
+
+            # 创建新的 runner（用于可中断任务）
+            self.current_runner = MissionRunner(
+                self.mqtt,
+                self.caller,
+                self.heartbeat_thread,
+                self.uav_config
+            )
+
+            def task_wrapper():
+                """任务包装器：执行完成后清理 runner 引用"""
+                try:
+                    execute_ivas_task(
+                        task_data,
+                        self.mqtt,
+                        self.caller,
+                        self.uav_config,
+                        self.heartbeat_thread,
+                        runner=self.current_runner  # 传递 runner 以支持任务中断
+                    )
+                finally:
+                    self.current_runner = None  # 任务完成，清理引用
+
+            self.task_executor_thread = threading.Thread(
+                target=task_wrapper,
+                daemon=True
+            )
+            self.task_executor_thread.start()
+
+        except Exception as e:
+            self._add_log('error', f"任务执行失败: {e}")
+            self.current_runner = None

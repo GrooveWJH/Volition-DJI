@@ -3,6 +3,7 @@ Dashboard 配置文件
 
 所有可调参数集中在此，便于维护和调整。
 """
+import os
 
 # ========== MQTT 连接配置 ==========
 
@@ -17,25 +18,41 @@ MQTT_CONFIG = {
 # ========== 无人机配置 ==========
 
 # UAV 配置 - 9N9CN2J0012CXY (001) | 9N9CN8400164WH (002) | 9N9CN180011TJN (003)
+# 每架无人机的完整配置（DJI、VRPN、IVAS）集中在一起
 UAV_CONFIGS = [
     {
         'sn': '9N9CN2J0012CXY',
         'user_id': 'pilot_1',
         'callsign': 'Pilot 1',
-        'vrpn_device': 'Drone001@192.168.31.100'
+        'vrpn_device': 'Drone001@192.168.31.100',
+        'ivas': {
+            'device_code': 1,
+            'account': 'ZSDX001',
+            'password': '000000'
+        }
     },
-    # {
-    #     'sn': '9N9CN8400164WH',
-    #     'user_id': 'pilot_2',
-    #     'callsign': 'Pilot 2',
-    #     'vrpn_device': 'Drone002@192.168.31.100'
-    # },
-    # {
-    #     'sn': '9N9CN180011TJN',
-    #     'user_id': 'pilot_3',
-    #     'callsign': 'Pilot 3',
-    #     'vrpn_device': 'Drone003@192.168.31.100'
-    # },
+    {
+        'sn': '9N9CN8400164WH',
+        'user_id': 'pilot_2',
+        'callsign': 'Pilot 2',
+        'vrpn_device': 'Drone002@192.168.31.100',
+        'ivas': {
+            'device_code': 2,
+            'account': 'ZSDX002',
+            'password': '000000'
+        }
+    },
+    {
+        'sn': '9N9CN180011TJN',
+        'user_id': 'pilot_3',
+        'callsign': 'Pilot 3',
+        'vrpn_device': 'Drone003@192.168.31.100',
+        'ivas': {
+            'device_code': 3,
+            'account': 'ZSDX003',
+            'password': '000000'
+        }
+    },
 ]
 
 # ========== DRC 连接配置 ==========
@@ -72,35 +89,18 @@ ENABLE_IVAS = True
 
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {
-    'position_report': True,    # 无人机位置上报（实际执行，从真实MQTT获取数据）
-    'target_report': False,     # 目标检测上报（暂不启用，无数据源）
-    'task_receive': True,       # 任务接收（仅显示，不实际执行无人机控制）
-    'situation_awareness': False,  # 态势感知（留白占位，无数据源）
+    'position_report': False,    # 无人机位置上报（实际执行，从真实MQTT获取数据）
+    'target_report': False,      # 目标检测上报（暂不启用，无数据源）
+    'task_receive': True,        # 任务接收（仅显示，不实际执行无人机控制）
 }
 
 # IVAS 服务器配置
+# 支持环境变量切换测试/生产环境
+# 测试模式: IVAS_BASE_URL=http://localhost:5001 python main.py
+# 生产模式: python main.py (使用默认地址)
 IVAS_SERVER = {
-    'base_url': 'http://192.168.31.38:8888',  # IVAS 服务器地址
+    'base_url': os.getenv('IVAS_BASE_URL', 'http://192.168.31.38:8888'),  # 可通过环境变量覆盖
     'report_hz': 5.0,   # 位置和目标上报频率 (Hz)
-    'task_hz': 0.2,     # 任务轮询频率 (Hz)
+    'task_hz': 2.0,     # 任务轮询频率 (Hz) - 每 0.5 秒轮询一次
 }
 
-# 每个 UAV 对应的 IVAS 账号配置
-# device_code 应与 IVAS 服务器中注册的设备编号对应
-IVAS_ACCOUNTS = [
-    {
-        'device_code': 1,
-        'account': 'ZSDX001',
-        'password': '000000',  # 请替换为实际密码
-    },
-    {
-        'device_code': 2,
-        'account': 'ZSDX002',
-        'password': '000000',  # 请替换为实际密码
-    },
-    {
-        'device_code': 3,
-        'account': 'ZSDX003',
-        'password': '000000',  # 请替换为实际密码
-    },
-]

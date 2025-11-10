@@ -43,7 +43,8 @@ class IVASClient:
         base_url: str,
         display_queue=None,
         report_hz: float = 1.0,
-        task_hz: float = 0.2
+        task_hz: float = 0.2,
+        features: Optional[Dict[str, bool]] = None
     ):
         """
         初始化 IVAS 客户端
@@ -60,6 +61,7 @@ class IVASClient:
             display_queue: 可视化队列 (可选)
             report_hz: 位置和目标上报频率 (Hz)
             task_hz: 任务轮询频率 (Hz)
+            features: 功能开关字典 {'position_report': bool, 'target_report': bool, 'task_receive': bool}
         """
         self.device_code = device_code
         self.account = account
@@ -79,6 +81,13 @@ class IVASClient:
         self.running = True
         self.last_task_time = 0
 
+        # 功能开关（默认全部启用以保持向后兼容）
+        self.features = features or {
+            'position_report': True,
+            'target_report': True,
+            'task_receive': True
+        }
+
     def run(self):
         """主运行循环 - 一个线程处理所有频率的任务"""
         # 启动前先登录获取 token
@@ -90,15 +99,18 @@ class IVASClient:
             loop_start = time.time()
 
             try:
-                # 每次循环都发送位置和目标数据
-                self._report_position()
-                self._report_targets()
+                # 根据功能配置决定是否上报位置和目标
+                if self.features.get('position_report', True):
+                    self._report_position()
+                if self.features.get('target_report', True):
+                    self._report_targets()
 
                 # 检查是否需要轮询任务
-                now = time.time()
-                if now - self.last_task_time >= self.task_interval:
-                    self._poll_task()
-                    self.last_task_time = now
+                if self.features.get('task_receive', True):
+                    now = time.time()
+                    if now - self.last_task_time >= self.task_interval:
+                        self._poll_task()
+                        self.last_task_time = now
 
             except Exception as e:
                 self._log('error', f"循环异常: {e}")

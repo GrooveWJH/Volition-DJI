@@ -27,6 +27,7 @@ class UAVState:
     """
     # 基本信息
     uav_id: str
+    user_id: str  # 新增：用于显示标题
     sn: str
     callsign: str
     aircraft_sn: Optional[str]
@@ -114,6 +115,7 @@ class UAVState:
         # 构建状态快照
         return cls(
             uav_id=uav_client['id'],
+            user_id=config.get('user_id', uav_client['id']),  # 使用 config 中的 user_id
             sn=config['sn'],
             callsign=config['callsign'],
             aircraft_sn=mqtt.get_aircraft_sn(),
@@ -158,8 +160,10 @@ class UAVState:
     def get_panel_title(self) -> str:
         """
         面板标题（包含状态标识）
+
+        使用 user_id 作为主要标识（如 pilot_1, pilot_2）
         """
-        base_title = f"[bold]无人机 #{self.uav_id}[/bold]"
+        base_title = f"[bold]无人机 {self.user_id}[/bold]"
 
         if self.is_reconnecting:
             return f"{base_title} [bright_yellow]🔄 重连中...[/bright_yellow]"
