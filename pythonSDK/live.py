@@ -23,6 +23,7 @@ from djisdk import (
     start_live,
     stop_live,
     set_live_quality,
+    change_live_lens,
 )
 from djisdk.services.drc_commands import set_camera_zoom
 import time
@@ -105,7 +106,7 @@ QUALITY_NAMES = {0: '自适应', 1: '流畅', 2: '标清', 3: '高清', 4: '超�
 
 # 分离固定连接和可变状态
 connections = {}  # {sn: {'mqtt': ..., 'caller': ..., 'heartbeat': ..., 'config': ...}}
-live_states = {}  # {sn: {'video_id': None, 'quality': 0}}
+live_states = {}  # {sn: {'video_id': None, 'quality': 0, 'lens_type': 'zoom', 'zoom_factor': 2}}
 stop_event = threading.Event()  # 用于停止所有控制线程
 
 
@@ -266,16 +267,119 @@ def change_all_quality(new_quality):
     display_live_status()
 
 
+def toggle_all_lens():
+    """
+    切换所有无人机的镜头类型（变焦 ↔ 广角）
+
+    注意：仅在直播运行时可用
+    """
+    console.print("\n[bold cyan]切换所有直播镜头[/bold cyan]")
+
+    success_count = 0
+    total_count = 0
+
+    for sn, state in live_states.items():
+        if not state['video_id']:
+            continue  # 跳过未启动的
+
+        total_count += 1
+        conn = connections[sn]
+        callsign = conn['config']['callsign']
+
+        # 切换镜头类型
+        current_lens = state['lens_type']
+        new_lens = 'wide' if current_lens == 'zoom' else 'zoom'
+        lens_name = '广角' if new_lens == 'wide' else '变焦'
+
+        try:
+            change_live_lens(conn['caller'], state['video_id'], new_lens)
+            state['lens_type'] = new_lens  # 更新状态
+            success_count += 1
+            console.print(f"  [green]✓ {callsign}: {lens_name}[/green]")
+        except Exception as e:
+            console.print(f"  [red]✗ {callsign}: {e}[/red]")
+
+    console.print(f"[green]完成: {success_count}/{total_count} 架无人机已切换[/green]\n")
+
+    # 刷新显示
+    display_live_status()
+
+
+def adjust_all_zoom(direction: str):
+    """
+    调整所有无人机的变焦倍数
+
+    Args:
+        direction: 'in' 增加倍数，'out' 减少倍数
+
+    注意：仅在变焦镜头模式下可用，范围 1-112x
+    """
+    step = 5 if direction == 'in' else -5
+    action_name = '增加' if direction == 'in' else '减少'
+
+    console.print(f"\n[bold cyan]{action_name}所有变焦倍数 ({step:+d}x)[/bold cyan]")
+
+    success_count = 0
+    total_count = 0
+
+    for sn, state in live_states.items():
+        if not state['video_id']:
+            continue  # 跳过未启动的
+
+        # 仅在变焦模式下可用
+        if state['lens_type'] != 'zoom':
+            continue
+
+        total_count += 1
+        conn = connections[sn]
+        callsign = conn['config']['callsign']
+
+        # 计算新的变焦倍数
+        current_zoom = state['zoom_factor']
+        new_zoom = max(1, min(112, current_zoom + step))  # 限制在 1-112 范围
+
+        # 如果没有变化，跳过
+        if new_zoom == current_zoom:
+            console.print(f"  [yellow]- {callsign}: 已达到{action_name}限制 ({current_zoom}x)[/yellow]")
+            continue
+
+        try:
+            # 获取 payload_index
+            payload_index = conn['mqtt'].get_payload_index() or "39-0-7"
+
+            set_camera_zoom(conn['mqtt'], payload_index, new_zoom, camera_type="zoom")
+            state['zoom_factor'] = new_zoom  # 更新状态
+            success_count += 1
+            console.print(f"  [green]✓ {callsign}: {current_zoom}x → {new_zoom}x[/green]")
+        except Exception as e:
+            console.print(f"  [red]✗ {callsign}: {e}[/red]")
+
+    if total_count == 0:
+        console.print("[yellow]没有无人机处于变焦模式[/yellow]\n")
+    else:
+        console.print(f"[green]完成: {success_count}/{total_count} 架无人机已调整[/green]\n")
+
+    # 刷新显示
+    display_live_status()
+
+
 def main_loop():
     """
-    主循环 - 监听键盘输入控制画质
+    主循环 - 监听键盘输入控制画质、镜头和变焦
 
-    监听 0-4 键切换画质，Ctrl+C 退出
+    按键功能：
+    - 0-4: 切换画质
+    - z: 变焦放大
+    - x: 变焦缩小
+    - o: 切换镜头（变焦 ↔ 广角）
+    - Ctrl+C: 退出
     """
     console.print("\n[bold yellow]所有直播运行中...[/bold yellow]")
-    console.print("[dim]按 0-4 切换清晰度:[/dim]")
-    console.print("[dim]  0=自适应 | 1=流畅 | 2=标清 | 3=高清 | 4=超清[/dim]")
-    console.print("[dim]按 Ctrl+C 退出[/dim]\n")
+    console.print("[dim]按键控制:[/dim]")
+    console.print("[dim]  画质: 0=自适应 | 1=流畅 | 2=标清 | 3=高清 | 4=超清[/dim]")
+    console.print("[dim]  变焦: z=放大 | x=缩小 (仅变焦模式, 1-112x)[/dim]")
+    console.print("[dim]  镜头: o=切换 (变焦 ↔ 广角)[/dim]")
+    console.print("[dim]  退出: Ctrl+C[/dim]\n")
 
     # Unix/macOS: 设置终端为原始模式（非阻塞输入）
     old_settings = None
@@ -288,8 +392,19 @@ def main_loop():
     try:
         while True:
             key = read_key_nonblocking()
-            if key and key in '01234':
-                change_all_quality(int(key))
+            if key:
+                # 画质控制 (0-4)
+                if key in '01234':
+                    change_all_quality(int(key))
+                # 变焦控制 (z/x)
+                elif key.lower() == 'z':
+                    adjust_all_zoom('in')
+                elif key.lower() == 'x':
+                    adjust_all_zoom('out')
+                # 镜头切换 (o)
+                elif key.lower() == 'o':
+                    toggle_all_lens()
+
             time.sleep(0.1)  # 100ms 轮询
     finally:
         # 恢复终端设置
@@ -305,6 +420,7 @@ def display_live_status():
     table.add_column("呼号", style="cyan")
     table.add_column("序列号", style="yellow")
     table.add_column("直播状态", style="green")
+    table.add_column("镜头/变焦", style="magenta")
     table.add_column("推流地址", style="blue")
 
     for sn, state in live_states.items():
@@ -314,11 +430,19 @@ def display_live_status():
         if state['video_id']:
             quality_name = QUALITY_NAMES[state['quality']]
             status = f"🟢 运行中 ({quality_name})"
+
+            # 镜头和变焦信息
+            lens_name = '变焦' if state['lens_type'] == 'zoom' else '广角'
+            if state['lens_type'] == 'zoom':
+                lens_info = f"{lens_name} {state['zoom_factor']}x"
+            else:
+                lens_info = lens_name
         else:
             status = "🔴 未启动"
+            lens_info = "-"
 
         rtmp_url = f"{RTMP_BASE_URL}{conn['config']['rtmp_stream_key']}"
-        table.add_row(callsign, sn, status, rtmp_url)
+        table.add_row(callsign, sn, status, lens_info, rtmp_url)
 
     console.print(table)
 
@@ -357,7 +481,9 @@ def main():
         }
         live_states[sn] = {
             'video_id': None,
-            'quality': 0  # 初始质量：自适应
+            'quality': 0,  # 初始质量：自适应
+            'lens_type': 'zoom',  # 初始镜头：变焦
+            'zoom_factor': 2  # 初始变焦倍数：2x
         }
 
     try:
