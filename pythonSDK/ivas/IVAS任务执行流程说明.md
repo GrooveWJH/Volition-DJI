@@ -16,6 +16,9 @@
   - [Mission 5/6/7: 轨迹任务](#mission-567-轨迹任务)
 - [指令发送底层机制](#指令发送底层机制)
 - [实际测试示例](#实际测试示例)
+- [总结](#总结)
+- [常见问题](#常见问题)
+- [版本历史](#版本历史)
 
 ---
 
@@ -23,43 +26,74 @@
 
 ### 1. 任务触发点
 
-**位置**：`dashboard/ivas_adapter.py:262-296`
+**位置**：`dashboard/ivas_adapter.py:188-252`
 
 ```python
 def _execute_task_in_background(self, task_data: Dict[str, Any]):
-    """在后台线程执行 IVAS 任务"""
+    """
+    在后台线程执行 IVAS 任务（新任务会中断旧任务）
 
+    策略：
+    - 如果有旧任务正在执行，立即停止它
+    - 然后在后台线程执行新任务
+    """
     # 检查是否具备执行条件
     if self.caller is None:
-        self._add_log('warning', "任务执行器未初始化，跳过任务执行")
+        self._add_log('warning', "任务执行器未初始化（缺少 ServiceCaller），跳过任务执行")
         return
 
-    # ⚠️ 关键检查：如果上一个任务还在执行，跳过新任务
+    # ⚠️ 新机制：停止旧任务（如果存在）
+    if self.current_runner and self.current_runner.running:
+        self._add_log('info', "停止旧任务，准备执行新任务")
+        self.current_runner.stop()  # 设置 running=False 并等待线程结束
+
+    # 等待旧线程结束（最多等待2秒）
     if self.task_executor_thread and self.task_executor_thread.is_alive():
-        self._add_log('warning', "上一个任务还在执行中，跳过新任务")
-        return
+        self.task_executor_thread.join(timeout=2.0)
+        if self.task_executor_thread.is_alive():
+            self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
 
-    # 导入执行器
+    # 在后台线程执行新任务
     from djisdk.tasks.ivas_executor import execute_ivas_task
+    from djisdk.tasks.runner import MissionRunner
 
     self._add_log('info', f"开始执行任务 {task_data.get('mission')}")
 
-    # 🔥 核心：创建独立的后台线程执行任务
-    self.task_executor_thread = threading.Thread(
-        target=execute_ivas_task,  # 执行函数
-        args=(
-            task_data,           # 任务数据 {'mission': 1, 'id': 1, ...}
-            self.mqtt,           # MQTT客户端（发送摇杆指令）
-            self.caller,         # ServiceCaller（发送服务调用）
-            self.uav_config,     # 无人机配置
-            self.heartbeat_thread  # 心跳线程
-        ),
-        daemon=True  # 守护线程，主程序退出时自动终止
+    # 🔥 创建新的 MissionRunner（用于可中断任务）
+    self.current_runner = MissionRunner(
+        self.mqtt,
+        self.caller,
+        self.heartbeat_thread,
+        self.uav_config
     )
-    self.task_executor_thread.start()  # 立即启动
+
+    def task_wrapper():
+        """任务包装器：执行完成后清理 runner 引用"""
+        try:
+            execute_ivas_task(
+                task_data,
+                self.mqtt,
+                self.caller,
+                self.uav_config,
+                self.heartbeat_thread,
+                runner=self.current_runner  # 传递 runner 以支持任务中断
+            )
+        finally:
+            self.current_runner = None  # 任务完成，清理引用
+
+    self.task_executor_thread = threading.Thread(
+        target=task_wrapper,
+        daemon=True
+    )
+    self.task_executor_thread.start()
 ```
 
 **触发时机**：当 `IVASAdapter._handle_ivas_log()` 接收到 `log_type='task'` 且有任务数据时自动调用。
+
+**任务中断机制**：
+- ✅ 新任务会立即中断旧任务（不再跳过）
+- ✅ 使用 `MissionRunner.stop()` 安全停止任务
+- ✅ 最多等待 2 秒让旧任务退出
 
 ### 2. 任务分发
 
@@ -596,23 +630,33 @@ python ivas/keyboard_commander.py
 
 ### 核心要点
 
-1. **触发点**：`dashboard/ivas_adapter.py:283` - `threading.Thread(target=execute_ivas_task).start()`
+1. **触发点**：`dashboard/ivas_adapter.py:188-252` - `threading.Thread(target=task_wrapper).start()`
 
 2. **并行机制**：
    - 每个无人机 → 独立的 `IVASAdapter` 实例
    - 每个实例 → 独立的 `task_executor_thread` 线程
    - 多个线程 → 操作系统自动调度并行执行
 
-3. **任务映射**：
+3. **任务中断**（v1.1 新增）：
+   - 新任务会立即停止旧任务
+   - 使用 `MissionRunner.stop()` 安全退出
+   - 最多等待 2 秒让旧任务完成清理
+
+4. **任务映射**：
    - **Mission 1**: 摇杆控制起飞（循环发送上拉油门）
    - **Mission 2**: 摇杆控制降落（循环发送下拉油门）
    - **Mission 3**: 服务调用返航（DJI自动返航）
    - **Mission 4**: 服务调用飞点（DJI自动飞到GPS坐标）
    - **Mission 5-7**: 服务调用序列（依次飞多个航点）
 
-4. **指令类型**：
+5. **指令类型**：
    - **摇杆控制**：实时、低延迟、需持续发送（Mission 1, 2）
    - **服务调用**：任务型、高级功能、一次发送（Mission 3, 4, 5-7）
+
+6. **设备识别**（v1.1 简化）：
+   - 统一使用 `deviceCode` query 参数
+   - Mock Server 和真实 IVAS 使用相同机制
+   - 配置文件中的 `device_code` 是唯一数据源
 
 ### 架构图
 
@@ -679,7 +723,7 @@ python ivas/keyboard_commander.py
 
 | 文件 | 行数范围 | 功能 |
 |------|---------|------|
-| `dashboard/ivas_adapter.py` | 262-296 | 任务触发（后台线程启动） |
+| `dashboard/ivas_adapter.py` | 188-252 | 任务触发（后台线程启动 + 任务中断） |
 | `djisdk/tasks/ivas_executor.py` | 27-76 | 任务分发（mission映射） |
 | `djisdk/tasks/ivas_executor.py` | 79-94 | Mission 1 实现 |
 | `djisdk/tasks/ivas_executor.py` | 97-122 | Mission 2 实现 |
@@ -687,17 +731,45 @@ python ivas/keyboard_commander.py
 | `djisdk/tasks/ivas_executor.py` | 131-144 | Mission 4 实现 |
 | `djisdk/tasks/ivas_executor.py` | 147-174 | Mission 5-7 实现 |
 | `djisdk/services/commands.py` | - | 底层指令实现 |
+| `djisdk/tasks/runner.py` | - | MissionRunner（可中断任务执行器） |
+| `ivas/client.py` | 283-290 | 任务轮询（传递 deviceCode） |
+| `ivas/task_mock_server.py` | 67-86 | Mock Server 任务分发 |
 | `dashboard/monitor.py` | 149-193 | IVAS Adapter 初始化 |
 
 ---
 
 ## 常见问题
 
-### Q1: 为什么任务执行中无法接收新任务？
+### Q1: 任务执行中如何处理新任务？
 
-**A**: 每个 `IVASAdapter` 在 `_execute_task_in_background()` 中检查 `task_executor_thread.is_alive()`，如果上一个任务还在执行，会跳过新任务。这是为了防止任务冲突。
+**A**: 支持**新任务中断旧任务**机制（v1.1 新增）。
 
-**解决方案**：如果需要支持任务队列，可以修改为 `deque` 存储多个任务，按顺序执行。
+**行为**：
+- ✅ 收到新任务时，立即停止旧任务
+- ✅ 使用 `MissionRunner.stop()` 安全退出（设置 `running=False`）
+- ✅ 最多等待 2 秒让旧任务完成清理
+- ⚠️ 如果旧任务 2 秒内未退出，强制启动新任务
+
+**实现位置**：`dashboard/ivas_adapter.py:188-214`
+
+```python
+# 停止旧任务（如果存在）
+if self.current_runner and self.current_runner.running:
+    self._add_log('info', "停止旧任务，准备执行新任务")
+    self.current_runner.stop()
+
+# 等待旧线程结束（最多等待2秒）
+if self.task_executor_thread and self.task_executor_thread.is_alive():
+    self.task_executor_thread.join(timeout=2.0)
+```
+
+**适用场景**：
+- 紧急停止当前任务（如发现障碍物，立即返航）
+- 任务优先级调整（如轨迹任务中途改为降落）
+
+**注意事项**：
+- 旧任务的 `MissionRunner` 会收到 `running=False` 信号
+- 任务内部循环应定期检查 `runner.running` 并在为 `False` 时退出
 
 ### Q2: 如何区分不同无人机的任务？
 
@@ -723,67 +795,117 @@ python ivas/keyboard_commander.py
 2. 在 `execute_ivas_task()` 的 `if-elif` 中添加分支
 3. 在键盘控制器中添加对应的菜单选项
 
-### Q5: Mock Server 是否有 token 校验？
+### Q5: Mock Server 和真实 IVAS 如何识别设备？
 
-**A**: **测试环境和生产环境的差异**：
+**A**: 两者使用**相同的设备识别机制**（v1.1 简化）。
 
-#### 测试环境（Mock Server）
+#### 统一的设备识别方式
 
-Mock Server **不验证 token**，这是有意设计的简化版本：
-
+**客户端**（`ivas/client.py:283-290`）：
 ```python
-# ivas/task_mock_server.py:43-44
-# 从 query 参数获取 device_id（简化版，实际应该从 token 解析）
-device_id = request.args.get('device_id', type=int, default=1)
+def _poll_task(self):
+    """从 IVAS 服务器轮询任务 (GET)"""
+    url = f"{self.base_url}/jk-ivas/third/controller/outdoorTask"
+
+    # 传递 deviceCode 参数（来自 UAV_CONFIGS 中的 ivas.device_code）
+    params = {'deviceCode': self.device_code}
+    resp = self._request('GET', url, params=params)
 ```
 
-**为什么不验证**：
-- ✅ 简化测试流程，无需管理 token
-- ✅ 直接通过 `device_id` 参数指定设备
-- ✅ Keyboard Commander 可以直接推送任务
-
-#### 生产环境（真实 IVAS 服务器）
-
-真实 IVAS Client **必须发送 token**（HTTP Header）：
-
+**Mock Server**（`ivas/task_mock_server.py:67-86`）：
 ```python
-# ivas/client.py:214-216
-headers = kwargs.get('headers', {})
-headers['token'] = self.token  # 每个请求都带 token
-kwargs['headers'] = headers
+@app.route('/jk-ivas/third/controller/outdoorTask', methods=['GET'])
+def get_outdoor_task():
+    # 直接从 query 参数获取 deviceCode
+    device_id = request.args.get('deviceCode', type=int)
+
+    if not device_id:
+        return jsonify({'code': 400, 'msg': '缺少 deviceCode 参数', 'data': None}), 400
+
+    # 返回该设备的任务队列
+    if device_id in task_queues and task_queues[device_id]:
+        task = task_queues[device_id].popleft()
+        return jsonify({'code': 200, 'data': task})
 ```
 
-**token 流程**：
-1. 登录获取 token：
-   ```python
-   # POST /jk-ivas/third/controller/zsLogin
-   # Body: {"account": "ZSDX001", "password": "000000"}
-   # Response: {"resCode": 1, "resData": {"token": "xxx"}}
-   ```
+**真实 IVAS 服务器**：
+- 也应接受 `deviceCode` query 参数
+- 根据 `deviceCode` 返回对应设备的任务
+- 仍然需要 token 验证（HTTP Header）
 
-2. 所有请求携带 token：
-   ```python
-   # GET /jk-ivas/third/controller/outdoorTask
-   # Headers: {"token": "xxx"}
-   ```
+#### 配置映射关系
 
-3. Token 过期自动重新登录（`client.py:226-234`）
+**配置文件**（`dashboard/config.py`）：
+```python
+UAV_CONFIGS = [
+    {
+        'sn': '9N9CN2J0012CXY',
+        'ivas': {
+            'device_code': 1,        # ← 对应 Mock Server queue[1]
+            'account': 'ZSDX001',
+            'password': '000000'
+        }
+    },
+    {
+        'sn': '9N9CN8400164WH',
+        'ivas': {
+            'device_code': 2,        # ← 对应 Mock Server queue[2]
+            'account': 'ZSDX002',
+            'password': '000000'
+        }
+    }
+]
+```
 
-**设备识别**：
-- 测试环境：通过 `device_id` 参数（Mock Server 简化）
-- 生产环境：通过 `token` 解析出设备信息（真实服务器验证）
+#### Token 认证差异
 
-**切换方法**：
+**测试环境（Mock Server）**：
+- ✅ 需要登录获取 token（模拟认证流程）
+- ⚠️ 不验证 token 内容（简化测试）
+- ✅ 直接使用 `deviceCode` 参数识别设备
+
+**生产环境（真实 IVAS 服务器）**：
+- ✅ 必须登录获取有效 token
+- ✅ 每个请求验证 token 有效性
+- ✅ 使用 `deviceCode` 参数识别设备
+- ⚠️ Token 过期自动重新登录（`client.py:238-246`）
+
+#### 环境切换
+
 ```bash
-# 测试模式（Mock Server，无 token 校验）
+# 测试模式（Mock Server）
 IVAS_BASE_URL=http://localhost:5001 python main.py
 
-# 生产模式（真实 IVAS 服务器，需 token）
-python main.py  # 使用默认配置中的真实服务器地址
+# 生产模式（真实 IVAS 服务器）
+python main.py  # 使用配置文件中的默认地址
 ```
+
+#### 关键改进（v1.1）
+
+**简化前**（已废弃）：
+- ❌ Mock Server 支持 3 种识别方式（deviceCode / device_id / token 解析）
+- ❌ 客户端和服务器行为不一致
+- ❌ 过度设计，复杂度高
+
+**简化后**（当前版本）：
+- ✅ 统一使用 `deviceCode` query 参数
+- ✅ 客户端和 Mock Server 行为完全一致
+- ✅ 真实 IVAS 服务器也应遵循相同规范
+- ✅ 配置文件中的 `device_code` 是唯一数据源
 
 ---
 
-**文档版本**: v1.0
-**最后更新**: 2025-01-10
+**文档版本**: v1.1
+**最后更新**: 2025-01-11
 **维护者**: Volition-DJI Team
+
+## 版本历史
+
+### v1.1 (2025-01-11)
+- ✅ 新增任务中断机制（新任务会停止旧任务）
+- ✅ 简化设备识别逻辑（统一使用 `deviceCode` 参数）
+- ✅ 移除 Mock Server 的多重识别方式
+- ✅ 更新 Q1 和 Q5 常见问题说明
+
+### v1.0 (2025-01-10)
+- 初始版本：完整的任务执行流程说明
