@@ -2,12 +2,13 @@
 IVAS 面板模块
 
 负责生成 IVAS 相关面板，包括：
-- IVAS 全局信息面板（任务接收、统计信息）
+- IVAS 全局信息面板（任务接收、统计信息、DEBUG消息）
 - 态势感知面板（占位，未来扩展）
 """
 from typing import List
 from rich.panel import Panel
 from rich.table import Table
+from ..ivas_debug import debug_manager
 
 
 def create_ivas_global_panel(ivas_adapters: List, elapsed: int) -> Panel:
@@ -75,6 +76,32 @@ def create_ivas_global_panel(ivas_adapters: List, elapsed: int) -> Panel:
 
     if not has_task:
         table.add_row("", "[dim]暂无任务[/dim]")
+
+    # DEBUG 消息区域
+    add_separator()
+    table.add_row("[bold bright_yellow]DEBUG 消息:[/bold bright_yellow]", "")
+
+    debug_messages = debug_manager.get_recent_messages(n=5)
+    if debug_messages:
+        for msg in debug_messages:
+            callsign = msg['callsign']
+            message = msg['message']
+            msg_type = msg['type']
+
+            # 根据消息类型设置颜色
+            if msg_type == 'error' or '❌' in message:
+                color = 'bright_red'
+            elif '✅' in message:
+                color = 'bright_green'
+            elif '🔍' in message:
+                color = 'bright_yellow'
+            else:
+                color = 'bright_white'
+
+            # 格式化显示：[Pilot 1] 消息内容
+            table.add_row("", f"[{color}][{callsign}] {message}[/{color}]")
+    else:
+        table.add_row("", "[dim]暂无 DEBUG 消息[/dim]")
 
     return Panel(
         table,

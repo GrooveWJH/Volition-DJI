@@ -23,6 +23,7 @@ from typing import Dict, Any, Optional, List
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ivas'))
 
 from ivas import IVASClient
+from .ivas_debug import debug_manager
 
 
 class IVASAdapter:
@@ -227,6 +228,15 @@ class IVASAdapter:
             # 滚动窗口，删除最旧的日志
             if len(self.log_queue) > self.max_logs:
                 self.log_queue.pop(0)
+
+        # 如果是 DEBUG 消息，同时发送到全局 DEBUG 管理器（用于面板显示）
+        if '[DEBUG]' in message or '🔍' in message or '✅' in message or '❌' in message:
+            debug_manager.add_message(
+                device_code=self.device_code,
+                callsign=self.uav_config.get('callsign', '未知'),
+                message=message,
+                msg_type=msg_type
+            )
 
     def get_recent_logs(self, n: int = 5) -> List[Dict[str, Any]]:
         """
