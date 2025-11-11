@@ -75,8 +75,9 @@ class IVASClient:
         self.token = None  # 登录后的 token
         self.queue = display_queue
 
-        self.report_interval = 1.0 / report_hz
-        self.task_interval = 1.0 / task_hz
+        # 避免除零错误：当频率为0时表示禁用该功能，使用无限大间隔
+        self.report_interval = 1.0 / report_hz if report_hz > 0 else float('inf')
+        self.task_interval = 1.0 / task_hz if task_hz > 0 else float('inf')
 
         self.running = True
         self.last_task_time = 0
@@ -116,8 +117,12 @@ class IVASClient:
                 self._log('error', f"循环异常: {e}")
 
             # 精确睡眠，保持频率
+            # 使用所有启用功能中最小的间隔时间
             elapsed = time.time() - loop_start
-            sleep_time = max(0, self.report_interval - elapsed)
+            active_interval = self.report_interval
+            if self.features.get('task_receive', True):
+                active_interval = min(active_interval, self.task_interval)
+            sleep_time = max(0, active_interval - elapsed)
             time.sleep(sleep_time)
 
     def stop(self):
@@ -256,6 +261,10 @@ class IVASClient:
         url = f"{self.base_url}/jk-ivas/third/controller/reportUserData"
         data = self._generate_position_data()
 
+        # 检查数据是否有效：如果返回 None（GPS 无效），则跳过上报
+        if data is None:
+            return  # 静默跳过，等待 GPS 恢复
+
         # 使用 params 传递 URL 参数
         resp = self._request('POST', url, params=data)
 
@@ -284,9 +293,9 @@ class IVASClient:
         """从 IVAS 服务器轮询任务 (GET)"""
         url = f"{self.base_url}/jk-ivas/third/controller/outdoorTask"
 
-        # 传递 deviceCode 参数，让服务器知道是哪个设备在请求
-        # 这样每个设备可以获取自己的任务（支持多机独立任务和广播任务）
-        params = {'deviceCode': self.device_code}
+        # 不过滤 deviceCode，直接获取队列头部任务
+        # 由 TaskDistributor 统一轮询后根据任务 ID 智能路由
+        params = {}
         resp = self._request('GET', url, params=params)
 
         if resp and resp.status_code == 200:

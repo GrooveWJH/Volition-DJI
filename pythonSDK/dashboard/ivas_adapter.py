@@ -104,20 +104,25 @@ class IVASAdapter:
         # 初始化时记录日志
         self._add_log('info', f"[{uav_config['callsign']}] IVAS 适配器初始化")
 
-    def _get_real_position_data(self) -> Dict[str, Any]:
+    def _get_real_position_data(self) -> Optional[Dict[str, Any]]:
         """
         从真实 MQTT 获取位置数据（覆盖 IVASClient 的随机数据生成）
 
         Returns:
-            符合 IVAS 位置上报格式的数据字典
+            符合 IVAS 位置上报格式的数据字典，如果 GPS 无效则返回 None
         """
         # 从 MQTT 获取真实数据
         lat, lon, height = self.mqtt.get_position()
         heading = self.mqtt.get_attitude_head()
         h_speed, _, _, _ = self.mqtt.get_speed()
 
+        # 检查 GPS 是否有效：如果经纬度为 None，则不上报
+        if lat is None or lon is None:
+            # GPS 无效，不上报（静默处理，不打印错误）
+            return None
+
         # 第一次获取到有效GPS时，设置基准位置
-        if lat is not None and lon is not None and self.base_lat is None:
+        if self.base_lat is None:
             self.base_lat = lat
             self.base_lon = lon
             self.base_alt = height or 0.0
@@ -129,20 +134,19 @@ class IVASAdapter:
         # 构造上报数据
         position_data = {
             'deviceCode': self.device_code,
-            'userX': lat or 0.0,  # 纬度
-            'userY': lon or 0.0,  # 经度
+            'userX': lat,  # 纬度（已确保非 None）
+            'userY': lon,  # 经度（已确保非 None）
             'userZ': height or 0.0,  # 海拔高度
             'azimuth': int(heading or 0),  # 方位角 (0-359)
             'localTime': int(time.time() * 1000),  # 毫秒时间戳
             'motion': motion,  # 运动状态 (0:静止, 1:移动)
-            'validCount': 10 if lat and lon else 0,  # GPS 卫星数（模拟值）
+            'validCount': 10,  # GPS 卫星数（模拟值，有效GPS时固定为10）
             'roomId': 22,  # 任务 ID (固定传 22)
             'refPositionType': 0  # 设备类型 (固定传 0)
         }
 
         # 实时打印上报的经纬高
-        if lat is not None and lon is not None:
-            print(f"[上报] [{self.uav_config['callsign']}] 纬度:{lat:.6f} 经度:{lon:.6f} 高度:{height:.2f}m")
+        print(f"[上报] [{self.uav_config['callsign']}] 纬度:{lat:.6f} 经度:{lon:.6f} 高度:{height:.2f}m")
 
         return position_data
 
@@ -173,7 +177,9 @@ class IVASAdapter:
             message = f"目标上报成功 ({obj_cnt}个目标)"
             msg_type = 'success'
         elif log_type == 'task':
-            # 任务轮询
+            # 任务轮询（注意：如果features.task_receive=False，则不会走到这里）
+            # TaskDistributor负责轮询和分发，IVASAdapter只负责位置/目标上报
+            # 此分支仅在adapter独立模式下使用（无TaskDistributor时的降级方案）
             if isinstance(data, dict) and data.get('code') == 200 and data.get('data'):
                 task_data = data['data']
                 mission_names = {
@@ -191,7 +197,7 @@ class IVASAdapter:
                 with self.task_lock:
                     self.latest_task = task_data
 
-                # 立即在后台线程执行任务
+                # 直接执行任务（降级方案，没有TaskDistributor时使用）
                 self._execute_task_in_background(task_data)
             else:
                 # 无任务或任务为空
@@ -264,7 +270,7 @@ class IVASAdapter:
         self.ivas_client.stop()
         self._add_log('info', "IVAS Client 已停止")
 
-    def _execute_task_in_background(self, task_data: Dict[str, Any]):
+    def _execute_task_in_background(self, task_data: Dict[str, Any], force_immediate: bool = False):
         """
         在后台线程执行 IVAS 任务（新任务会中断旧任务）
 
@@ -274,6 +280,7 @@ class IVASAdapter:
 
         Args:
             task_data: IVAS 任务数据
+            force_immediate: 是否立即执行（True=不等待旧任务，立即启动新任务）
         """
         # 检查是否具备执行条件
         if self.caller is None:
@@ -285,11 +292,18 @@ class IVASAdapter:
             self._add_log('info', "停止旧任务，准备执行新任务")
             self.current_runner.stop()  # 设置 running=False 并等待线程结束
 
-        # 等待旧线程结束（最多等待2秒）
+        # 等待旧线程结束
         if self.task_executor_thread and self.task_executor_thread.is_alive():
-            self.task_executor_thread.join(timeout=2.0)
-            if self.task_executor_thread.is_alive():
-                self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
+            if force_immediate:
+                # 立即执行模式：仅等待0.1秒，快速中断后立即启动
+                self.task_executor_thread.join(timeout=0.1)
+                if self.task_executor_thread.is_alive():
+                    self._add_log('warning', "旧任务未完全停止，立即启动新任务（force_immediate模式）")
+            else:
+                # 普通模式：等待最多2秒
+                self.task_executor_thread.join(timeout=2.0)
+                if self.task_executor_thread.is_alive():
+                    self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
 
         # 在后台线程执行新任务
         try:
@@ -329,3 +343,33 @@ class IVASAdapter:
         except Exception as e:
             self._add_log('error', f"任务执行失败: {e}")
             self.current_runner = None
+
+    def receive_task(self, task_data: Dict[str, Any], force_immediate: bool = False):
+        """
+        接收来自 TaskDistributor 的任务（统一接口）
+
+        此方法由 TaskDistributor 调用，用于接收分发的任务并执行。
+        支持单播任务（id=1/2/3）和广播任务（id=99）。
+
+        Args:
+            task_data: IVAS 任务数据
+            force_immediate: 是否立即执行（True=立即中断旧任务，用于广播任务）
+        """
+        mission = task_data.get('mission', 0)
+        mission_names = {1: "起飞", 2: "降落", 3: "返航", 4: "前往指定点",
+                        5: "多航点任务1", 6: "多航点任务2", 7: "多航点任务3"}
+        mission_name = mission_names.get(mission, f"任务{mission}")
+        target_id = task_data.get('id', 0)
+
+        # 记录日志
+        if target_id == 99:
+            self._add_log('info', f"[广播] 接收任务: {mission_name}，立即执行")
+        else:
+            self._add_log('info', f"接收任务: {mission_name}")
+
+        # 存储最新任务
+        with self.task_lock:
+            self.latest_task = task_data
+
+        # 在后台执行任务
+        self._execute_task_in_background(task_data, force_immediate=force_immediate)

@@ -30,6 +30,7 @@ from .config import (
 )
 from .panels import create_dashboard_layout
 from .ivas_adapter import IVASAdapter
+from .task_distributor import TaskDistributor
 
 
 @contextmanager
@@ -52,6 +53,7 @@ def setup_connections(console: Console):
     vrpn_clients = []
     ivas_adapters = []  # 新增：IVAS 适配器列表
     conn_managers = []  # 新增：连接管理器列表
+    task_distributor = None  # 新增：任务分发器
 
     try:
         # === 阶段 1: 建立 DJI 无人机连接 ===
@@ -151,6 +153,26 @@ def setup_connections(console: Console):
         has_any_ivas_feature = any(IVAS_FEATURES.values())
         if ENABLE_IVAS and has_any_ivas_feature:
             console.rule("[bold bright_blue]初始化 IVAS 系统[/bold bright_blue]")
+
+            # 创建全局任务分发器（TaskDistributor）
+            # 注意：使用统一账号轮询（任意一个adapter的账号即可）
+            first_ivas_config = None
+            for config in UAV_CONFIGS:
+                if 'ivas' in config:
+                    first_ivas_config = config['ivas']
+                    break
+
+            if first_ivas_config:
+                task_distributor = TaskDistributor(
+                    ivas_config={
+                        'base_url': IVAS_SERVER['base_url'],
+                        'account': first_ivas_config['account'],
+                        'password': first_ivas_config['password'],
+                        'task_hz': IVAS_SERVER['task_hz']
+                    }
+                )
+                console.print("[bright_cyan]创建任务分发器...[/bright_cyan]")
+
             for i, uav in enumerate(uav_clients):
                 config = UAV_CONFIGS[i]
 
@@ -165,6 +187,8 @@ def setup_connections(console: Console):
                     console.print(f"[bright_cyan]初始化 IVAS 适配器 #{i+1} ({ivas_config['account']})...[/bright_cyan]")
 
                     # 创建 IVAS 适配器
+                    # 关键：features.task_receive=False 禁用adapter内部的任务轮询
+                    # 任务轮询由TaskDistributor统一负责
                     adapter = IVASAdapter(
                         device_code=ivas_config['device_code'],
                         mqtt_client=uav['mqtt'],
@@ -176,10 +200,18 @@ def setup_connections(console: Console):
                         uav_config=config,
                         service_caller=uav['caller'],
                         heartbeat_thread=uav['heartbeat'],
-                        features=IVAS_FEATURES  # 传递功能配置
+                        features={
+                            'position_report': IVAS_FEATURES['position_report'],
+                            'target_report': IVAS_FEATURES['target_report'],
+                            'task_receive': False  # 禁用adapter内部任务轮询
+                        }
                     )
 
-                    # 启动 IVAS 客户端后台线程
+                    # 注册到任务分发器
+                    if task_distributor:
+                        task_distributor.register(ivas_config['device_code'], adapter)
+
+                    # 启动 IVAS 客户端后台线程（仅负责位置/目标上报）
                     adapter.start()
 
                     ivas_adapters.append(adapter)
@@ -188,6 +220,12 @@ def setup_connections(console: Console):
                     console.print(f"[bright_green]✓ IVAS 适配器 #{i+1} 已启动[/bright_green]")
                 except Exception as e:
                     console.print(f"[bright_red]✗ IVAS 初始化失败: {e}[/bright_red]")
+
+            # 完成任务分发器注册并启动
+            if task_distributor:
+                task_distributor.finalize()
+                task_distributor.start()
+                console.print("[bright_green]✓ 任务分发器已启动[/bright_green]")
 
             if ivas_adapters:
                 console.print(f"\n[bold bright_green]✓ IVAS 系统已就绪 ({len(ivas_adapters)} 个设备)[/bold bright_green]")
@@ -200,6 +238,15 @@ def setup_connections(console: Console):
     finally:
         # === 自动清理资源 ===
         console.rule("[bold bright_magenta]断开连接[/bold bright_magenta]")
+
+        # 清理任务分发器
+        if task_distributor:
+            console.print("[bright_cyan]清理任务分发器...[/bright_cyan]")
+            try:
+                task_distributor.stop()
+                console.print("[bright_green]✓ 任务分发器已停止[/bright_green]")
+            except Exception as e:
+                console.print(f"[bright_yellow]⚠ 任务分发器清理警告: {e}[/bright_yellow]")
 
         # 清理连接管理器
         if conn_managers:
