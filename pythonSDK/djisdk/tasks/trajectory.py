@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from rich.console import Console
 
-from ..services import fly_to_point, reset_gimbal
+from ..services import fly_to_point, reset_gimbal, set_camera_zoom
 from .runner import MissionRunner
 
 console = Console()
@@ -305,9 +305,9 @@ def fly_trajectory_sequence(
                 console.print(
                     f"[bright_cyan]━━━ 航点 {wp_index} 悬停操作 ━━━[/bright_cyan]")
                 console.print(
-                    f"[bright_yellow]悬停 {hover_between_waypoints:.1f} 秒，云台朝下[/bright_yellow]")
+                    f"[bright_yellow]悬停 {hover_between_waypoints:.1f} 秒，云台朝下 + 变焦3倍[/bright_yellow]")
 
-            # 所有无人机云台朝下（reset_mode=1: yaw回中、pitch向下）
+            # 所有无人机：云台朝下 + 变焦3倍
             for runner in runners:
                 mqtt = runner.mqtt
                 callsign = runner.config.get('callsign', 'UAV')
@@ -318,13 +318,20 @@ def fly_trajectory_sequence(
 
                 try:
                     payload_index = mqtt.get_payload_index() or "88-0-0"
+
+                    # 1. 云台朝下（reset_mode=1: yaw回中、pitch向下）
                     if show_progress:
                         console.print(f"[bright_cyan][{callsign}] 云台朝下...[/bright_cyan]")
-
                     reset_gimbal(mqtt, payload_index=payload_index, reset_mode=1)
+
+                    # 2. 变焦3倍
+                    if show_progress:
+                        console.print(f"[bright_cyan][{callsign}] 变焦3倍...[/bright_cyan]")
+                    set_camera_zoom(mqtt, payload_index=payload_index, zoom_factor=3.0)
+
                 except Exception as e:
                     if show_progress:
-                        console.print(f"[bright_yellow]⚠ [{callsign}] 云台控制失败: {e}[/bright_yellow]")
+                        console.print(f"[bright_yellow]⚠ [{callsign}] 云台/变焦控制失败: {e}[/bright_yellow]")
 
             # 悬停等待（fly_to_point 后飞机会自动悬停）
             time.sleep(hover_between_waypoints)
