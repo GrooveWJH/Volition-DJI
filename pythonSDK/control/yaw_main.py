@@ -127,7 +127,7 @@ def main():
     console.print("\n[cyan]━━━ 创建数据源接口 ━━━[/cyan]")
     try:
         datasource = create_datasource(
-            position_source=POSITION_SOURCE,  # yaw_main 不使用位置，但需要提供配置
+            position_source=None,  # yaw_main 不需要位置数据
             yaw_source=YAW_SOURCE,
             vrpn_client=vrpn_client,
             mqtt_client=mqtt_client

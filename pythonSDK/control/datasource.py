@@ -177,8 +177,41 @@ class HybridDataSource(DataSource):
             self.position_client.stop()
 
 
+class YawOnlyDataSource(DataSource):
+    """仅航向角数据源（不需要位置数据，用于 yaw_main.py）"""
+
+    def __init__(self, yaw_client, yaw_type: str):
+        """
+        Args:
+            yaw_client: 航向角数据源客户端（VRPN或MQTT）
+            yaw_type: 航向角数据源类型 ('vrpn' 或 'drone')
+        """
+        self.yaw_client = yaw_client
+        self.yaw_type = yaw_type
+
+    def get_position(self) -> Optional[Tuple[float, float, float]]:
+        """不提供位置数据"""
+        return None
+
+    def get_yaw(self) -> Optional[float]:
+        """获取航向角"""
+        if self.yaw_type == 'vrpn':
+            pose = self.yaw_client.pose
+            if pose is None:
+                return None
+            return quaternion_to_yaw(pose.rotation)
+        elif self.yaw_type == 'drone':
+            return self.yaw_client.get_attitude_head()
+        return None
+
+    def stop(self):
+        """停止航向角数据源"""
+        if self.yaw_type == 'vrpn' and hasattr(self.yaw_client, 'stop'):
+            self.yaw_client.stop()
+
+
 def create_datasource(
-    position_source: str,
+    position_source: Optional[str],
     yaw_source: str,
     vrpn_client=None,
     mqtt_client=None,
@@ -188,7 +221,7 @@ def create_datasource(
     创建数据源实例（工厂函数）
 
     Args:
-        position_source: 位置数据源 ('vrpn' 或 'uwb')
+        position_source: 位置数据源 ('vrpn', 'uwb', 或 None 表示不需要位置)
         yaw_source: 航向角数据源 ('vrpn' 或 'drone')
         vrpn_client: VRPN客户端实例（可选）
         mqtt_client: MQTT客户端实例（可选）
@@ -201,7 +234,7 @@ def create_datasource(
         ValueError: 如果配置无效或缺少必需的客户端
     """
     # 验证配置
-    valid_position_sources = ['vrpn', 'uwb']
+    valid_position_sources = ['vrpn', 'uwb', None]
     valid_yaw_sources = ['vrpn', 'drone']
 
     if position_source not in valid_position_sources:
@@ -209,6 +242,17 @@ def create_datasource(
 
     if yaw_source not in valid_yaw_sources:
         raise ValueError(f"无效的航向角数据源: {yaw_source}，必须是 {valid_yaw_sources}")
+
+    # 场景0: 仅需要航向角（yaw_main.py 的情况）
+    if position_source is None:
+        if yaw_source == 'vrpn':
+            if vrpn_client is None:
+                raise ValueError("使用VRPN航向角数据源时必须提供vrpn_client")
+            return YawOnlyDataSource(vrpn_client, 'vrpn')
+        elif yaw_source == 'drone':
+            if mqtt_client is None:
+                raise ValueError("使用无人机航向角数据源时必须提供mqtt_client")
+            return YawOnlyDataSource(mqtt_client, 'drone')
 
     # 场景1: 位置和航向角都来自VRPN
     if position_source == 'vrpn' and yaw_source == 'vrpn':
