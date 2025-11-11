@@ -282,9 +282,17 @@ class IVASAdapter:
             task_data: IVAS 任务数据
             force_immediate: 是否立即执行（True=不等待旧任务，立即启动新任务）
         """
+        # 🔍 DEBUG: 检查执行条件
+        mission = task_data.get('mission', 0)
+        self._add_log('info', f"🔍 [DEBUG] 准备执行任务{mission}, caller={self.caller is not None}, heartbeat={self.heartbeat is not None}")
+
         # 检查是否具备执行条件
         if self.caller is None:
-            self._add_log('warning', "任务执行器未初始化（缺少 ServiceCaller），跳过任务执行")
+            self._add_log('error', "❌ 任务执行器未初始化（缺少 ServiceCaller），跳过任务执行")
+            return
+
+        if self.heartbeat is None:
+            self._add_log('error', "❌ 心跳线程未初始化，跳过任务执行")
             return
 
         # 停止旧任务（如果存在）
@@ -340,8 +348,13 @@ class IVASAdapter:
             )
             self.task_executor_thread.start()
 
+            # 🔍 DEBUG: 确认线程已启动
+            self._add_log('info', f"✅ [DEBUG] 任务线程已启动, thread_id={self.task_executor_thread.ident}")
+
         except Exception as e:
-            self._add_log('error', f"任务执行失败: {e}")
+            self._add_log('error', f"❌ 任务执行失败: {e}")
+            import traceback
+            self._add_log('error', f"❌ 堆栈: {traceback.format_exc()}")
             self.current_runner = None
 
     def receive_task(self, task_data: Dict[str, Any], force_immediate: bool = False):
