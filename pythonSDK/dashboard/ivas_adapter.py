@@ -40,8 +40,7 @@ class IVASAdapter:
         uav_config: Dict[str, str],
         service_caller=None,
         heartbeat_thread=None,
-        features: Optional[Dict[str, bool]] = None,
-        broadcaster=None
+        features: Optional[Dict[str, bool]] = None
     ):
         """
         初始化 IVAS 适配器
@@ -54,7 +53,6 @@ class IVASAdapter:
             service_caller: djisdk ServiceCaller（用于任务执行）
             heartbeat_thread: 心跳线程（用于任务执行）
             features: 功能开关字典 {'position_report': bool, 'target_report': bool, 'task_receive': bool}
-            broadcaster: 任务广播管理器（用于处理 id=99 广播任务）
         """
         self.device_code = device_code
         self.mqtt = mqtt_client
@@ -62,7 +60,6 @@ class IVASAdapter:
         self.heartbeat_thread = heartbeat_thread
         self.uav_config = uav_config
         self.features = features or {}  # 存储功能配置
-        self.broadcaster = broadcaster  # 广播管理器（可选）
 
         # 日志队列（简单列表，滚动窗口，最多保留10条）
         self.log_queue = []
@@ -176,7 +173,9 @@ class IVASAdapter:
             message = f"目标上报成功 ({obj_cnt}个目标)"
             msg_type = 'success'
         elif log_type == 'task':
-            # 任务轮询
+            # 任务轮询（注意：如果features.task_receive=False，则不会走到这里）
+            # TaskDistributor负责轮询和分发，IVASAdapter只负责位置/目标上报
+            # 此分支仅在adapter独立模式下使用（无TaskDistributor时的降级方案）
             if isinstance(data, dict) and data.get('code') == 200 and data.get('data'):
                 task_data = data['data']
                 mission_names = {
@@ -194,20 +193,8 @@ class IVASAdapter:
                 with self.task_lock:
                     self.latest_task = task_data
 
-                # ========== 广播任务处理（id=99）==========
-                if target_id == 99:
-                    # 检查是否有广播管理器
-                    if self.broadcaster:
-                        # 触发广播（由 broadcaster 负责分发给所有adapter）
-                        # broadcast_task 内部会检查任务去重，只会执行一次
-                        self.broadcaster.broadcast_task(task_data, source_adapter=self)
-                    else:
-                        # 没有广播管理器，按普通任务处理（降级方案）
-                        self._add_log('warning', f"收到广播任务 ID:{target_id}，但未配置广播管理器，将仅在本机执行")
-                        self._execute_task_in_background(task_data)
-                else:
-                    # 普通任务（id != 99），直接执行
-                    self._execute_task_in_background(task_data)
+                # 直接执行任务（降级方案，没有TaskDistributor时使用）
+                self._execute_task_in_background(task_data)
             else:
                 # 无任务或任务为空
                 return  # 不记录日志
@@ -279,7 +266,7 @@ class IVASAdapter:
         self.ivas_client.stop()
         self._add_log('info', "IVAS Client 已停止")
 
-    def _execute_task_in_background(self, task_data: Dict[str, Any]):
+    def _execute_task_in_background(self, task_data: Dict[str, Any], force_immediate: bool = False):
         """
         在后台线程执行 IVAS 任务（新任务会中断旧任务）
 
@@ -289,6 +276,7 @@ class IVASAdapter:
 
         Args:
             task_data: IVAS 任务数据
+            force_immediate: 是否立即执行（True=不等待旧任务，立即启动新任务）
         """
         # 检查是否具备执行条件
         if self.caller is None:
@@ -300,11 +288,18 @@ class IVASAdapter:
             self._add_log('info', "停止旧任务，准备执行新任务")
             self.current_runner.stop()  # 设置 running=False 并等待线程结束
 
-        # 等待旧线程结束（最多等待2秒）
+        # 等待旧线程结束
         if self.task_executor_thread and self.task_executor_thread.is_alive():
-            self.task_executor_thread.join(timeout=2.0)
-            if self.task_executor_thread.is_alive():
-                self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
+            if force_immediate:
+                # 立即执行模式：仅等待0.1秒，快速中断后立即启动
+                self.task_executor_thread.join(timeout=0.1)
+                if self.task_executor_thread.is_alive():
+                    self._add_log('warning', "旧任务未完全停止，立即启动新任务（force_immediate模式）")
+            else:
+                # 普通模式：等待最多2秒
+                self.task_executor_thread.join(timeout=2.0)
+                if self.task_executor_thread.is_alive():
+                    self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
 
         # 在后台线程执行新任务
         try:
@@ -345,22 +340,32 @@ class IVASAdapter:
             self._add_log('error', f"任务执行失败: {e}")
             self.current_runner = None
 
-    def receive_broadcast_task(self, task_data: Dict[str, Any]):
+    def receive_task(self, task_data: Dict[str, Any], force_immediate: bool = False):
         """
-        接收来自 TaskBroadcaster 的广播任务
+        接收来自 TaskDistributor 的任务（统一接口）
 
-        此方法由 TaskBroadcaster.broadcast_task() 调用，
-        用于接收 id=99 的广播任务并执行。
+        此方法由 TaskDistributor 调用，用于接收分发的任务并执行。
+        支持单播任务（id=1/2/3）和广播任务（id=99）。
 
         Args:
             task_data: IVAS 任务数据
+            force_immediate: 是否立即执行（True=立即中断旧任务，用于广播任务）
         """
         mission = task_data.get('mission', 0)
-        mission_names = {1: "起飞", 2: "降落", 3: "返航"}
+        mission_names = {1: "起飞", 2: "降落", 3: "返航", 4: "前往指定点",
+                        5: "多航点任务1", 6: "多航点任务2", 7: "多航点任务3"}
         mission_name = mission_names.get(mission, f"任务{mission}")
+        target_id = task_data.get('id', 0)
 
         # 记录日志
-        self._add_log('info', f"[广播] 接收到广播任务: {mission_name}")
+        if target_id == 99:
+            self._add_log('info', f"[广播] 接收任务: {mission_name}，立即执行")
+        else:
+            self._add_log('info', f"接收任务: {mission_name}")
+
+        # 存储最新任务
+        with self.task_lock:
+            self.latest_task = task_data
 
         # 在后台执行任务
-        self._execute_task_in_background(task_data)
+        self._execute_task_in_background(task_data, force_immediate=force_immediate)

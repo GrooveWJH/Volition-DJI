@@ -284,9 +284,9 @@ class IVASClient:
         """从 IVAS 服务器轮询任务 (GET)"""
         url = f"{self.base_url}/jk-ivas/third/controller/outdoorTask"
 
-        # 传递 deviceCode 参数，让服务器知道是哪个设备在请求
-        # 这样每个设备可以获取自己的任务（支持多机独立任务和广播任务）
-        params = {'deviceCode': self.device_code}
+        # 不过滤 deviceCode，直接获取队列头部任务
+        # 由 TaskDistributor 统一轮询后根据任务 ID 智能路由
+        params = {}
         resp = self._request('GET', url, params=params)
 
         if resp and resp.status_code == 200:
