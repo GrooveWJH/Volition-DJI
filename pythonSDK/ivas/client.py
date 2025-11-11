@@ -87,6 +87,7 @@ class IVASClient:
         alt: float,
         azimuth: int,
         motion: int,
+        user_name: str = None,
         valid_count: int = 10,
         room_id: int = 22
     ) -> bool:
@@ -100,6 +101,7 @@ class IVASClient:
             alt: 海拔高度（米）
             azimuth: 方位角（0-359度）
             motion: 运动状态 (0:静止, 1:移动)
+            user_name: 用户名称（呼号，例如 UAV-1）
             valid_count: GPS 卫星数（默认 10）
             room_id: 任务 ID（默认 22）
 
@@ -109,7 +111,8 @@ class IVASClient:
         url = f"{self.base_url}/jk-ivas/third/controller/reportUserData"
 
         data = {
-            'deviceCode': device_code,
+            'ivasUserInfoId': self.account,  # 人员ID = 登录账号
+            'deviceCode': device_code,       # 设备编号
             'userX': lat,
             'userY': lon,
             'userZ': alt,
@@ -120,6 +123,10 @@ class IVASClient:
             'roomId': room_id,
             'refPositionType': 0
         }
+
+        # 添加用户名称（如果提供）
+        if user_name:
+            data['userName'] = user_name
 
         resp = self._request('POST', url, params=data)
         return resp is not None and resp.status_code == 200
