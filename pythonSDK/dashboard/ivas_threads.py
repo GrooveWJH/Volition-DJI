@@ -77,7 +77,8 @@ def position_reporter(
                     lon=lon,
                     alt=relative_height or 0.0,  # ✅ 使用相对高度
                     azimuth=int(heading or 0),
-                    motion=motion
+                    motion=motion,
+                    user_name=callsign  # 传入呼号作为用户名称
                 )
 
                 # 前5秒打印日志
