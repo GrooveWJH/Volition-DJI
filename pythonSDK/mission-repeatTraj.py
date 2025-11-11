@@ -2,7 +2,7 @@
 """
 循环往返飞行任务 - 多机版本
 
-支持多架无人机在两个航点之间循环往返飞行。
+在配置的两个GPS航点之间循环往返飞行。
 每到达一个航点后悬停2秒，然后飞往另一个航点。
 """
 import time
@@ -27,7 +27,7 @@ console = Console()
 
 # ========== 配置 ==========
 
-# 无人机配置（每架无人机可以有独立的两个航点）
+# 无人机配置（直接配置两个GPS航点）
 UAV_CONFIGS = [
     {
         'sn': '9N9CN2J0012CXY',
@@ -35,8 +35,8 @@ UAV_CONFIGS = [
         'callsign': 'Alpha',
         'flight_height': 90.0,  # 飞行高度（米）
         'waypoints': [
-            {'x': 0, 'y': 0},     # 航点A（相对动捕原点的坐标，米）
-            {'x': 2, 'y': 0},     # 航点B
+            {'id': 8, 'lat': 39.0432224, 'lon': 117.7259497},  # 航点A
+            {'id': 9, 'lat': 39.0425837, 'lon': 117.7252676},  # 航点B
         ],
         'max_speed': 12,  # 最大速度（m/s）
         'hover_time': 2.0,  # 到达航点后悬停时间（秒）
@@ -51,30 +51,14 @@ UAV_CONFIGS = [
     #     'callsign': 'Bravo',
     #     'flight_height': 100.0,
     #     'waypoints': [
-    #         {'x': 0, 'y': -2},
-    #         {'x': 0, 'y': 2},
+    #         {'id': 10, 'lat': 39.0430000, 'lon': 117.7258000},
+    #         {'id': 11, 'lat': 39.0428000, 'lon': 117.7254000},
     #     ],
     #     'max_speed': 10,
     #     'hover_time': 2.0,
     #     'camera': {
     #         'gimbal_mode': 1,
     #         'zoom_factor': 5,
-    #     }
-    # },
-    # {
-    #     'sn': '9N9CN180011TJN',
-    #     'user_id': 'pilot3',
-    #     'callsign': 'Charlie',
-    #     'flight_height': 110.0,
-    #     'waypoints': [
-    #         {'x': -2, 'y': 0},
-    #         {'x': 2, 'y': 0},
-    #     ],
-    #     'max_speed': 8,
-    #     'hover_time': 2.0,
-    #     'camera': {
-    #         'gimbal_mode': 1,
-    #         'zoom_factor': 10,
     #     }
     # },
 ]
@@ -94,34 +78,7 @@ TAKEOFF_THROTTLE = 500  # 油门偏移量
 # 循环控制
 MAX_CYCLES = None  # 最大循环次数（None = 无限循环，直到 Ctrl+C）
 
-# 动捕原点GPS坐标（用于将相对坐标转换为GPS坐标）
-MOCAP_ORIGIN = {
-    'lat': 23.054633,  # 动捕原点纬度
-    'lon': 113.394633,  # 动捕原点经度
-}
-
-# GPS 坐标转换系数（近似，适用于小范围）
-# 1度纬度 ≈ 111km, 1度经度 ≈ 111km * cos(纬度)
-METERS_PER_DEGREE_LAT = 111000.0
-METERS_PER_DEGREE_LON = 111000.0 * 0.914  # cos(23°) ≈ 0.914
-
 # ========== 辅助函数 ==========
-
-
-def mocap_to_gps(x, y):
-    """
-    将动捕坐标（米）转换为GPS坐标（度）
-
-    Args:
-        x: 相对动捕原点的X坐标（米，东为正）
-        y: 相对动捕原点的Y坐标（米，北为正）
-
-    Returns:
-        (lat, lon): GPS坐标（度）
-    """
-    lat = MOCAP_ORIGIN['lat'] + (y / METERS_PER_DEGREE_LAT)
-    lon = MOCAP_ORIGIN['lon'] + (x / METERS_PER_DEGREE_LON)
-    return lat, lon
 
 
 def execute_repeat_trajectory(runner, config):
@@ -138,7 +95,19 @@ def execute_repeat_trajectory(runner, config):
         return False
 
     try:
-        # 1. 初始化相机设置
+        # 1. 读取配置中的航点
+        waypoint_a = waypoints[0]
+        waypoint_b = waypoints[1]
+
+        lat_a = waypoint_a['lat']
+        lon_a = waypoint_a['lon']
+        lat_b = waypoint_b['lat']
+        lon_b = waypoint_b['lon']
+
+        console.print(f"[cyan][{callsign}] 航点A (id={waypoint_a.get('id', '?')}): GPS({lat_a:.6f}, {lon_a:.6f})[/cyan]")
+        console.print(f"[cyan][{callsign}] 航点B (id={waypoint_b.get('id', '?')}): GPS({lat_b:.6f}, {lon_b:.6f})[/cyan]")
+
+        # 2. 初始化相机设置
         runner.data['task_status'] = '初始化相机'
         mqtt = runner.mqtt
         camera_config = config.get('camera', {})
@@ -149,16 +118,6 @@ def execute_repeat_trajectory(runner, config):
         reset_gimbal(mqtt, payload_index=payload_index, reset_mode=gimbal_mode)
         set_camera_zoom(mqtt, payload_index=payload_index, zoom_factor=zoom_factor, camera_type="zoom")
         time.sleep(1)  # 等待相机设置生效
-
-        # 2. 转换航点为GPS坐标
-        waypoint_a = waypoints[0]
-        waypoint_b = waypoints[1]
-
-        lat_a, lon_a = mocap_to_gps(waypoint_a['x'], waypoint_a['y'])
-        lat_b, lon_b = mocap_to_gps(waypoint_b['x'], waypoint_b['y'])
-
-        console.print(f"[cyan][{callsign}] 航点A: ({waypoint_a['x']}, {waypoint_a['y']}) → GPS({lat_a:.6f}, {lon_a:.6f})[/cyan]")
-        console.print(f"[cyan][{callsign}] 航点B: ({waypoint_b['x']}, {waypoint_b['y']}) → GPS({lat_b:.6f}, {lon_b:.6f})[/cyan]")
 
         # 3. 初始化进度数据
         runner.data['total_waypoints'] = 2
@@ -187,9 +146,9 @@ def execute_repeat_trajectory(runner, config):
         monitor_thread = threading.Thread(target=monitor_progress, daemon=True)
         monitor_thread.start()
 
-        # 5. 循环往返飞行
+        # 6. 循环往返飞行
         cycle = 0
-        current_target = 'B'  # 先飞往B点
+        current_target = 'B'  # 先飞往B点（最后一个航点）
 
         while runner.running:
             # 检查循环次数限制
@@ -200,10 +159,10 @@ def execute_repeat_trajectory(runner, config):
             # 选择目标航点
             if current_target == 'B':
                 target_lat, target_lon = lat_b, lon_b
-                target_name = 'B'
+                target_name = f'B(id={waypoint_b.get("id", "?")})'
             else:
                 target_lat, target_lon = lat_a, lon_a
-                target_name = 'A'
+                target_name = f'A(id={waypoint_a.get("id", "?")})'
 
             # 更新当前目标
             runner.data['current_waypoint'] = 1 if current_target == 'B' else 0
@@ -363,21 +322,33 @@ def main():
 
         waypoints_table = Table(title="[bold bright_cyan]往返航点配置[/bold bright_cyan]", show_header=True)
         waypoints_table.add_column("无人机", style="bright_yellow", width=10)
-        waypoints_table.add_column("航点A", style="bright_green", width=15)
-        waypoints_table.add_column("航点B", style="bright_magenta", width=15)
-        waypoints_table.add_column("飞行高度", style="bright_cyan", width=10)
-        waypoints_table.add_column("悬停时间", style="bright_blue", width=10)
+        waypoints_table.add_column("航点A", style="bright_green", width=30)
+        waypoints_table.add_column("航点B", style="bright_magenta", width=30)
+        waypoints_table.add_column("飞行高度", style="bright_blue", width=10)
 
         for config in UAV_CONFIGS:
             callsign = config.get('callsign')
             waypoints = config.get('waypoints', [])
             flight_height = config.get('flight_height', 100.0)
-            hover_time = config.get('hover_time', 2.0)
 
             if len(waypoints) == 2:
-                wp_a = f"({waypoints[0]['x']}, {waypoints[0]['y']})"
-                wp_b = f"({waypoints[1]['x']}, {waypoints[1]['y']})"
-                waypoints_table.add_row(callsign, wp_a, wp_b, f"{flight_height}m", f"{hover_time}s")
+                wp_a = waypoints[0]
+                wp_b = waypoints[1]
+                wp_a_str = f"id={wp_a.get('id', '?')} ({wp_a['lat']:.7f}, {wp_a['lon']:.7f})"
+                wp_b_str = f"id={wp_b.get('id', '?')} ({wp_b['lat']:.7f}, {wp_b['lon']:.7f})"
+                waypoints_table.add_row(
+                    callsign,
+                    wp_a_str,
+                    wp_b_str,
+                    f"{flight_height}m"
+                )
+            else:
+                waypoints_table.add_row(
+                    callsign,
+                    f"[red]航点数量错误: {len(waypoints)}[/red]",
+                    "-",
+                    f"{flight_height}m"
+                )
 
         console.print(waypoints_table)
         console.print()
