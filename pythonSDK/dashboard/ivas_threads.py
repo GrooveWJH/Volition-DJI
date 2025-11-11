@@ -288,11 +288,12 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
     def task_wrapper():
         try:
             execute_ivas_task(
-                mqtt=uav_client['mqtt'],
-                caller=uav_client['caller'],
-                task_data=task_data,
-                uav_config=uav_client.get('config', {}),
-                runner=runner
+                task_data,                          # 第1个参数：任务数据
+                uav_client['mqtt'],                 # 第2个参数：mqtt_client
+                uav_client['caller'],               # 第3个参数：caller
+                uav_client.get('config', {}),       # 第4个参数：uav_config
+                heartbeat_thread=uav_client.get('heartbeat'),  # 可选参数：heartbeat_thread
+                runner=runner                       # 可选参数：runner
             )
         except Exception as e:
             print(f"[任务] ❌ 执行异常: {e}")
