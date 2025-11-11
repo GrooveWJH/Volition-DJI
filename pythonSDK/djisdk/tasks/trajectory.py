@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from rich.console import Console
 
-from ..services import fly_to_point, reset_gimbal, set_camera_zoom
+from ..services import fly_to_point, reset_gimbal, set_camera_zoom, change_live_lens
+from ..utils import build_video_id
 from .runner import MissionRunner
 
 console = Console()
@@ -305,11 +306,12 @@ def fly_trajectory_sequence(
                 console.print(
                     f"[bright_cyan]━━━ 航点 {wp_index} 悬停操作 ━━━[/bright_cyan]")
                 console.print(
-                    f"[bright_yellow]悬停 {hover_between_waypoints:.1f} 秒，云台朝下 + 变焦3倍[/bright_yellow]")
+                    f"[bright_yellow]悬停 {hover_between_waypoints:.1f} 秒，切换zoom镜头 + 云台朝下 + 变焦3倍[/bright_yellow]")
 
-            # 所有无人机：云台朝下 + 变焦3倍
+            # 所有无人机：切换zoom镜头 + 云台朝下 + 变焦3倍
             for runner in runners:
                 mqtt = runner.mqtt
+                caller = runner.caller
                 callsign = runner.config.get('callsign', 'UAV')
 
                 # 跳过之前失败的无人机
@@ -319,15 +321,25 @@ def fly_trajectory_sequence(
                 try:
                     payload_index = mqtt.get_payload_index() or "88-0-0"
 
-                    # 1. 云台朝下（reset_mode=1: yaw回中、pitch向下）
+                    # 1. 切换镜头到 zoom（使用 change_live_lens）
+                    try:
+                        video_id = build_video_id(mqtt, video_index="zoom-0")
+                        if show_progress:
+                            console.print(f"[bright_cyan][{callsign}] 切换到zoom镜头...[/bright_cyan]")
+                        change_live_lens(caller, video_id=video_id, video_type="zoom")
+                    except Exception as e:
+                        if show_progress:
+                            console.print(f"[bright_yellow]⚠ [{callsign}] 切换镜头失败: {e}[/bright_yellow]")
+
+                    # 2. 云台朝下（reset_mode=1: yaw回中、pitch向下）
                     if show_progress:
                         console.print(f"[bright_cyan][{callsign}] 云台朝下...[/bright_cyan]")
                     reset_gimbal(mqtt, payload_index=payload_index, reset_mode=1)
 
-                    # 2. 变焦3倍
+                    # 3. 变焦3倍
                     if show_progress:
                         console.print(f"[bright_cyan][{callsign}] 变焦3倍...[/bright_cyan]")
-                    set_camera_zoom(mqtt, payload_index=payload_index, zoom_factor=3.0)
+                    set_camera_zoom(mqtt, payload_index=payload_index, zoom_factor=3.0, camera_type="zoom")
 
                 except Exception as e:
                     if show_progress:
