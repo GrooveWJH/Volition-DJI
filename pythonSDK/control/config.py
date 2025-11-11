@@ -12,9 +12,9 @@ VRPN_DEVICE = 'Drone001@192.168.31.100'
 POSITION_SOURCE = 'uwb'  # 位置数据来源
 
 # UWB 设备配置（当 POSITION_SOURCE = 'uwb' 时使用）
-# 格式1: 节点ID（整数或字符串），例如: '2' 或 2
-# 格式2: 完整URL（预留），例如: 'uwb://192.168.31.200:8888/2'
-UWB_DEVICE = '2'  # UWB 目标节点 ID (TAG节点)
+UWB_DEVICE = '/dev/ttyACM0'  # UWB 串口设备路径
+UWB_BAUDRATE = 1500000        # 波特率（与 uwb/getdata.py 保持一致）
+UWB_TARGET_NODE_ID = 2        # 目标 TAG 节点 ID（从多个 TAG 中选择）
 
 # 航向角数据源选择: 'vrpn' 或 'drone'
 # 注意: UWB 只提供位置，不提供航向角，所以航向角必须选 'drone' 或 'vrpn'
