@@ -2,26 +2,25 @@
 IVAS 面板模块
 
 负责生成 IVAS 相关面板，包括：
-- IVAS 全局信息面板（任务接收、统计信息、DEBUG消息）
+- IVAS 全局信息面板（运行状态、线程数量）
 - 态势感知面板（占位，未来扩展）
 """
-from typing import List
+from typing import Optional
 from rich.panel import Panel
 from rich.table import Table
-from ..ivas_debug import debug_manager
 
 
-def create_ivas_global_panel(ivas_adapters: List, elapsed: int) -> Panel:
+def create_ivas_global_panel(ivas_threads: Optional[list], elapsed: int) -> Panel:
     """
     创建 IVAS 全局信息面板
 
     显示：
-    - IVAS 连接状态
-    - 最新接收的任务
-    - 统计信息
+    - IVAS 运行状态
+    - 后台线程数量
+    - 运行时间
 
     Args:
-        ivas_adapters: IVAS 适配器列表
+        ivas_threads: IVAS 后台线程列表（可选）
         elapsed: 运行时间（秒）
 
     Returns:
@@ -35,73 +34,28 @@ def create_ivas_global_panel(ivas_adapters: List, elapsed: int) -> Panel:
     def add_separator():
         table.add_row("", "[dim]" + "─" * 30 + "[/dim]")
 
-    # 标题 - 前卫配色：霓虹色系
-    table.add_row("IVAS 状态:", "[bright_green]运行中[/bright_green]" if ivas_adapters else "[bright_red]未启用[/bright_red]")
+    # IVAS 运行状态
+    is_running = ivas_threads is not None and len(ivas_threads) > 0
+    status = "[bright_green]运行中[/bright_green]" if is_running else "[bright_red]未启用[/bright_red]"
+
+    table.add_row("IVAS 状态:", status)
     table.add_row("运行时间:", f"[bright_green]{elapsed}[/bright_green] 秒")
-    add_separator()
 
-    # 统计信息 - 前卫配色：亮青色数据
-    table.add_row("在线设备:", f"[bright_cyan]{len(ivas_adapters)}[/bright_cyan] 个")
-    add_separator()
+    if is_running:
+        add_separator()
+        table.add_row("后台线程:", f"[bright_cyan]{len(ivas_threads)}[/bright_cyan] 个")
 
-    # 任务接收信息（汇总所有adapter的最新任务）
-    table.add_row("[bold]最新任务:[/bold]", "")
-
-    mission_names = {
-        1: "原地起飞5米", 2: "原地降落", 3: "返航", 4: "前往指定点",
-        5: "多航点任务1", 6: "多航点任务2", 7: "多航点任务3"
-    }
-
-    has_task = False
-    for adapter in ivas_adapters:
-        task = adapter.get_latest_task()
-        if task:
-            has_task = True
-            mission = task.get('mission', 0)
-            mission_name = mission_names.get(mission, f"未知任务({mission})")
-            target_id = task.get('id', 0)
-
-            # 显示任务信息 - 前卫配色：亮洋红任务 + 亮青ID
-            table.add_row("  任务类型:", f"[bright_magenta]{mission_name}[/bright_magenta]")
-            table.add_row("  目标ID:", f"[bright_cyan]{target_id}[/bright_cyan]")
-
-            # 如果是前往指定点任务，显示坐标
-            if mission == 4:
-                lat = task.get('lat', 0)
-                lon = task.get('lon', 0)
-                alt = task.get('alt', 0)
-                table.add_row("  目标坐标:", f"({lat:.6f}, {lon:.6f}, {alt:.1f})")
-
-            break  # 只显示第一个有任务的adapter
-
-    if not has_task:
-        table.add_row("", "[dim]暂无任务[/dim]")
-
-    # DEBUG 消息区域
-    add_separator()
-    table.add_row("[bold bright_yellow]DEBUG 消息:[/bold bright_yellow]", "")
-
-    debug_messages = debug_manager.get_recent_messages(n=20)
-    if debug_messages:
-        for msg in debug_messages:
-            callsign = msg['callsign']
-            message = msg['message']
-            msg_type = msg['type']
-
-            # 根据消息类型设置颜色
-            if msg_type == 'error' or '❌' in message:
-                color = 'bright_red'
-            elif '✅' in message:
-                color = 'bright_green'
-            elif '🔍' in message:
-                color = 'bright_yellow'
+        # 显示线程名称
+        table.add_row("[dim]活动线程:[/dim]", "")
+        for thread in ivas_threads:
+            if thread.is_alive():
+                table.add_row("", f"[bright_green]● {thread.name}[/bright_green]")
             else:
-                color = 'bright_white'
-
-            # 格式化显示：[Pilot 1] 消息内容
-            table.add_row("", f"[{color}][{callsign}] {message}[/{color}]")
+                table.add_row("", f"[bright_red]○ {thread.name}[/bright_red]")
     else:
-        table.add_row("", "[dim]暂无 DEBUG 消息[/dim]")
+        add_separator()
+        table.add_row("", "[dim]IVAS 系统未启用[/dim]")
+        table.add_row("", "[dim]任务执行日志输出到控制台[/dim]")
 
     return Panel(
         table,
