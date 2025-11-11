@@ -11,7 +11,7 @@ import termios
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from djisdk import setup_multiple_drc_connections, stop_heartbeat, reset_gimbal, camera_look_at, set_camera_zoom, camera_aim
+from djisdk import setup_multiple_drc_connections, stop_heartbeat, reset_gimbal, camera_look_at, set_camera_zoom, camera_aim, change_live_lens
 
 # ========== 配置 ==========
 
@@ -19,8 +19,8 @@ MQTT_CONFIG = {'host': 'grve.me', 'port': 1883, 'username': 'dji', 'password': '
 
 UAV_CONFIGS = [
     {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'camera_type': 'zoom', 'zoom': {'current': 7, 'step': 1, 'min': 1, 'max': 112}},
-    {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'camera_type': 'zoom', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
-    {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'camera_type': 'zoom', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
+    # {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'camera_type': 'zoom', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
+    # {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'camera_type': 'zoom', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
 ]
 
 # ========== 全局状态 ==========
@@ -102,12 +102,23 @@ def zoom_out():
     parallel_run("缩小", action)
 
 def toggle_camera_type():
-    """切换相机类型（变焦 ↔ 广角）"""
+    """切换相机类型（变焦 ↔ 广角）- 照搬 live.py 方案"""
     def action(cs, s):
         current_type = s['config']['camera_type']
         new_type = 'wide' if current_type == 'zoom' else 'zoom'
-        s['config']['camera_type'] = new_type
         type_name = '广角' if new_type == 'wide' else '变焦'
+
+        # 构建 video_id（格式：sn/payload_index/video_index）
+        sn = s['mqtt'].gateway_sn
+        payload_index = s['mqtt'].get_payload_index() or "88-0-0"
+        video_index = "normal-0"  # 默认视频流索引
+        video_id = f"{sn}/{payload_index}/{video_index}"
+
+        # 调用 change_live_lens 服务（参考 live.py:300）
+        change_live_lens(s['caller'], video_id, new_type)
+
+        # 更新本地状态
+        s['config']['camera_type'] = new_type
         log(f"  {cs}: {type_name}")
     parallel_run("切换镜头", action)
 
