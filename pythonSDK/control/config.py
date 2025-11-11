@@ -23,8 +23,8 @@ YAW_SOURCE = 'drone'  # 'vrpn' = 从动捕系统获取, 'drone' = 从无人机�
 # ========== MQTT配置 ==========
 MQTT_CONFIG = {
     # 'host': '81.70.222.38',
-    # 'host': 'grve.me',
-    'host': '192.168.31.73',
+    'host': 'grve.me',
+    # 'host': '192.168.31.73',
     'port': 1883,
     'username': 'dji',
     'password': 'lab605605'
@@ -62,7 +62,7 @@ CONTROL_FREQUENCY = 50       # 控制频率（Hz）
 TOLERANCE_XY = 0.10          # XY平面到达阈值（米）
 TOLERANCE_YAW = 2.0          # Yaw角到达阈值（度）
 MAX_STICK_OUTPUT = 150       # XY平面最大杆量输出限幅（半杆量）
-MAX_YAW_STICK_OUTPUT = 660   # Yaw最大杆量输出限幅（满杆量）
+MAX_YAW_STICK_OUTPUT = 110   # Yaw最大杆量输出限幅（满杆量）
 NEUTRAL = 1024               # 杆量中值
 
 # ========== 平面+Yaw复合控制配置 ==========
