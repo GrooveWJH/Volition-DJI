@@ -280,17 +280,16 @@ class IVASAdapter:
         self.ivas_client.stop()
         self._add_log('info', "IVAS Client 已停止")
 
-    def _execute_task_in_background(self, task_data: Dict[str, Any], force_immediate: bool = False):
+    def _execute_task_in_background(self, task_data: Dict[str, Any]):
         """
-        在后台线程执行 IVAS 任务（新任务会中断旧任务）
+        在后台线程执行 IVAS 任务（新任务强制中断旧任务）
 
         策略：
         - 如果有旧任务正在执行，立即停止它
-        - 然后在后台线程执行新任务
+        - 立即启动新任务（等待时间极短，0.1秒超时）
 
         Args:
             task_data: IVAS 任务数据
-            force_immediate: 是否立即执行（True=不等待旧任务，立即启动新任务）
         """
         # 🔍 DEBUG: 检查执行条件
         mission = task_data.get('mission', 0)
@@ -310,18 +309,11 @@ class IVASAdapter:
             self._add_log('info', "停止旧任务，准备执行新任务")
             self.current_runner.stop()  # 设置 running=False 并等待线程结束
 
-        # 等待旧线程结束
+        # 等待旧线程结束（所有任务都是强制立即执行，仅等待0.1秒）
         if self.task_executor_thread and self.task_executor_thread.is_alive():
-            if force_immediate:
-                # 立即执行模式：仅等待0.1秒，快速中断后立即启动
-                self.task_executor_thread.join(timeout=0.1)
-                if self.task_executor_thread.is_alive():
-                    self._add_log('warning', "旧任务未完全停止，立即启动新任务（force_immediate模式）")
-            else:
-                # 普通模式：等待最多2秒
-                self.task_executor_thread.join(timeout=2.0)
-                if self.task_executor_thread.is_alive():
-                    self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
+            self.task_executor_thread.join(timeout=0.1)
+            if self.task_executor_thread.is_alive():
+                self._add_log('warning', "旧任务未完全停止，立即启动新任务（强制模式）")
 
         # 在后台线程执行新任务
         try:
@@ -383,16 +375,16 @@ class IVASAdapter:
             self._add_log('error', f"❌ 堆栈: {traceback.format_exc()}")
             self.current_runner = None
 
-    def receive_task(self, task_data: Dict[str, Any], force_immediate: bool = False):
+    def receive_task(self, task_data: Dict[str, Any]):
         """
         接收来自 TaskDistributor 的任务（统一接口）
 
         此方法由 TaskDistributor 调用，用于接收分发的任务并执行。
         支持单播任务（id=1/2/3）和广播任务（id=99）。
+        所有任务都是强制立即执行（立即中断旧任务）。
 
         Args:
             task_data: IVAS 任务数据
-            force_immediate: 是否立即执行（True=立即中断旧任务，用于广播任务）
         """
         mission = task_data.get('mission', 0)
         mission_names = {1: "起飞", 2: "降落", 3: "返航", 4: "前往指定点",
@@ -407,7 +399,7 @@ class IVASAdapter:
             self._add_log('info', f"接收任务: {mission_name}")
 
         # 🔍 DEBUG: 确认 receive_task 被调用
-        self._add_log('info', f"🔍 [DEBUG] receive_task 被调用: mission={mission}, force_immediate={force_immediate}")
+        self._add_log('info', f"🔍 [DEBUG] receive_task 被调用: mission={mission}, target_id={target_id}")
 
         # 存储最新任务
         with self.task_lock:
@@ -417,8 +409,8 @@ class IVASAdapter:
         self._add_log('info', f"🔍 [DEBUG] 即将调用 _execute_task_in_background")
 
         try:
-            # 在后台执行任务
-            self._execute_task_in_background(task_data, force_immediate=force_immediate)
+            # 在后台执行任务（强制立即执行）
+            self._execute_task_in_background(task_data)
             self._add_log('info', f"✅ [DEBUG] _execute_task_in_background 调用完成")
         except Exception as e:
             # 捕获任何异常
