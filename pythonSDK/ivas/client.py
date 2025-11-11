@@ -284,7 +284,10 @@ class IVASClient:
         """从 IVAS 服务器轮询任务 (GET)"""
         url = f"{self.base_url}/jk-ivas/third/controller/outdoorTask"
 
-        resp = self._request('GET', url)
+        # 传递 deviceCode 参数，让服务器知道是哪个设备在请求
+        # 这样每个设备可以获取自己的任务（支持多机独立任务和广播任务）
+        params = {'deviceCode': self.device_code}
+        resp = self._request('GET', url, params=params)
 
         if resp and resp.status_code == 200:
             try:

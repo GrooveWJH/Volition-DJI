@@ -71,23 +71,17 @@ def get_outdoor_task():
 
     客户端通过此接口轮询任务。如果有任务，返回任务数据；否则返回空。
 
+    参数:
+        deviceCode (int): 设备编号（来自 UAV_CONFIGS 中的 ivas.device_code）
+
     Returns:
         JSON: {'code': 200, 'data': task_data} 或 {'code': 200, 'data': None}
     """
-    # 从 token 解析 device_id（Mock Server 的 token 格式：mock-token-ZSDX00X）
-    token = request.headers.get('token', '')
+    # 直接从 query 参数获取 deviceCode
+    device_id = request.args.get('deviceCode', type=int)
 
-    # 提取账号中的数字作为 device_id (ZSDX001 -> 1, ZSDX002 -> 2)
-    device_id = 1  # 默认值
-    if token.startswith('mock-token-ZSDX'):
-        try:
-            device_id = int(token[-3:])  # 取最后3位数字
-        except ValueError:
-            pass
-
-    # 也支持 query 参数（兼容旧版本）
-    if request.args.get('device_id'):
-        device_id = request.args.get('device_id', type=int, default=1)
+    if not device_id:
+        return jsonify({'code': 400, 'msg': '缺少 deviceCode 参数', 'data': None}), 400
 
     if device_id in task_queues and task_queues[device_id]:
         task = task_queues[device_id].popleft()
@@ -229,7 +223,7 @@ if __name__ == '__main__':
     console.print("[bold cyan]IVAS Mock Server 启动中...[/bold cyan]")
     console.print("[dim]监听地址: http://localhost:5001[/dim]")
     console.print("[dim]登录接口: POST /jk-ivas/third/controller/zsLogin[/dim]")
-    console.print("[dim]轮询接口: GET /jk-ivas/third/controller/outdoorTask?device_id=1[/dim]")
+    console.print("[dim]轮询接口: GET /jk-ivas/third/controller/outdoorTask?deviceCode=1[/dim]")
     console.print("[dim]推送接口: POST /mock/push_task[/dim]")
     console.print("[dim]统计接口: GET /mock/stats[/dim]")
     console.print("[dim]清空队列: POST /mock/clear[/dim]\n")
