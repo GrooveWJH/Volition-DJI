@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from djisdk import MQTTClient, start_heartbeat, stop_heartbeat, send_stick_control
 from vrpn import VRPNClient
-from uwb_client import UWBClient
+from uwb.uwb_client import UWBClient
 from rich.console import Console
 from rich.panel import Panel
 
