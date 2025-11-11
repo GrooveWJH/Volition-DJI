@@ -40,7 +40,8 @@ class IVASAdapter:
         uav_config: Dict[str, str],
         service_caller=None,
         heartbeat_thread=None,
-        features: Optional[Dict[str, bool]] = None
+        features: Optional[Dict[str, bool]] = None,
+        broadcaster=None
     ):
         """
         初始化 IVAS 适配器
@@ -53,6 +54,7 @@ class IVASAdapter:
             service_caller: djisdk ServiceCaller（用于任务执行）
             heartbeat_thread: 心跳线程（用于任务执行）
             features: 功能开关字典 {'position_report': bool, 'target_report': bool, 'task_receive': bool}
+            broadcaster: 任务广播管理器（用于处理 id=99 广播任务）
         """
         self.device_code = device_code
         self.mqtt = mqtt_client
@@ -60,6 +62,7 @@ class IVASAdapter:
         self.heartbeat_thread = heartbeat_thread
         self.uav_config = uav_config
         self.features = features or {}  # 存储功能配置
+        self.broadcaster = broadcaster  # 广播管理器（可选）
 
         # 日志队列（简单列表，滚动窗口，最多保留10条）
         self.log_queue = []
@@ -191,8 +194,20 @@ class IVASAdapter:
                 with self.task_lock:
                     self.latest_task = task_data
 
-                # 立即在后台线程执行任务
-                self._execute_task_in_background(task_data)
+                # ========== 广播任务处理（id=99）==========
+                if target_id == 99:
+                    # 检查是否有广播管理器
+                    if self.broadcaster:
+                        # 触发广播（由 broadcaster 负责分发给所有adapter）
+                        # broadcast_task 内部会检查任务去重，只会执行一次
+                        self.broadcaster.broadcast_task(task_data, source_adapter=self)
+                    else:
+                        # 没有广播管理器，按普通任务处理（降级方案）
+                        self._add_log('warning', f"收到广播任务 ID:{target_id}，但未配置广播管理器，将仅在本机执行")
+                        self._execute_task_in_background(task_data)
+                else:
+                    # 普通任务（id != 99），直接执行
+                    self._execute_task_in_background(task_data)
             else:
                 # 无任务或任务为空
                 return  # 不记录日志
@@ -329,3 +344,23 @@ class IVASAdapter:
         except Exception as e:
             self._add_log('error', f"任务执行失败: {e}")
             self.current_runner = None
+
+    def receive_broadcast_task(self, task_data: Dict[str, Any]):
+        """
+        接收来自 TaskBroadcaster 的广播任务
+
+        此方法由 TaskBroadcaster.broadcast_task() 调用，
+        用于接收 id=99 的广播任务并执行。
+
+        Args:
+            task_data: IVAS 任务数据
+        """
+        mission = task_data.get('mission', 0)
+        mission_names = {1: "起飞", 2: "降落", 3: "返航"}
+        mission_name = mission_names.get(mission, f"任务{mission}")
+
+        # 记录日志
+        self._add_log('info', f"[广播] 接收到广播任务: {mission_name}")
+
+        # 在后台执行任务
+        self._execute_task_in_background(task_data)
