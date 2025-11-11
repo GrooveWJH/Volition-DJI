@@ -111,7 +111,7 @@ class IVASClient:
         url = f"{self.base_url}/jk-ivas/third/controller/reportUserData"
 
         data = {
-            'ivasUserInfoId': device_code,  # 人员ID = 设备编号
+            'userId': device_code,  # 人员ID = 设备编号
             'userX': lat,
             'userY': lon,
             'userZ': alt,

@@ -88,7 +88,7 @@ ENABLE_VRPN = False
 # ========== IVAS 集成配置 ==========
 
 # IVAS 功能总开关
-ENABLE_IVAS = True
+ENABLE_IVAS = False
 
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {
