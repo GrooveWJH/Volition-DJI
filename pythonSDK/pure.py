@@ -301,7 +301,7 @@ class PureTaskDistributor:
         初始化分发器
 
         Args:
-            ivas_config: IVAS 配置
+            ivas_config: IVAS 配置（必须包含 base_url, account, password, task_hz）
         """
         self.adapters: Dict[int, PureIVASAdapter] = {}
         self.executed_tasks = set()
@@ -310,19 +310,20 @@ class PureTaskDistributor:
         self.thread = None
 
         # 创建 IVASClient（用于轮询）
+        # 关键：使用真实的 IVAS 账号密码
         self.ivas_client = IVASClient(
-            device_code=0,  # 占位符
-            account='PLACEHOLDER',
-            password='PLACEHOLDER',
+            device_code=0,  # 占位符，不用于过滤
+            account=ivas_config['account'],      # 真实账号
+            password=ivas_config['password'],    # 真实密码
             base_lat=0.0, base_lon=0.0, base_alt=0.0,
             coord_range={'lat_offset': 0, 'lon_offset': 0, 'alt_offset': 0},
             base_url=ivas_config['base_url'],
-            report_hz=0.0,
+            report_hz=0.0,  # 禁用位置上报
             task_hz=ivas_config['task_hz'],
             features={
                 'position_report': False,
                 'target_report': False,
-                'task_receive': True
+                'task_receive': True  # 只启用任务轮询
             }
         )
 
@@ -465,9 +466,28 @@ def main():
     console.print("[bold bright_cyan]       纯净版 IVAS + 多DRC 程序[/bold bright_cyan]")
     console.print("[bold bright_cyan]" + "="*60 + "[/bold bright_cyan]\n")
 
-    # 1. 创建任务分发器
+    # 1. 创建任务分发器（使用第一个 IVAS 账号进行轮询）
     console.print("[bold]📡 步骤 1: 初始化任务分发器[/bold]")
-    distributor = PureTaskDistributor(IVAS_SERVER)
+
+    # 获取第一个有效的 IVAS 配置
+    first_ivas_config = None
+    for config in UAV_CONFIGS:
+        if 'ivas' in config:
+            first_ivas_config = config['ivas']
+            break
+
+    if not first_ivas_config:
+        console.print("[red]❌ 没有找到 IVAS 配置，退出程序[/red]")
+        return
+
+    # 创建任务分发器，传入账号密码
+    distributor = PureTaskDistributor({
+        'base_url': IVAS_SERVER['base_url'],
+        'account': first_ivas_config['account'],
+        'password': first_ivas_config['password'],
+        'task_hz': IVAS_SERVER['task_hz']
+    })
+    console.print(f"[dim]使用账号: {first_ivas_config['account']}[/dim]")
     print()
 
     # 2. 创建并注册所有适配器
