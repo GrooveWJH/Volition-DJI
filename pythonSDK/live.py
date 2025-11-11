@@ -106,7 +106,8 @@ QUALITY_NAMES = {0: '自适应', 1: '流畅', 2: '标清', 3: '高清', 4: '超�
 
 # 分离固定连接和可变状态
 connections = {}  # {sn: {'mqtt': ..., 'caller': ..., 'heartbeat': ..., 'config': ...}}
-live_states = {}  # {sn: {'video_id': None, 'quality': 0, 'lens_type': 'zoom', 'zoom_factor': 2}}
+# {sn: {'video_id': None, 'quality': 0, 'lens_type': 'zoom', 'zoom_factor': 2}}
+live_states = {}
 stop_event = threading.Event()  # 用于停止所有控制线程
 
 
@@ -148,7 +149,8 @@ def select_uavs():
             default="1"
         )
         selected_indices = [int(i.strip()) - 1 for i in indices.split(',')]
-        selected = [UAV_CONFIGS[i] for i in selected_indices if 0 <= i < len(UAV_CONFIGS)]
+        selected = [UAV_CONFIGS[i]
+                    for i in selected_indices if 0 <= i < len(UAV_CONFIGS)]
 
         console.print(f"\n[green]✓ 已选择 {len(selected)} 架无人机[/green]")
         return selected
@@ -183,11 +185,12 @@ def start_live_for_uav(mqtt, caller, config):
             mqtt,
             rtmp_url,
             config['video_index'],
-            quality=0  # 永远用自适应启动
+            video_quality=0  # 永远用自适应启动
         )
 
         if video_id_result:
-            console.print(f"[green]✓ [{callsign}] 直播已启动 (video_id: {video_id_result}, 质量: 自适应)[/green]")
+            console.print(
+                f"[green]✓ [{callsign}] 直播已启动 (video_id: {video_id_result}, 质量: 自适应)[/green]")
             return video_id_result
         else:
             console.print(f"[red]✗ [{callsign}] 直播启动失败[/red]")
@@ -240,7 +243,8 @@ def change_all_quality(new_quality):
         new_quality: 新的质量等级 (0-4)
     """
     quality_name = QUALITY_NAMES.get(new_quality, '未知')
-    console.print(f"\n[bold cyan]切换所有直播到质量 {new_quality} ({quality_name})[/bold cyan]")
+    console.print(
+        f"\n[bold cyan]切换所有直播到质量 {new_quality} ({quality_name})[/bold cyan]")
 
     success_count = 0
     total_count = 0
@@ -261,7 +265,8 @@ def change_all_quality(new_quality):
         except Exception as e:
             console.print(f"  [red]✗ {callsign}: {e}[/red]")
 
-    console.print(f"[green]完成: {success_count}/{total_count} 架无人机已切换[/green]\n")
+    console.print(
+        f"[green]完成: {success_count}/{total_count} 架无人机已切换[/green]\n")
 
     # 刷新显示
     display_live_status()
@@ -299,7 +304,8 @@ def toggle_all_lens():
         except Exception as e:
             console.print(f"  [red]✗ {callsign}: {e}[/red]")
 
-    console.print(f"[green]完成: {success_count}/{total_count} 架无人机已切换[/green]\n")
+    console.print(
+        f"[green]完成: {success_count}/{total_count} 架无人机已切换[/green]\n")
 
     # 刷新显示
     display_live_status()
@@ -340,24 +346,28 @@ def adjust_all_zoom(direction: str):
 
         # 如果没有变化，跳过
         if new_zoom == current_zoom:
-            console.print(f"  [yellow]- {callsign}: 已达到{action_name}限制 ({current_zoom}x)[/yellow]")
+            console.print(
+                f"  [yellow]- {callsign}: 已达到{action_name}限制 ({current_zoom}x)[/yellow]")
             continue
 
         try:
             # 获取 payload_index
             payload_index = conn['mqtt'].get_payload_index() or "39-0-7"
 
-            set_camera_zoom(conn['mqtt'], payload_index, new_zoom, camera_type="zoom")
+            set_camera_zoom(conn['mqtt'], payload_index,
+                            new_zoom, camera_type="zoom")
             state['zoom_factor'] = new_zoom  # 更新状态
             success_count += 1
-            console.print(f"  [green]✓ {callsign}: {current_zoom}x → {new_zoom}x[/green]")
+            console.print(
+                f"  [green]✓ {callsign}: {current_zoom}x → {new_zoom}x[/green]")
         except Exception as e:
             console.print(f"  [red]✗ {callsign}: {e}[/red]")
 
     if total_count == 0:
         console.print("[yellow]没有无人机处于变焦模式[/yellow]\n")
     else:
-        console.print(f"[green]完成: {success_count}/{total_count} 架无人机已调整[/green]\n")
+        console.print(
+            f"[green]完成: {success_count}/{total_count} 架无人机已调整[/green]\n")
 
     # 刷新显示
     display_live_status()
