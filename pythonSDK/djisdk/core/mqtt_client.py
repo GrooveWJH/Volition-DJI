@@ -418,6 +418,12 @@ class MQTTClient:
         try:
             payload = json.loads(msg.payload.decode())
 
+            # 🔍 DEBUG: 打印所有收到的消息（用于追踪消息流）
+            msg_method = payload.get('method', '')
+            msg_tid = payload.get('tid', '')
+            if msg_tid:  # 只打印服务响应（有 tid 的消息）
+                console.print(f"[yellow]🔍 收到消息[/yellow] topic={msg.topic} tid={msg_tid[:8]}... method={msg_method}")
+
             # 处理 OSD 数据推送
             if payload.get('method') == 'osd_info_push':
                 # 更新频率追踪（在锁外完成时间获取，减少锁持有时间）
@@ -518,6 +524,15 @@ class MQTTClient:
             tid = payload.get('tid')
             if not tid:
                 return
+
+            # 🔍 DEBUG: 打印完整的服务响应（用于调试）
+            method = payload.get('method', 'unknown')
+            console.print(f"[bright_yellow]📦 MQTT 服务响应 DEBUG[/bright_yellow]")
+            console.print(f"  [cyan]Topic:[/cyan] {msg.topic}")
+            console.print(f"  [cyan]TID:[/cyan] {tid[:8]}...")
+            console.print(f"  [cyan]Method:[/cyan] {method}")
+            console.print(f"  [cyan]完整 Payload:[/cyan]")
+            console.print(f"{json.dumps(payload, indent=2, ensure_ascii=False)}")
 
             with self.lock:
                 future = self.pending_requests.pop(tid, None)

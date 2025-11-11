@@ -38,10 +38,6 @@ def _call_service(
     try:
         result = caller.call(method, data or {})
 
-        # 🔍 DEBUG: 打印完整的 MQTT 响应（用于调试）
-        console.print(f"[dim]📦 MQTT 原始响应 ({method}):[/dim]")
-        console.print(f"[dim]{json.dumps(result, indent=2, ensure_ascii=False)}[/dim]")
-
         if result.get('result') == 0:
             if success_msg:
                 console.print(f"[green]✓ {success_msg}[/green]")

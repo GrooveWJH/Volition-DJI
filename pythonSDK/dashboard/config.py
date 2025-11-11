@@ -92,7 +92,7 @@ ENABLE_IVAS = True
 
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {
-    'position_report': False,    # 无人机位置上报（实际执行，从真实MQTT获取数据）
+    'position_report': True,    # 无人机位置上报（实际执行，从真实MQTT获取数据）
     'target_report': False,      # 目标检测上报（暂不启用，无数据源）
     'task_receive': True,        # 任务接收
 }
@@ -109,7 +109,7 @@ IVAS_SERVER = {
 
 # IVAS 高级配置
 IVAS_ADVANCED = {
-    'require_gps': True,              # 位置上报是否要求GPS有效（False时无GPS也上报，lat/lon=0）
+    'require_gps': False,              # 位置上报是否要求GPS有效（False时无GPS也上报，lat/lon=0）
     'enable_task_execution': True,    # 是否执行任务分发（False时仅监视，不执行）
 }
 
