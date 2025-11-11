@@ -5,6 +5,7 @@ IVAS 面板模块
 - IVAS 全局信息面板（任务接收、统计信息、DEBUG消息）
 - 态势感知面板（占位，未来扩展）
 """
+import time
 from typing import List
 from rich.panel import Panel
 from rich.table import Table
@@ -87,19 +88,22 @@ def create_ivas_global_panel(ivas_adapters: List, elapsed: int) -> Panel:
             callsign = msg['callsign']
             message = msg['message']
             msg_type = msg['type']
+            device_code = msg['device_code']
+            timestamp = msg['time']
 
-            # 根据消息类型设置颜色
-            if msg_type == 'error' or '❌' in message:
-                color = 'bright_red'
-            elif '✅' in message:
-                color = 'bright_green'
-            elif '🔍' in message:
-                color = 'bright_yellow'
-            else:
-                color = 'bright_white'
+            # 根据 device_code 设置机器颜色（三种颜色区分三个机器）
+            device_color_map = {
+                1: 'bright_cyan',      # 机器1: 青色
+                2: 'bright_magenta',   # 机器2: 洋红
+                3: 'bright_green',     # 机器3: 绿色
+            }
+            device_color = device_color_map.get(device_code, 'bright_white')
 
-            # 格式化显示：[Pilot 1] 消息内容
-            table.add_row("", f"[{color}][{callsign}] {message}[/{color}]")
+            # 格式化时间戳（HH:MM:SS）
+            time_str = time.strftime("%H:%M:%S", time.localtime(timestamp))
+
+            # 格式化显示：[时间戳] [Pilot X] 消息内容
+            table.add_row("", f"[dim]{time_str}[/dim] [{device_color}][{callsign}][/{device_color}] {message}")
     else:
         table.add_row("", "[dim]暂无 DEBUG 消息[/dim]")
 
