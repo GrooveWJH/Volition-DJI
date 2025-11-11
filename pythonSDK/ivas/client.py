@@ -75,8 +75,9 @@ class IVASClient:
         self.token = None  # 登录后的 token
         self.queue = display_queue
 
-        self.report_interval = 1.0 / report_hz
-        self.task_interval = 1.0 / task_hz
+        # 避免除零错误：当频率为0时表示禁用该功能，使用无限大间隔
+        self.report_interval = 1.0 / report_hz if report_hz > 0 else float('inf')
+        self.task_interval = 1.0 / task_hz if task_hz > 0 else float('inf')
 
         self.running = True
         self.last_task_time = 0
