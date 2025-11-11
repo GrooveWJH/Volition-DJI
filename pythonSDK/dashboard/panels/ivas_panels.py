@@ -81,7 +81,7 @@ def create_ivas_global_panel(ivas_adapters: List, elapsed: int) -> Panel:
     add_separator()
     table.add_row("[bold bright_yellow]DEBUG 消息:[/bold bright_yellow]", "")
 
-    debug_messages = debug_manager.get_recent_messages(n=5)
+    debug_messages = debug_manager.get_recent_messages(n=20)
     if debug_messages:
         for msg in debug_messages:
             callsign = msg['callsign']

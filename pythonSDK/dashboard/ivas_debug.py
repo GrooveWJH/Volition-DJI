@@ -31,7 +31,7 @@ class IVASDebugManager:
             return
 
         self._initialized = True
-        self.messages = deque(maxlen=10)  # 最多保留10条消息
+        self.messages = deque(maxlen=30)  # 最多保留30条消息
         self.lock = threading.Lock()
 
     def add_message(self, device_code: int, callsign: str, message: str, msg_type: str = 'info'):
@@ -54,7 +54,7 @@ class IVASDebugManager:
             }
             self.messages.append(entry)
 
-    def get_recent_messages(self, n: int = 5) -> List[Dict[str, Any]]:
+    def get_recent_messages(self, n: int = 20) -> List[Dict[str, Any]]:
         """
         获取最近的 N 条消息
 
