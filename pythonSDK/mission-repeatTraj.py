@@ -72,7 +72,7 @@ MQTT_CONFIG = {
 
 # 起飞参数（所有无人机共用）
 TAKEOFF_TOLERANCE = 0.5  # 高度容差（米）
-TAKEOFF_THROTTLE = 500  # 油门偏移量
+TAKEOFF_THROTTLE = 660  # 油门偏移量
 
 # 循环控制
 MAX_CYCLES = None  # 最大循环次数（None = 无限循环，直到 Ctrl+C）
@@ -171,7 +171,7 @@ def execute_repeat_trajectory(runner, config):
             console.print(f"[dim][{callsign}] → 航点{target_name} (GPS: {target_lat:.6f}, {target_lon:.6f})[/dim]")
 
             try:
-                fly_to_point(
+                fly_to_id = fly_to_point(
                     runner.caller,
                     latitude=target_lat,
                     longitude=target_lon,
@@ -183,28 +183,43 @@ def execute_repeat_trajectory(runner, config):
                 runner.data['task_status'] = '飞点失败'
                 break
 
-            # 等待到达（检查距离或 flyto 进度）
-            timeout = 60  # 最多等待60秒
+            # 等待 flyto 事件完成（参考 fly_trajectory_sequence 的实现）
+            timeout = 120  # 最多等待 120 秒
             start_time = time.time()
             arrived = False
+            terminal_statuses = {'wayline_ok', 'wayline_failed', 'wayline_cancel'}
 
             while runner.running and (time.time() - start_time) < timeout:
-                # 检查是否到达
-                current_lat, current_lon, _ = mqtt.get_position()
-                if current_lat and current_lon:
-                    # 简单距离检查（度数差异）
-                    lat_diff = abs(current_lat - target_lat)
-                    lon_diff = abs(current_lon - target_lon)
+                # 读取最新飞行进度
+                progress = mqtt.get_flyto_progress()
+                event_fly_to_id = progress.get('fly_to_id')
+                status = progress.get('status')
 
-                    # 容差约1米（约 0.00001 度）
-                    if lat_diff < 0.00001 and lon_diff < 0.00001:
-                        arrived = True
+                # ✅ 关键检查：fly_to_id 必须匹配（防止读取旧航点数据）
+                if event_fly_to_id == fly_to_id:
+                    # 收到当前航点的事件
+                    if status in terminal_statuses:
+                        result_code = progress.get('result')
+
+                        if status == 'wayline_ok':
+                            arrived = True
+                            console.print(f"[green][{callsign}] ✓ 到达航点{target_name}[/green]")
+                        elif status == 'wayline_failed':
+                            console.print(f"[red][{callsign}] ✗ 飞向航点{target_name}失败 (code={result_code})[/red]")
+                            runner.data['task_status'] = '飞点失败'
+                        elif status == 'wayline_cancel':
+                            console.print(f"[yellow][{callsign}] ⚠ 飞向航点{target_name}取消 (code={result_code})[/yellow]")
+                            runner.data['task_status'] = '任务取消'
+
+                        # 收到终止事件，退出循环
                         break
 
-                time.sleep(0.5)
+                time.sleep(0.1)
 
             if not arrived:
-                console.print(f"[yellow][{callsign}] 警告: 到达航点{target_name}超时[/yellow]")
+                console.print(f"[yellow][{callsign}] 警告: 到达航点{target_name}超时或失败[/yellow]")
+                runner.data['task_status'] = '超时'
+                break
 
             # 到达后悬停
             if runner.running:
