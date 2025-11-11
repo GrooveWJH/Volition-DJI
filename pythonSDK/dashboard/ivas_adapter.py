@@ -406,9 +406,25 @@ class IVASAdapter:
         else:
             self._add_log('info', f"接收任务: {mission_name}")
 
+        # 🔍 DEBUG: 确认 receive_task 被调用
+        self._add_log('info', f"🔍 [DEBUG] receive_task 被调用: mission={mission}, force_immediate={force_immediate}")
+
         # 存储最新任务
         with self.task_lock:
             self.latest_task = task_data
 
-        # 在后台执行任务
-        self._execute_task_in_background(task_data, force_immediate=force_immediate)
+        # 🔍 DEBUG: 准备调用执行函数
+        self._add_log('info', f"🔍 [DEBUG] 即将调用 _execute_task_in_background")
+
+        try:
+            # 在后台执行任务
+            self._execute_task_in_background(task_data, force_immediate=force_immediate)
+            self._add_log('info', f"✅ [DEBUG] _execute_task_in_background 调用完成")
+        except Exception as e:
+            # 捕获任何异常
+            self._add_log('error', f"❌ [DEBUG] _execute_task_in_background 调用异常: {e}")
+            import traceback
+            tb_lines = traceback.format_exc().split('\n')[:5]
+            for line in tb_lines:
+                if line.strip():
+                    self._add_log('error', f"  {line}")
