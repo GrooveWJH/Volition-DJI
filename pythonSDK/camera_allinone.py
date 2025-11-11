@@ -2,7 +2,7 @@
 """
 多无人机相机同步控制工具
 
-键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a正下方 q/Ctrl+C退出
+键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a AIM锁定 q/Ctrl+C退出
 """
 import sys
 import time
@@ -29,6 +29,7 @@ uav_states = {}
 stop_flag = False
 executor = ThreadPoolExecutor(max_workers=10)
 lookdown_lock = False
+aim_down_lock = False
 print_lock = threading.Lock()
 
 # ========== 工具函数 ==========
@@ -122,13 +123,29 @@ def toggle_camera_type():
         log(f"  {cs}: {type_name}")
     parallel_run("切换镜头", action)
 
-def aim_down():
-    """AIM 正下方（x:0.5, y:1.0）"""
-    def action(cs, s):
-        camera_type = s['config']['camera_type']
-        camera_aim(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0",
-                   x=0.5, y=1.0, camera_type=camera_type, locked=False)
-    parallel_run("AIM 正下方", action)
+# ========== AIM 正下方锁定 ==========
+
+def aim_down_loop():
+    """10Hz频率持续发送 AIM 正下方指令"""
+    while aim_down_lock and not stop_flag:
+        for cs, s in uav_states.items():
+            try:
+                camera_type = s['config']['camera_type']
+                camera_aim(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0",
+                          x=0.5, y=1.0, camera_type=camera_type, locked=False)
+            except:
+                pass
+        time.sleep(0.1)  # 10Hz
+
+def toggle_aim_down():
+    """切换 AIM 正下方锁定状态"""
+    global aim_down_lock
+    aim_down_lock = not aim_down_lock
+    if aim_down_lock:
+        log(">>> AIM 正下方锁定 [ON] (10Hz)")
+        threading.Thread(target=aim_down_loop, daemon=True).start()
+    else:
+        log(">>> AIM 正下方锁定 [OFF]")
 
 # ========== 低头锁定 ==========
 
@@ -188,7 +205,7 @@ def keyboard_loop():
         'x': zoom_out,
         'l': toggle_lookdown,
         'w': toggle_camera_type,
-        'a': aim_down,
+        'a': toggle_aim_down,  # ← 更新为 toggle
     }
 
     while not stop_flag:
@@ -221,7 +238,7 @@ def main():
     for (mqtt, caller, heartbeat), config in zip(connections, UAV_CONFIGS):
         uav_states[config['callsign']] = {'mqtt': mqtt, 'caller': caller, 'heartbeat': heartbeat, 'config': config}
 
-    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a正下方 q/Ctrl+C退出\n")
+    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a AIM锁定 q/Ctrl+C退出\n")
 
     try:
         # 启动状态监控
