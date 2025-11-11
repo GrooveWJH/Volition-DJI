@@ -5,6 +5,11 @@
 在配置的两个GPS航点之间循环往返飞行。
 每到达一个航点后悬停2秒，然后飞往另一个航点。
 """
+import sys
+import os
+# Add parent directory to path to allow importing djisdk
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import threading
 from rich.console import Console

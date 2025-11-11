@@ -35,7 +35,7 @@ from djisdk import request_control_auth, enter_drc_mode, start_heartbeat, stop_h
 from ivas import IVASClient
 
 # 导入共享的线程函数
-from dashboard.ivas_threads import task_poller, position_reporter
+from dashboard.ivas_threads import task_poller, position_reporter, fake_target_reporter
 
 # 导入配置（复用 dashboard 配置，避免重复）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,7 +45,8 @@ from dashboard.config import (
     UAV_CONFIGS,
     IVAS_SERVER,
     IVAS_ADVANCED,
-    IVAS_FEATURES
+    IVAS_FEATURES,
+    IVAS_FAKE_TARGET
 )
 
 console = Console()
@@ -184,37 +185,14 @@ def main():
             console.print(f"[yellow]⚠️  清理任务状态文件失败: {e}[/yellow]")
     console.print()
 
-    # 1. 创建 IVAS 客户端
+    # 1. 初始化所有无人机的 IVAS 客户端
     console.print("[bold]📡 步骤 1: 初始化 IVAS 客户端[/bold]")
 
-    # 获取第一个有效的 IVAS 配置
-    first_ivas_config = None
-    for config in UAV_CONFIGS:
-        if 'ivas' in config:
-            first_ivas_config = config['ivas']
-            break
-
-    if not first_ivas_config:
-        console.print("[red]❌ 没有找到 IVAS 配置，退出程序[/red]")
-        return
-
-    # 创建共享的 IVAS Client
-    ivas_client = IVASClient(
-        base_url=IVAS_SERVER['base_url'],
-        account=first_ivas_config['account'],
-        password=first_ivas_config['password']
-    )
-
-    # 登录
-    if not ivas_client.login():
-        console.print("[red]❌ IVAS 登录失败，退出程序[/red]")
-        return
-
-    console.print(f"[bright_green]✓ IVAS 客户端已登录 ({first_ivas_config['account']})[/bright_green]")
-    console.print()
+    # 为后续任务轮询创建一个共享的 IVAS 客户端（单点轮询）
+    shared_ivas_client = None
 
     # 2. 建立所有无人机的 DRC 连接
-    console.print("[bold]🚁 步骤 2: 初始化无人机 DRC 连接[/bold]")
+    console.print("\n[bold]🚁 步骤 2: 初始化无人机 DRC 连接[/bold]")
 
     uav_clients = []
     uav_clients_map = {}
@@ -225,6 +203,29 @@ def main():
 
         console.print(f"\n[bold bright_cyan]初始化 {callsign} (device_code={device_code})...[/bold bright_cyan]")
 
+        # 2.1. 创建独立的 IVAS 客户端
+        ivas_config = uav_config['ivas']
+        ivas_client = IVASClient(
+            base_url=IVAS_SERVER['base_url'],
+            account=ivas_config['account'],
+            password=ivas_config['password']
+        )
+
+        # 登录 IVAS
+        if not ivas_client.login():
+            console.print(f"[red]❌ {callsign} IVAS 登录失败 (账号: {ivas_config['account']})，退出程序[/red]")
+            # 清理已建立的连接
+            for uav in uav_clients:
+                cleanup_drc(uav['mqtt'], uav['heartbeat'], uav['callsign'], uav['device_code'])
+            return
+
+        console.print(f"[bright_green]✓ IVAS 客户端已登录 (账号: {ivas_config['account']})[/bright_green]")
+
+        # 保存第一个 IVAS 客户端用于任务轮询（单点轮询）
+        if shared_ivas_client is None:
+            shared_ivas_client = ivas_client
+
+        # 2.2. 建立 DRC 连接
         mqtt, caller, heartbeat = setup_drc(uav_config, MQTT_CONFIG)
 
         if not mqtt:
@@ -241,6 +242,7 @@ def main():
             'mqtt': mqtt,
             'caller': caller,
             'heartbeat': heartbeat,
+            'ivas_client': ivas_client,  # 每架无人机独立的 IVAS 客户端
             'config': uav_config,
             'flight_height': uav_config.get('flight_height', 100.0),
             'current_runner': None  # 用于任务执行
@@ -266,12 +268,12 @@ def main():
             stop_event = threading.Event()
             position_stop_events.append(stop_event)
 
-            # 启动位置上报线程
+            # 启动位置上报线程（使用各自的 IVAS 客户端）
             thread = threading.Thread(
                 target=position_reporter,
                 args=(
                     uav['mqtt'],
-                    ivas_client,
+                    uav['ivas_client'],  # ✅ 使用各自的 IVAS 客户端
                     device_code,
                     callsign,
                     1.0 / IVAS_SERVER['report_hz'],
@@ -284,18 +286,54 @@ def main():
             thread.start()
             position_threads.append(thread)
 
-            console.print(f"[bright_green]✓ {callsign} 位置上报线程已启动[/bright_green]")
+            console.print(f"[bright_green]✓ {callsign} 位置上报线程已启动 (账号: {uav['config']['ivas']['account']})[/bright_green]")
 
         console.print()
 
-    # 3. 启动任务轮询线程
+    # 2.6. 启动假目标上报线程（如果启用）
+    fake_target_threads = []
+    fake_target_stop_events = []
+
+    if IVAS_FEATURES.get('fake_target_report', False) and IVAS_FAKE_TARGET['enabled']:
+        console.print("[bold]🎯 步骤 2.6: 启动假目标上报[/bold]")
+
+        for uav in uav_clients:
+            device_code = uav['device_code']
+            callsign = uav['callsign']
+
+            # 创建停止事件
+            stop_event = threading.Event()
+            fake_target_stop_events.append(stop_event)
+
+            # 启动假目标上报线程（使用各自的 IVAS 客户端）
+            thread = threading.Thread(
+                target=fake_target_reporter,
+                args=(
+                    uav['mqtt'],
+                    uav['ivas_client'],  # ✅ 使用各自的 IVAS 客户端
+                    device_code,
+                    callsign,
+                    IVAS_FAKE_TARGET,
+                    stop_event
+                ),
+                daemon=True,
+                name=f"ivas-fake-target-{device_code}"
+            )
+            thread.start()
+            fake_target_threads.append(thread)
+
+            console.print(f"[bright_green]✓ {callsign} 假目标上报线程已启动 (账号: {uav['config']['ivas']['account']})[/bright_green]")
+
+        console.print()
+
+    # 3. 启动任务轮询线程（使用共享 IVAS 客户端进行单点轮询）
     console.print("[bold]🎯 步骤 3: 启动任务轮询[/bold]")
 
     task_stop_event = threading.Event()
     task_thread = threading.Thread(
         target=task_poller,
         args=(
-            ivas_client,
+            shared_ivas_client,  # ✅ 单点轮询，使用第一个账号
             uav_clients_map,
             1.0 / IVAS_SERVER['task_hz'],
             task_stop_event,
@@ -306,7 +344,7 @@ def main():
     )
     task_thread.start()
 
-    console.print("[bright_green]✓ 任务轮询线程已启动[/bright_green]")
+    console.print(f"[bright_green]✓ 任务轮询线程已启动 (单点轮询账号: {UAV_CONFIGS[0]['ivas']['account']})[/bright_green]")
     console.print()
 
     # 4. 运行
@@ -333,6 +371,19 @@ def main():
                 stop_event.set()
 
             for thread in position_threads:
+                thread.join(timeout=2.0)
+                if thread.is_alive():
+                    console.print(f"[yellow]⚠️  {thread.name} 未在超时时间内结束[/yellow]")
+                else:
+                    console.print(f"[bright_green]✓ {thread.name} 已停止[/bright_green]")
+
+        # 停止假目标上报线程
+        if fake_target_stop_events:
+            console.print("[bright_cyan]停止假目标上报线程...[/bright_cyan]")
+            for stop_event in fake_target_stop_events:
+                stop_event.set()
+
+            for thread in fake_target_threads:
                 thread.join(timeout=2.0)
                 if thread.is_alive():
                     console.print(f"[yellow]⚠️  {thread.name} 未在超时时间内结束[/yellow]")

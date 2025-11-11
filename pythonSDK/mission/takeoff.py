@@ -12,6 +12,11 @@
 
 支持同时控制多架无人机，使用 djisdk.mission 模块简化实现
 """
+import sys
+import os
+# Add parent directory to path to allow importing djisdk
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 from rich.console import Console
 from rich.panel import Panel

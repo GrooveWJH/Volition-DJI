@@ -12,6 +12,11 @@
 7. 用户按回车触发返航
 8. 悬停监控，直到 Ctrl+C 退出
 """
+import sys
+import os
+# Add parent directory to path to allow importing djisdk
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 from rich.console import Console
 from rich.panel import Panel
