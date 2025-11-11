@@ -7,7 +7,6 @@
 """
 import time
 import threading
-import concurrent.futures
 from rich.console import Console
 from rich.table import Table
 from rich.live import Live
@@ -357,38 +356,43 @@ def main():
         console.print(f"[bold bright_magenta][4/4] 开始循环往返飞行（{len(runners)} 架并行）...[/bold bright_magenta]")
         console.print("[bright_yellow]按 Ctrl+C 停止循环[/bright_yellow]\n")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(runners)) as executor:
-            # 初始化 runner.data
-            for runner, config in zip(runners, UAV_CONFIGS):
-                runner.data['cycle_count'] = 0
-                runner.data['current_target'] = '-'
-                runner.data['task_status'] = '准备中'
+        # 创建循环往返任务函数列表
+        repeat_missions = [
+            lambda r, cfg=config: execute_repeat_trajectory(r, cfg)
+            for config in UAV_CONFIGS
+        ]
 
-            # 提交所有飞行任务
-            futures = {
-                executor.submit(execute_repeat_trajectory, runner, config): config
-                for runner, config in zip(runners, UAV_CONFIGS)
-            }
+        # 使用 run_parallel_missions 启动（这会正确设置 runner.running）
+        runners = run_parallel_missions(
+            connections,
+            repeat_missions,
+            UAV_CONFIGS,
+            countdown=0,
+            show_monitor=False  # 我们自己管理显示
+        )
 
-            # 实时监控进度
+        # 实时监控进度
+        try:
             with Live(create_repeat_trajectory_table(runners), refresh_per_second=2, console=console) as live:
-                while not all(f.done() for f in futures):
+                while any(r.running for r in runners):
                     live.update(create_repeat_trajectory_table(runners))
                     time.sleep(0.5)
+        except KeyboardInterrupt:
+            console.print("\n[bright_yellow]收到中断信号，停止所有任务...[/bright_yellow]")
+            for runner in runners:
+                runner.running = False
+            time.sleep(1)  # 等待任务线程退出
 
-            # 检查结果
-            console.print("\n[bold bright_green]✓ 所有无人机任务结束[/bold bright_green]\n")
+        # 检查结果
+        console.print("\n[bold bright_green]✓ 所有无人机任务结束[/bold bright_green]\n")
 
-            for future, config in futures.items():
-                callsign = config.get('callsign', 'UAV')
-                try:
-                    success = future.result()
-                    if success:
-                        console.print(f"[bright_green]✓ [{callsign}] 任务完成[/bright_green]")
-                    else:
-                        console.print(f"[bright_yellow]⚠ [{callsign}] 任务失败[/bright_yellow]")
-                except Exception as e:
-                    console.print(f"[bright_red]✗ [{callsign}] 线程异常: {e}[/bright_red]")
+        for runner in runners:
+            callsign = runner.config.get('callsign', 'UAV')
+            task_status = runner.data.get('task_status', '未知')
+            if '完成' in task_status:
+                console.print(f"[bright_green]✓ [{callsign}] {task_status}[/bright_green]")
+            else:
+                console.print(f"[bright_yellow]⚠ [{callsign}] {task_status}[/bright_yellow]")
 
         # 5. 返航
         console.print("\n[bold bright_magenta]返航...[/bold bright_magenta]")
