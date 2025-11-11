@@ -261,6 +261,10 @@ class IVASClient:
         url = f"{self.base_url}/jk-ivas/third/controller/reportUserData"
         data = self._generate_position_data()
 
+        # 检查数据是否有效：如果返回 None（GPS 无效），则跳过上报
+        if data is None:
+            return  # 静默跳过，等待 GPS 恢复
+
         # 使用 params 传递 URL 参数
         resp = self._request('POST', url, params=data)
 

@@ -104,20 +104,25 @@ class IVASAdapter:
         # 初始化时记录日志
         self._add_log('info', f"[{uav_config['callsign']}] IVAS 适配器初始化")
 
-    def _get_real_position_data(self) -> Dict[str, Any]:
+    def _get_real_position_data(self) -> Optional[Dict[str, Any]]:
         """
         从真实 MQTT 获取位置数据（覆盖 IVASClient 的随机数据生成）
 
         Returns:
-            符合 IVAS 位置上报格式的数据字典
+            符合 IVAS 位置上报格式的数据字典，如果 GPS 无效则返回 None
         """
         # 从 MQTT 获取真实数据
         lat, lon, height = self.mqtt.get_position()
         heading = self.mqtt.get_attitude_head()
         h_speed, _, _, _ = self.mqtt.get_speed()
 
+        # 检查 GPS 是否有效：如果经纬度为 None，则不上报
+        if lat is None or lon is None:
+            # GPS 无效，不上报（静默处理，不打印错误）
+            return None
+
         # 第一次获取到有效GPS时，设置基准位置
-        if lat is not None and lon is not None and self.base_lat is None:
+        if self.base_lat is None:
             self.base_lat = lat
             self.base_lon = lon
             self.base_alt = height or 0.0
@@ -129,20 +134,19 @@ class IVASAdapter:
         # 构造上报数据
         position_data = {
             'deviceCode': self.device_code,
-            'userX': lat or 0.0,  # 纬度
-            'userY': lon or 0.0,  # 经度
+            'userX': lat,  # 纬度（已确保非 None）
+            'userY': lon,  # 经度（已确保非 None）
             'userZ': height or 0.0,  # 海拔高度
             'azimuth': int(heading or 0),  # 方位角 (0-359)
             'localTime': int(time.time() * 1000),  # 毫秒时间戳
             'motion': motion,  # 运动状态 (0:静止, 1:移动)
-            'validCount': 10 if lat and lon else 0,  # GPS 卫星数（模拟值）
+            'validCount': 10,  # GPS 卫星数（模拟值，有效GPS时固定为10）
             'roomId': 22,  # 任务 ID (固定传 22)
             'refPositionType': 0  # 设备类型 (固定传 0)
         }
 
         # 实时打印上报的经纬高
-        if lat is not None and lon is not None:
-            print(f"[上报] [{self.uav_config['callsign']}] 纬度:{lat:.6f} 经度:{lon:.6f} 高度:{height:.2f}m")
+        print(f"[上报] [{self.uav_config['callsign']}] 纬度:{lat:.6f} 经度:{lon:.6f} 高度:{height:.2f}m")
 
         return position_data
 

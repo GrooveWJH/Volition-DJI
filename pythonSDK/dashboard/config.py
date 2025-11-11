@@ -94,7 +94,7 @@ ENABLE_IVAS = True
 IVAS_FEATURES = {
     'position_report': False,    # 无人机位置上报（实际执行，从真实MQTT获取数据）
     'target_report': False,      # 目标检测上报（暂不启用，无数据源）
-    'task_receive': True,        # 任务接收（仅显示，不实际执行无人机控制）
+    'task_receive': True,        # 任务接收
 }
 
 # IVAS 服务器配置
