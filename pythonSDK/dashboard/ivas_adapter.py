@@ -294,14 +294,14 @@ class IVASAdapter:
         """
         # 🔍 DEBUG: 检查执行条件
         mission = task_data.get('mission', 0)
-        self._add_log('info', f"🔍 [DEBUG] 准备执行任务{mission}, caller={self.caller is not None}, heartbeat={self.heartbeat is not None}")
+        self._add_log('info', f"🔍 [DEBUG] 准备执行任务{mission}, caller={self.caller is not None}, heartbeat={self.heartbeat_thread is not None}")
 
         # 检查是否具备执行条件
         if self.caller is None:
             self._add_log('error', "❌ 任务执行器未初始化（缺少 ServiceCaller），跳过任务执行")
             return
 
-        if self.heartbeat is None:
+        if self.heartbeat_thread is None:
             self._add_log('error', "❌ 心跳线程未初始化，跳过任务执行")
             return
 
