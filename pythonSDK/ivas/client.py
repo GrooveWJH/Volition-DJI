@@ -117,8 +117,12 @@ class IVASClient:
                 self._log('error', f"循环异常: {e}")
 
             # 精确睡眠，保持频率
+            # 使用所有启用功能中最小的间隔时间
             elapsed = time.time() - loop_start
-            sleep_time = max(0, self.report_interval - elapsed)
+            active_interval = self.report_interval
+            if self.features.get('task_receive', True):
+                active_interval = min(active_interval, self.task_interval)
+            sleep_time = max(0, active_interval - elapsed)
             time.sleep(sleep_time)
 
     def stop(self):
