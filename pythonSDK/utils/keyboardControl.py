@@ -33,16 +33,16 @@ except ImportError:
 
 # ========== 配置参数 ==========
 CONFIG = {
-    'gateway_sn': '9N9CN2J0012CXY',
-    # 'mqtt_host': 'grve.me',
-    'mqtt_host': '192.168.31.73',
+    'gateway_sn': '9N9CN8400164WH',
+    'mqtt_host': 'grve.me',
+    # 'mqtt_host': '192.168.31.73',
     'mqtt_port': 1883,
     'mqtt_username': 'dji',
     'mqtt_password': 'lab605605',
     'frequency': 30.0,
     'user_id': 'keyboard_pilot',
     'user_callsign': 'Keyboard Pilot',
-    'in_drc_mode': True,
+    'in_drc_mode': False,
     'auto_confirm_auth': True,
     'osd_frequency': 100,
     'hsi_frequency': 10,
