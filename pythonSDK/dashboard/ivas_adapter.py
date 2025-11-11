@@ -331,6 +331,9 @@ class IVASAdapter:
             def task_wrapper():
                 """任务包装器：执行完成后清理 runner 引用"""
                 try:
+                    # 🔍 DEBUG: 线程内部开始执行
+                    self._add_log('info', f"🔍 [DEBUG] 线程内部开始调用 execute_ivas_task")
+
                     execute_ivas_task(
                         task_data,
                         self.mqtt,
@@ -339,6 +342,19 @@ class IVASAdapter:
                         self.heartbeat_thread,
                         runner=self.current_runner  # 传递 runner 以支持任务中断
                     )
+
+                    # 🔍 DEBUG: 任务执行完成
+                    self._add_log('info', f"✅ [DEBUG] execute_ivas_task 返回成功")
+
+                except Exception as e:
+                    # 捕获异常并记录到 IVAS 日志
+                    self._add_log('error', f"❌ [DEBUG] 任务执行异常: {e}")
+                    import traceback
+                    # 记录异常堆栈的前3行
+                    tb_lines = traceback.format_exc().split('\n')[:5]
+                    for line in tb_lines:
+                        if line.strip():
+                            self._add_log('error', f"  {line}")
                 finally:
                     self.current_runner = None  # 任务完成，清理引用
 
