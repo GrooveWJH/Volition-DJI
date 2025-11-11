@@ -173,6 +173,11 @@ def task_poller(
             result = ivas_client.poll_task()
 
             if result:
+                # 打印任务分隔符
+                print("\n" + "="*60)
+                print(f"[任务] 🎯 接收到新任务 (时间: {time.strftime('%H:%M:%S')})")
+                print("="*60)
+
                 task_data = result['data']
                 target_id = task_data.get('id', 0)
                 mission = task_data.get('mission', 0)
@@ -188,6 +193,9 @@ def task_poller(
                     _execute_task(uav, task_data)
                 else:
                     print(f"[任务] ⚠️ 未知任务 ID: {target_id} (mission={mission})")
+
+                # 任务处理完成后打印分隔符
+                print("="*60 + "\n")
 
             next_tick += interval
 
@@ -281,6 +289,8 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
         uav_client['heartbeat'],
         runner_config
     )
+
+    runner.running = True  # 设置为运行状态，供任务执行和中断检查
 
     uav_client['current_runner'] = runner  # 保存引用（用于中断）
 
