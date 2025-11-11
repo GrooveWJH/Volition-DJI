@@ -63,6 +63,8 @@ class MQTTClient:
         self._osd_timestamps = []  # 2秒窗口内的所有 OSD 消息时间戳
         self._last_osd_time = 0.0  # 最后一次 OSD 消息时间（用于离线检测）
         self._freq_window = 2.0  # 频率计算窗口大小（秒）
+        # DEBUG 开关（默认关闭，减少日志污染）
+        self.enable_service_debug = False  # 启用后打印服务响应的完整 JSON
 
     def connect(self):
         """建立 MQTT 连接"""
@@ -518,6 +520,16 @@ class MQTTClient:
             tid = payload.get('tid')
             if not tid:
                 return
+
+            # 🔍 DEBUG: 打印完整的服务响应（仅在启用时）
+            if self.enable_service_debug:
+                method = payload.get('method', 'unknown')
+                console.print(f"[bright_yellow]📦 MQTT 服务响应 DEBUG[/bright_yellow]")
+                console.print(f"  [cyan]Topic:[/cyan] {msg.topic}")
+                console.print(f"  [cyan]TID:[/cyan] {tid[:8]}...")
+                console.print(f"  [cyan]Method:[/cyan] {method}")
+                console.print(f"  [cyan]完整 Payload:[/cyan]")
+                console.print(f"{json.dumps(payload, indent=2, ensure_ascii=False)}")
 
             with self.lock:
                 future = self.pending_requests.pop(tid, None)

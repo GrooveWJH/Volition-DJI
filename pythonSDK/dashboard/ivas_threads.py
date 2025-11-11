@@ -25,7 +25,8 @@ def position_reporter(
     callsign: str,
     interval: float,
     stop_event: threading.Event,
-    require_gps: bool = True
+    require_gps: bool = True,
+    print_duration: float = 5.0
 ):
     """
     位置上报线程（纯函数）
@@ -40,10 +41,10 @@ def position_reporter(
         interval: 上报间隔（秒，推荐 1.0 即 1Hz）
         stop_event: 停止事件（用于优雅退出）
         require_gps: 是否要求GPS有效才上报（False则无GPS时lat/lon设为0）
+        print_duration: 打印日志的时长（秒，前N秒打印，之后静默）
     """
     next_tick = time.perf_counter()
     start_time = time.perf_counter()
-    print_duration = 5.0  # 前5秒打印日志
 
     while not stop_event.is_set():
         current = time.perf_counter()
@@ -332,7 +333,10 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
                 runner=runner                       # 可选参数：runner
             )
         except Exception as e:
+            # 任务失败时启用 MQTT DEBUG 输出（用于诊断后续错误）
             print(f"[任务] ❌ 执行异常: {e}")
+            print(f"[DEBUG] 已自动启用 MQTT 服务响应调试 - 后续任务将打印详细 JSON")
+            uav_client['mqtt'].enable_service_debug = True
         finally:
             uav_client['current_runner'] = None
 

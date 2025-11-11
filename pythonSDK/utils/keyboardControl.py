@@ -42,7 +42,7 @@ CONFIG = {
     'frequency': 30.0,
     'user_id': 'keyboard_pilot',
     'user_callsign': 'Keyboard Pilot',
-    'in_drc_mode': False,
+    'in_drc_mode': True,
     'auto_confirm_auth': True,
     'osd_frequency': 100,
     'hsi_frequency': 10,
