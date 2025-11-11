@@ -327,7 +327,8 @@ class PureTaskDistributor:
         )
 
         # 覆盖任务处理方法
-        self.ivas_client._log = self._handle_ivas_log
+        # 直接替换为我们的处理函数（不需要绑定到 ivas_client）
+        self.ivas_client._log = lambda log_type, data: self._handle_ivas_log(log_type, data)
 
         console.print("[bold bright_cyan]📡 TaskDistributor 初始化完成[/bold bright_cyan]")
 
