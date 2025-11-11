@@ -54,7 +54,8 @@ def _call_service(
             console.print(f"  [yellow]错误信息:[/yellow] {error_msg}")
             console.print(f"  [dim]完整响应: {result}[/dim]")
 
-            raise Exception(f"{method} 失败 (code={error_code}): {error_msg}")
+            # 增强异常消息，包含完整响应以便调试
+            raise Exception(f"{method} 失败 (code={error_code}): {error_msg} | 完整响应: {result}")
 
     except Exception as e:
         console.print(f"[red]✗ {method}: {e}[/red]")

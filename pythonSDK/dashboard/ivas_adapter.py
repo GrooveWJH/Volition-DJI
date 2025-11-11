@@ -23,6 +23,7 @@ from typing import Dict, Any, Optional, List
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ivas'))
 
 from ivas import IVASClient
+from .ivas_debug import debug_manager
 
 
 class IVASAdapter:
@@ -228,6 +229,15 @@ class IVASAdapter:
             if len(self.log_queue) > self.max_logs:
                 self.log_queue.pop(0)
 
+        # 如果是 DEBUG 消息，同时发送到全局 DEBUG 管理器（用于面板显示）
+        if '[DEBUG]' in message or '🔍' in message or '✅' in message or '❌' in message:
+            debug_manager.add_message(
+                device_code=self.device_code,
+                callsign=self.uav_config.get('callsign', '未知'),
+                message=message,
+                msg_type=msg_type
+            )
+
     def get_recent_logs(self, n: int = 5) -> List[Dict[str, Any]]:
         """
         获取最近 N 条日志
@@ -270,21 +280,28 @@ class IVASAdapter:
         self.ivas_client.stop()
         self._add_log('info', "IVAS Client 已停止")
 
-    def _execute_task_in_background(self, task_data: Dict[str, Any], force_immediate: bool = False):
+    def _execute_task_in_background(self, task_data: Dict[str, Any]):
         """
-        在后台线程执行 IVAS 任务（新任务会中断旧任务）
+        在后台线程执行 IVAS 任务（新任务强制中断旧任务）
 
         策略：
         - 如果有旧任务正在执行，立即停止它
-        - 然后在后台线程执行新任务
+        - 立即启动新任务（等待时间极短，0.1秒超时）
 
         Args:
             task_data: IVAS 任务数据
-            force_immediate: 是否立即执行（True=不等待旧任务，立即启动新任务）
         """
+        # 🔍 DEBUG: 检查执行条件
+        mission = task_data.get('mission', 0)
+        self._add_log('info', f"🔍 [DEBUG] 准备执行任务{mission}, caller={self.caller is not None}, heartbeat={self.heartbeat_thread is not None}")
+
         # 检查是否具备执行条件
         if self.caller is None:
-            self._add_log('warning', "任务执行器未初始化（缺少 ServiceCaller），跳过任务执行")
+            self._add_log('error', "❌ 任务执行器未初始化（缺少 ServiceCaller），跳过任务执行")
+            return
+
+        if self.heartbeat_thread is None:
+            self._add_log('error', "❌ 心跳线程未初始化，跳过任务执行")
             return
 
         # 停止旧任务（如果存在）
@@ -292,18 +309,11 @@ class IVASAdapter:
             self._add_log('info', "停止旧任务，准备执行新任务")
             self.current_runner.stop()  # 设置 running=False 并等待线程结束
 
-        # 等待旧线程结束
+        # 等待旧线程结束（所有任务都是强制立即执行，仅等待0.1秒）
         if self.task_executor_thread and self.task_executor_thread.is_alive():
-            if force_immediate:
-                # 立即执行模式：仅等待0.1秒，快速中断后立即启动
-                self.task_executor_thread.join(timeout=0.1)
-                if self.task_executor_thread.is_alive():
-                    self._add_log('warning', "旧任务未完全停止，立即启动新任务（force_immediate模式）")
-            else:
-                # 普通模式：等待最多2秒
-                self.task_executor_thread.join(timeout=2.0)
-                if self.task_executor_thread.is_alive():
-                    self._add_log('warning', "旧任务线程未能及时停止，强制启动新任务")
+            self.task_executor_thread.join(timeout=0.1)
+            if self.task_executor_thread.is_alive():
+                self._add_log('warning', "旧任务未完全停止，立即启动新任务（强制模式）")
 
         # 在后台线程执行新任务
         try:
@@ -323,6 +333,9 @@ class IVASAdapter:
             def task_wrapper():
                 """任务包装器：执行完成后清理 runner 引用"""
                 try:
+                    # 🔍 DEBUG: 线程内部开始执行
+                    self._add_log('info', f"🔍 [DEBUG] 线程内部开始调用 execute_ivas_task")
+
                     execute_ivas_task(
                         task_data,
                         self.mqtt,
@@ -331,6 +344,19 @@ class IVASAdapter:
                         self.heartbeat_thread,
                         runner=self.current_runner  # 传递 runner 以支持任务中断
                     )
+
+                    # 🔍 DEBUG: 任务执行完成
+                    self._add_log('info', f"✅ [DEBUG] execute_ivas_task 返回成功")
+
+                except Exception as e:
+                    # 捕获异常并记录到 IVAS 日志
+                    self._add_log('error', f"❌ [DEBUG] 任务执行异常: {e}")
+                    import traceback
+                    # 记录异常堆栈的前3行
+                    tb_lines = traceback.format_exc().split('\n')[:5]
+                    for line in tb_lines:
+                        if line.strip():
+                            self._add_log('error', f"  {line}")
                 finally:
                     self.current_runner = None  # 任务完成，清理引用
 
@@ -340,20 +366,25 @@ class IVASAdapter:
             )
             self.task_executor_thread.start()
 
+            # 🔍 DEBUG: 确认线程已启动
+            self._add_log('info', f"✅ [DEBUG] 任务线程已启动, thread_id={self.task_executor_thread.ident}")
+
         except Exception as e:
-            self._add_log('error', f"任务执行失败: {e}")
+            self._add_log('error', f"❌ 任务执行失败: {e}")
+            import traceback
+            self._add_log('error', f"❌ 堆栈: {traceback.format_exc()}")
             self.current_runner = None
 
-    def receive_task(self, task_data: Dict[str, Any], force_immediate: bool = False):
+    def receive_task(self, task_data: Dict[str, Any]):
         """
         接收来自 TaskDistributor 的任务（统一接口）
 
         此方法由 TaskDistributor 调用，用于接收分发的任务并执行。
         支持单播任务（id=1/2/3）和广播任务（id=99）。
+        所有任务都是强制立即执行（立即中断旧任务）。
 
         Args:
             task_data: IVAS 任务数据
-            force_immediate: 是否立即执行（True=立即中断旧任务，用于广播任务）
         """
         mission = task_data.get('mission', 0)
         mission_names = {1: "起飞", 2: "降落", 3: "返航", 4: "前往指定点",
@@ -367,9 +398,25 @@ class IVASAdapter:
         else:
             self._add_log('info', f"接收任务: {mission_name}")
 
+        # 🔍 DEBUG: 确认 receive_task 被调用
+        self._add_log('info', f"🔍 [DEBUG] receive_task 被调用: mission={mission}, target_id={target_id}")
+
         # 存储最新任务
         with self.task_lock:
             self.latest_task = task_data
 
-        # 在后台执行任务
-        self._execute_task_in_background(task_data, force_immediate=force_immediate)
+        # 🔍 DEBUG: 准备调用执行函数
+        self._add_log('info', f"🔍 [DEBUG] 即将调用 _execute_task_in_background")
+
+        try:
+            # 在后台执行任务（强制立即执行）
+            self._execute_task_in_background(task_data)
+            self._add_log('info', f"✅ [DEBUG] _execute_task_in_background 调用完成")
+        except Exception as e:
+            # 捕获任何异常
+            self._add_log('error', f"❌ [DEBUG] _execute_task_in_background 调用异常: {e}")
+            import traceback
+            tb_lines = traceback.format_exc().split('\n')[:5]
+            for line in tb_lines:
+                if line.strip():
+                    self._add_log('error', f"  {line}")

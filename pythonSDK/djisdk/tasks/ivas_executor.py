@@ -51,6 +51,9 @@ def execute_ivas_task(
     target_id = task_data.get('id')
     callsign = uav_config.get('callsign', '未知')
 
+    # 🔍 DEBUG: 确认进入执行器
+    console.print(f"[bold magenta]🔍 [DEBUG] [{callsign}] execute_ivas_task 被调用: mission={mission}, id={target_id}, caller={caller is not None}, heartbeat={heartbeat_thread is not None}[/bold magenta]")
+
     console.print(f"[bold cyan][{callsign}] 执行 IVAS 任务 {mission}[/bold cyan]")
 
     try:
@@ -83,6 +86,9 @@ def _task_takeoff(mqtt, caller, heartbeat, uav_config: Dict[str, Any], runner=No
     # 从配置读取起飞高度，默认 20.0 米
     target_height = uav_config.get('flight_height', 20.0)
     callsign = uav_config.get('callsign', '未知')
+
+    # 🔍 DEBUG: 确认进入起飞函数
+    console.print(f"[bold magenta]🔍 [DEBUG] [{callsign}] _task_takeoff 被调用: target_height={target_height}, runner={runner is not None}, runner.running={runner.running if runner else 'N/A'}[/bold magenta]")
 
     console.print(f"[cyan][{callsign}] 开始起飞到预设高度 {target_height}m...[/cyan]")
 

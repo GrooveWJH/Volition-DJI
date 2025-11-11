@@ -108,7 +108,7 @@ class UAVState:
         ivas_logs = []
         if ivas_adapter:
             try:
-                ivas_logs = ivas_adapter.get_recent_logs(5)
+                ivas_logs = ivas_adapter.get_recent_logs(10)
             except Exception:
                 pass  # 静默失败
 

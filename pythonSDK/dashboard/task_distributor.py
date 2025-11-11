@@ -213,8 +213,8 @@ class TaskDistributor:
         success_count = 0
         for device_code, adapter in self.adapters.items():
             try:
-                # 调用adapter的接收方法（force_immediate=True立即中断旧任务）
-                adapter.receive_task(task_data, force_immediate=True)
+                # 调用adapter的接收方法（所有任务强制立即执行）
+                adapter.receive_task(task_data)
                 success_count += 1
                 console.print(
                     f"[green]  ✓ 设备 {device_code} 已接收任务[/green]"
