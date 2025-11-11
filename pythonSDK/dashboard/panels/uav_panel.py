@@ -324,7 +324,7 @@ def _create_ivas_panel(logs: list) -> Panel:
     """
     创建 IVAS 日志面板（独立显示在主表格下方）
 
-    显示最近 5 条 IVAS 日志，带时间戳和颜色分类。
+    显示最近 10 条 IVAS 日志，带时间戳和颜色分类。
 
     Args:
         logs: IVAS 日志列表
