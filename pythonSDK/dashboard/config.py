@@ -32,30 +32,30 @@ UAV_CONFIGS = [
             'password': '000000'
         }
     },
-    # {
-    #     'sn': '9N9CN8400164WH',
-    #     'user_id': 'pilot_2',
-    #     'callsign': 'Pilot 2',
-    #     'vrpn_device': 'Drone002@192.168.31.100',
-    #     'flight_height': 100.0,  # 起飞和航点飞行高度（米）
-    #     'ivas': {
-    #         'device_code': 2,
-    #         'account': 'ZSDX002',
-    #         'password': '000000'
-    #     }
-    # },
-    # {
-    #     'sn': '9N9CN180011TJN',
-    #     'user_id': 'pilot_3',
-    #     'callsign': 'Pilot 3',
-    #     'vrpn_device': 'Drone003@192.168.31.100',
-    #     'flight_height': 110.0,  # 起飞和航点飞行高度（米）
-    #     'ivas': {
-    #         'device_code': 3,
-    #         'account': 'ZSDX003',
-    #         'password': '000000'
-    #     }
-    # },
+    {
+        'sn': '9N9CN8400164WH',
+        'user_id': 'pilot_2',
+        'callsign': 'Pilot 2',
+        'vrpn_device': 'Drone002@192.168.31.100',
+        'flight_height': 100.0,  # 起飞和航点飞行高度（米）
+        'ivas': {
+            'device_code': 2,
+            'account': 'ZSDX002',
+            'password': '000000'
+        }
+    },
+    {
+        'sn': '9N9CN180011TJN',
+        'user_id': 'pilot_3',
+        'callsign': 'Pilot 3',
+        'vrpn_device': 'Drone003@192.168.31.100',
+        'flight_height': 110.0,  # 起飞和航点飞行高度（米）
+        'ivas': {
+            'device_code': 3,
+            'account': 'ZSDX003',
+            'password': '000000'
+        }
+    },
 ]
 
 # ========== DRC 连接配置 ==========
