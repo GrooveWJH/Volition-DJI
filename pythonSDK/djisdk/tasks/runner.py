@@ -120,7 +120,7 @@ def create_status_table(runners: List[MissionRunner]) -> Table:
 
 def run_parallel_missions(
     connections: List[Tuple[MQTTClient, ServiceCaller, threading.Thread]],
-    mission_func: Callable[[MissionRunner], None],
+    mission_func: Callable[[MissionRunner], None] | List[Callable[[MissionRunner], None]],
     uav_configs: List[Dict[str, Any]],
     countdown: int = 3,
     show_monitor: bool = True
@@ -130,7 +130,9 @@ def run_parallel_missions(
 
     Args:
         connections: 连接列表（来自 setup_multiple_drc_connections）
-        mission_func: 任务函数，接收 MissionRunner 作为参数
+        mission_func: 任务函数或任务函数列表
+                     - 如果是单个函数，所有无人机执行相同任务
+                     - 如果是列表，每个无人机执行对应的任务
         uav_configs: 无人机配置列表
         countdown: 启动倒计时（秒）
         show_monitor: 是否显示实时监控表格（默认 True）
@@ -139,13 +141,17 @@ def run_parallel_missions(
         任务执行器列表
 
     Example:
+        >>> # 方式1: 所有无人机执行相同任务
         >>> def my_mission(runner):
         >>>     runner.status = "执行中"
         >>>     # ... 任务逻辑 ...
         >>>     runner.status = "完成"
         >>>
-        >>> connections = setup_multiple_drc_connections(...)
         >>> runners = run_parallel_missions(connections, my_mission, uav_configs)
+        >>>
+        >>> # 方式2: 每个无人机执行不同任务
+        >>> missions = [create_takeoff_mission(h) for h in [90, 100, 110]]
+        >>> runners = run_parallel_missions(connections, missions, uav_configs)
     """
     # 创建任务执行器
     runners: List[MissionRunner] = []
@@ -163,8 +169,14 @@ def run_parallel_missions(
         console.print("[bold green]▶ 任务开始！[/bold green]\n")
 
     # 启动所有任务
-    for runner in runners:
-        runner.run(mission_func)
+    if isinstance(mission_func, list):
+        # 任务函数列表：每个无人机执行对应任务
+        for runner, func in zip(runners, mission_func):
+            runner.run(func)
+    else:
+        # 单一任务函数：所有无人机执行相同任务
+        for runner in runners:
+            runner.run(mission_func)
 
     # 实时监控（可选）
     if show_monitor:
