@@ -233,3 +233,88 @@ def camera_look_at(
     except Exception as e:
         console.print(f"[red]✗ Look At 控制发送失败: {e}[/red]")
         raise
+
+
+def camera_aim(
+    mqtt_client: MQTTClient,
+    payload_index: str,
+    x: float,
+    y: float,
+    camera_type: str = "zoom",
+    locked: bool = False,
+    seq: int | None = None
+) -> None:
+    """
+    发送相机 AIM 指令（双击镜头目标点，使其成为视野中心，Fire-and-forget）
+
+    在相机镜头的视野范围内，双击镜头中的目标点，该目标点将成为镜头视野的中心。
+
+    Args:
+        mqtt_client: MQTT 客户端
+        payload_index: 相机枚举值（格式: {type-subtype-gimbalindex}，如 "89-0-0"）
+        x: 目标坐标 x（0-1，以镜头左上角为坐标中心点，水平方向为 x）
+        y: 目标坐标 y（0-1，以镜头左上角为坐标中心点，竖直方向为 y）
+        camera_type: 相机类型（"ir"=红外, "wide"=广角, "zoom"=变焦，默认 "zoom"）
+        locked: 机头和云台的相对关系是否锁定
+                False: 仅云台转，机身不转
+                True: 锁定机头，云台和机身一起转
+        seq: 序列号（None 则自动生成时间戳）
+
+    注意:
+        - 无返回值（Fire-and-forget）
+        - x, y 取值范围 0-1
+        - (0.5, 0.5) 表示视野中心
+        - (0.5, 1.0) 表示视野底部中心（云台往下）
+
+    示例:
+        >>> # AIM 到视野中心（无效果，已经在中心）
+        >>> camera_aim(mqtt, payload_index="89-0-0", x=0.5, y=0.5)
+        >>>
+        >>> # AIM 到正下方（云台往下）
+        >>> camera_aim(mqtt, payload_index="89-0-0", x=0.5, y=1.0, camera_type="zoom")
+        >>>
+        >>> # AIM 到视野右下角
+        >>> camera_aim(mqtt, payload_index="89-0-0", x=0.8, y=0.8)
+    """
+    # 参数校验
+    if not 0 <= x <= 1:
+        console.print(f"[red]✗ x 坐标超出范围: {x} (应在 0-1)[/red]")
+        raise ValueError(f"x must be in range [0, 1], got {x}")
+
+    if not 0 <= y <= 1:
+        console.print(f"[red]✗ y 坐标超出范围: {y} (应在 0-1)[/red]")
+        raise ValueError(f"y must be in range [0, 1], got {y}")
+
+    if camera_type not in ["ir", "wide", "zoom"]:
+        console.print(f"[red]✗ 无效的相机类型: {camera_type} (应为 'ir', 'wide', 或 'zoom')[/red]")
+        raise ValueError(f"camera_type must be one of ['ir', 'wide', 'zoom'], got {camera_type}")
+
+    # 生成 seq
+    if seq is None:
+        seq = int(time.time() * 1000)
+
+    # 构建消息
+    topic = f"thing/product/{mqtt_client.gateway_sn}/drc/down"
+    payload = {
+        "seq": seq,
+        "method": "drc_camera_aim",
+        "data": {
+            "payload_index": payload_index,
+            "camera_type": camera_type,
+            "locked": locked,
+            "x": x,
+            "y": y
+        }
+    }
+
+    # 发送（QoS 0，无响应）
+    try:
+        mqtt_client.client.publish(topic, json.dumps(payload), qos=0)
+        console.print(
+            f"[cyan]→[/cyan] AIM 指令已发送: "
+            f"x={x:.2f}, y={y:.2f}, camera={camera_type} "
+            f"(locked={locked}, payload: {payload_index})"
+        )
+    except Exception as e:
+        console.print(f"[red]✗ AIM 控制发送失败: {e}[/red]")
+        raise

@@ -7,7 +7,6 @@
 """
 import time
 import threading
-import concurrent.futures
 from rich.console import Console
 from rich.table import Table
 from rich.live import Live
@@ -73,7 +72,7 @@ MQTT_CONFIG = {
 
 # 起飞参数（所有无人机共用）
 TAKEOFF_TOLERANCE = 0.5  # 高度容差（米）
-TAKEOFF_THROTTLE = 500  # 油门偏移量
+TAKEOFF_THROTTLE = 660  # 油门偏移量
 
 # 循环控制
 MAX_CYCLES = None  # 最大循环次数（None = 无限循环，直到 Ctrl+C）
@@ -172,7 +171,7 @@ def execute_repeat_trajectory(runner, config):
             console.print(f"[dim][{callsign}] → 航点{target_name} (GPS: {target_lat:.6f}, {target_lon:.6f})[/dim]")
 
             try:
-                fly_to_point(
+                fly_to_id = fly_to_point(
                     runner.caller,
                     latitude=target_lat,
                     longitude=target_lon,
@@ -184,28 +183,43 @@ def execute_repeat_trajectory(runner, config):
                 runner.data['task_status'] = '飞点失败'
                 break
 
-            # 等待到达（检查距离或 flyto 进度）
-            timeout = 60  # 最多等待60秒
+            # 等待 flyto 事件完成（参考 fly_trajectory_sequence 的实现）
+            timeout = 120  # 最多等待 120 秒
             start_time = time.time()
             arrived = False
+            terminal_statuses = {'wayline_ok', 'wayline_failed', 'wayline_cancel'}
 
             while runner.running and (time.time() - start_time) < timeout:
-                # 检查是否到达
-                current_lat, current_lon, _ = mqtt.get_position()
-                if current_lat and current_lon:
-                    # 简单距离检查（度数差异）
-                    lat_diff = abs(current_lat - target_lat)
-                    lon_diff = abs(current_lon - target_lon)
+                # 读取最新飞行进度
+                progress = mqtt.get_flyto_progress()
+                event_fly_to_id = progress.get('fly_to_id')
+                status = progress.get('status')
 
-                    # 容差约1米（约 0.00001 度）
-                    if lat_diff < 0.00001 and lon_diff < 0.00001:
-                        arrived = True
+                # ✅ 关键检查：fly_to_id 必须匹配（防止读取旧航点数据）
+                if event_fly_to_id == fly_to_id:
+                    # 收到当前航点的事件
+                    if status in terminal_statuses:
+                        result_code = progress.get('result')
+
+                        if status == 'wayline_ok':
+                            arrived = True
+                            console.print(f"[green][{callsign}] ✓ 到达航点{target_name}[/green]")
+                        elif status == 'wayline_failed':
+                            console.print(f"[red][{callsign}] ✗ 飞向航点{target_name}失败 (code={result_code})[/red]")
+                            runner.data['task_status'] = '飞点失败'
+                        elif status == 'wayline_cancel':
+                            console.print(f"[yellow][{callsign}] ⚠ 飞向航点{target_name}取消 (code={result_code})[/yellow]")
+                            runner.data['task_status'] = '任务取消'
+
+                        # 收到终止事件，退出循环
                         break
 
-                time.sleep(0.5)
+                time.sleep(0.1)
 
             if not arrived:
-                console.print(f"[yellow][{callsign}] 警告: 到达航点{target_name}超时[/yellow]")
+                console.print(f"[yellow][{callsign}] 警告: 到达航点{target_name}超时或失败[/yellow]")
+                runner.data['task_status'] = '超时'
+                break
 
             # 到达后悬停
             if runner.running:
@@ -357,38 +371,43 @@ def main():
         console.print(f"[bold bright_magenta][4/4] 开始循环往返飞行（{len(runners)} 架并行）...[/bold bright_magenta]")
         console.print("[bright_yellow]按 Ctrl+C 停止循环[/bright_yellow]\n")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(runners)) as executor:
-            # 初始化 runner.data
-            for runner, config in zip(runners, UAV_CONFIGS):
-                runner.data['cycle_count'] = 0
-                runner.data['current_target'] = '-'
-                runner.data['task_status'] = '准备中'
+        # 创建循环往返任务函数列表
+        repeat_missions = [
+            lambda r, cfg=config: execute_repeat_trajectory(r, cfg)
+            for config in UAV_CONFIGS
+        ]
 
-            # 提交所有飞行任务
-            futures = {
-                executor.submit(execute_repeat_trajectory, runner, config): config
-                for runner, config in zip(runners, UAV_CONFIGS)
-            }
+        # 使用 run_parallel_missions 启动（这会正确设置 runner.running）
+        runners = run_parallel_missions(
+            connections,
+            repeat_missions,
+            UAV_CONFIGS,
+            countdown=0,
+            show_monitor=False  # 我们自己管理显示
+        )
 
-            # 实时监控进度
+        # 实时监控进度
+        try:
             with Live(create_repeat_trajectory_table(runners), refresh_per_second=2, console=console) as live:
-                while not all(f.done() for f in futures):
+                while any(r.running for r in runners):
                     live.update(create_repeat_trajectory_table(runners))
                     time.sleep(0.5)
+        except KeyboardInterrupt:
+            console.print("\n[bright_yellow]收到中断信号，停止所有任务...[/bright_yellow]")
+            for runner in runners:
+                runner.running = False
+            time.sleep(1)  # 等待任务线程退出
 
-            # 检查结果
-            console.print("\n[bold bright_green]✓ 所有无人机任务结束[/bold bright_green]\n")
+        # 检查结果
+        console.print("\n[bold bright_green]✓ 所有无人机任务结束[/bold bright_green]\n")
 
-            for future, config in futures.items():
-                callsign = config.get('callsign', 'UAV')
-                try:
-                    success = future.result()
-                    if success:
-                        console.print(f"[bright_green]✓ [{callsign}] 任务完成[/bright_green]")
-                    else:
-                        console.print(f"[bright_yellow]⚠ [{callsign}] 任务失败[/bright_yellow]")
-                except Exception as e:
-                    console.print(f"[bright_red]✗ [{callsign}] 线程异常: {e}[/bright_red]")
+        for runner in runners:
+            callsign = runner.config.get('callsign', 'UAV')
+            task_status = runner.data.get('task_status', '未知')
+            if '完成' in task_status:
+                console.print(f"[bright_green]✓ [{callsign}] {task_status}[/bright_green]")
+            else:
+                console.print(f"[bright_yellow]⚠ [{callsign}] {task_status}[/bright_yellow]")
 
         # 5. 返航
         console.print("\n[bold bright_magenta]返航...[/bold bright_magenta]")

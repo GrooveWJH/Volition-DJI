@@ -2,7 +2,7 @@
 """
 多无人机相机同步控制工具
 
-键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q/Ctrl+C退出
+键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a AIM锁定 q/Ctrl+C退出
 """
 import sys
 import time
@@ -11,16 +11,16 @@ import termios
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from djisdk import setup_multiple_drc_connections, stop_heartbeat, reset_gimbal, camera_look_at, set_camera_zoom
+from djisdk import setup_multiple_drc_connections, stop_heartbeat, reset_gimbal, camera_look_at, set_camera_zoom, camera_aim, change_live_lens
 
 # ========== 配置 ==========
 
 MQTT_CONFIG = {'host': 'grve.me', 'port': 1883, 'username': 'dji', 'password': 'lab605605'}
 
 UAV_CONFIGS = [
-    {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'zoom': {'current': 7, 'step': 1, 'min': 1, 'max': 112}},
-    {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
-    {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
+    {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'camera_type': 'zoom', 'zoom': {'current': 7, 'step': 1, 'min': 1, 'max': 112}},
+    # {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'camera_type': 'zoom', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
+    # {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'camera_type': 'zoom', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
 ]
 
 # ========== 全局状态 ==========
@@ -29,6 +29,7 @@ uav_states = {}
 stop_flag = False
 executor = ThreadPoolExecutor(max_workers=10)
 lookdown_lock = False
+aim_down_lock = False
 print_lock = threading.Lock()
 
 # ========== 工具函数 ==========
@@ -79,6 +80,10 @@ def lookat_ground():
 
 def zoom_in():
     def action(cs, s):
+        # 只在变焦模式下有效
+        if s['config']['camera_type'] != 'zoom':
+            log(f"  - {cs}: 广角模式不支持变焦")
+            return
         z = s['config']['zoom']
         z['current'] = min(z['current'] + z['step'], z['max'])
         set_camera_zoom(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0", z['current'], "zoom")
@@ -87,11 +92,60 @@ def zoom_in():
 
 def zoom_out():
     def action(cs, s):
+        # 只在变焦模式下有效
+        if s['config']['camera_type'] != 'zoom':
+            log(f"  - {cs}: 广角模式不支持变焦")
+            return
         z = s['config']['zoom']
         z['current'] = max(z['current'] - z['step'], z['min'])
         set_camera_zoom(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0", z['current'], "zoom")
         log(f"  {cs}: {z['current']}x")
     parallel_run("缩小", action)
+
+def toggle_camera_type():
+    """切换相机类型（变焦 ↔ 广角）- 照搬 live.py 方案"""
+    def action(cs, s):
+        current_type = s['config']['camera_type']
+        new_type = 'wide' if current_type == 'zoom' else 'zoom'
+        type_name = '广角' if new_type == 'wide' else '变焦'
+
+        # 构建 video_id（格式：sn/payload_index/video_index）
+        sn = s['mqtt'].gateway_sn
+        payload_index = s['mqtt'].get_payload_index() or "88-0-0"
+        video_index = "normal-0"  # 默认视频流索引
+        video_id = f"{sn}/{payload_index}/{video_index}"
+
+        # 调用 change_live_lens 服务（参考 live.py:300）
+        change_live_lens(s['caller'], video_id, new_type)
+
+        # 更新本地状态
+        s['config']['camera_type'] = new_type
+        log(f"  {cs}: {type_name}")
+    parallel_run("切换镜头", action)
+
+# ========== AIM 正下方锁定 ==========
+
+def aim_down_loop():
+    """10Hz频率持续发送 AIM 正下方指令"""
+    while aim_down_lock and not stop_flag:
+        for cs, s in uav_states.items():
+            try:
+                camera_type = s['config']['camera_type']
+                camera_aim(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0",
+                          x=0.5, y=1.0, camera_type=camera_type, locked=False)
+            except:
+                pass
+        time.sleep(0.1)  # 10Hz
+
+def toggle_aim_down():
+    """切换 AIM 正下方锁定状态"""
+    global aim_down_lock
+    aim_down_lock = not aim_down_lock
+    if aim_down_lock:
+        log(">>> AIM 正下方锁定 [ON] (10Hz)")
+        threading.Thread(target=aim_down_loop, daemon=True).start()
+    else:
+        log(">>> AIM 正下方锁定 [OFF]")
 
 # ========== 低头锁定 ==========
 
@@ -150,6 +204,8 @@ def keyboard_loop():
         'z': zoom_in,
         'x': zoom_out,
         'l': toggle_lookdown,
+        'w': toggle_camera_type,
+        'a': toggle_aim_down,  # ← 更新为 toggle
     }
 
     while not stop_flag:
@@ -182,7 +238,7 @@ def main():
     for (mqtt, caller, heartbeat), config in zip(connections, UAV_CONFIGS):
         uav_states[config['callsign']] = {'mqtt': mqtt, 'caller': caller, 'heartbeat': heartbeat, 'config': config}
 
-    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q/Ctrl+C退出\n")
+    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a AIM锁定 q/Ctrl+C退出\n")
 
     try:
         # 启动状态监控
