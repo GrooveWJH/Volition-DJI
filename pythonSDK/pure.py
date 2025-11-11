@@ -37,57 +37,20 @@ from ivas import IVASClient
 # 导入共享的线程函数
 from dashboard.ivas_threads import task_poller, position_reporter
 
-# 导入配置（同时导入 control 和 dashboard 配置）
+# 导入配置（复用 dashboard 配置，避免重复）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import control.config as ctrl_cfg
-from dashboard.config import IVAS_SERVER, IVAS_ADVANCED, IVAS_FEATURES
+from dashboard.config import (
+    MQTT_CONFIG,
+    UAV_CONFIGS,
+    IVAS_SERVER,
+    IVAS_ADVANCED,
+    IVAS_FEATURES
+)
 
 console = Console()
 
 # ========== 配置 ==========
-
-MQTT_CONFIG = {
-    'host': '81.70.222.38',
-    'port': 1883,
-    'username': 'dji',
-    'password': 'lab605605'
-}
-
-UAV_CONFIGS = [
-    {
-        'sn': '9N9CN2J0012CXY',
-        'user_id': 'pilot_1',
-        'callsign': 'Pilot 1',
-        'flight_height': 90.0,
-        'ivas': {
-            'device_code': 1,
-            'account': 'ZSDX001',
-            'password': '000000'
-        }
-    },
-    {
-        'sn': '9N9CN8400164WH',
-        'user_id': 'pilot_2',
-        'callsign': 'Pilot 2',
-        'flight_height': 100.0,
-        'ivas': {
-            'device_code': 2,
-            'account': 'ZSDX002',
-            'password': '000000'
-        }
-    },
-    {
-        'sn': '9N9CN180011TJN',
-        'user_id': 'pilot_3',
-        'callsign': 'Pilot 3',
-        'flight_height': 110.0,
-        'ivas': {
-            'device_code': 3,
-            'account': 'ZSDX003',
-            'password': '000000'
-        }
-    },
-]
 
 # 机器颜色映射（用于DEBUG输出）
 DEVICE_COLORS = {
