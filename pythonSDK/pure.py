@@ -17,8 +17,13 @@
 
 重构说明：
 现在直接使用 dashboard/ivas_threads.py 中的线程函数，与 dashboard 共享同一套实现。
+
+配置复用：
+- 复用 control/config.py 中的控制参数（PID、频率等）
+- 复用 dashboard/config.py 中的 IVAS 配置
 """
 import os
+import sys
 import time
 import threading
 from pathlib import Path
@@ -31,6 +36,11 @@ from ivas import IVASClient
 
 # 导入共享的线程函数
 from dashboard.ivas_threads import task_poller
+
+# 导入配置（同时导入 control 和 dashboard 配置）
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import control.config as ctrl_cfg
+from dashboard.config import IVAS_SERVER, IVAS_ADVANCED
 
 console = Console()
 
@@ -78,11 +88,6 @@ UAV_CONFIGS = [
         }
     },
 ]
-
-IVAS_SERVER = {
-    'base_url': 'http://192.168.31.38:8888',
-    'task_hz': 2.0,  # 任务轮询频率 (Hz)
-}
 
 # 机器颜色映射（用于DEBUG输出）
 DEVICE_COLORS = {
@@ -289,7 +294,13 @@ def main():
     task_stop_event = threading.Event()
     task_thread = threading.Thread(
         target=task_poller,
-        args=(ivas_client, uav_clients_map, 1.0 / IVAS_SERVER['task_hz'], task_stop_event),
+        args=(
+            ivas_client,
+            uav_clients_map,
+            1.0 / IVAS_SERVER['task_hz'],
+            task_stop_event,
+            IVAS_ADVANCED['enable_task_execution']  # 从配置读取任务执行开关
+        ),
         daemon=True,
         name="ivas-task-poller"
     )
