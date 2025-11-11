@@ -18,8 +18,10 @@
 重构说明：
 现在直接使用 dashboard/ivas_threads.py 中的线程函数，与 dashboard 共享同一套实现。
 """
+import os
 import time
 import threading
+from pathlib import Path
 from typing import Dict, Any
 from rich.console import Console
 
@@ -88,6 +90,9 @@ DEVICE_COLORS = {
     2: 'bright_magenta',
     3: 'bright_green',
 }
+
+# 任务状态文件路径
+MISSION_STATE_FILE = Path('/tmp/djisdk_mission_state.json')
 
 
 # ========== 辅助函数 ==========
@@ -201,6 +206,15 @@ def main():
     console.print("[bold bright_cyan]       纯净版 IVAS + 多DRC 程序[/bold bright_cyan]")
     console.print("[bold bright_cyan]       使用共享的 IVAS 线程函数[/bold bright_cyan]")
     console.print("[bold bright_cyan]" + "="*60 + "[/bold bright_cyan]\n")
+
+    # 0. 清理旧的任务状态文件（避免 dashboard 读取过期数据）
+    if MISSION_STATE_FILE.exists():
+        try:
+            MISSION_STATE_FILE.unlink()
+            console.print("[bright_yellow]✓ 已清理旧的任务状态文件[/bright_yellow]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  清理任务状态文件失败: {e}[/yellow]")
+    console.print()
 
     # 1. 创建 IVAS 客户端
     console.print("[bold]📡 步骤 1: 初始化 IVAS 客户端[/bold]")
