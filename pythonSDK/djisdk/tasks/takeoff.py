@@ -76,7 +76,7 @@ def create_takeoff_mission(
             pitch=364,      # 右摇杆下（俯仰最后）
             throttle=364,   # 左摇杆下（油门最低）
             yaw=364,        # 左摇杆左（偏航最左）
-            duration=1.0,
+            duration=3.0,
             frequency=10
         )
         console.print(f"[green]✓ [{callsign}] 解锁完成[/green]")
