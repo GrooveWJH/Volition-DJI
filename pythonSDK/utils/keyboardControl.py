@@ -29,7 +29,32 @@ except ImportError:
 try:
     from .keyboard import JoystickApp
 except ImportError:
-    from keyboard import JoystickApp
+    try:
+        from keyboard import JoystickApp
+    except ImportError as e:
+        # 检查是否是 X server 问题
+        if "X connection" in str(e) or "DISPLAY" in str(e) or "platform is not supported" in str(e):
+            print("\n" + "="*80)
+            print("❌ 错误: 键盘控制需要图形界面（X server）")
+            print("="*80)
+            print("\n🔧 解决方案：\n")
+            print("1. 如果你在 SSH 连接中：")
+            print("   - 使用 X11 转发: ssh -X user@host")
+            print("   - 或者在本地运行此程序\n")
+            print("2. 如果你在 WSL 中：")
+            print("   - 安装 X server（如 VcXsrv、X410）")
+            print("   - 设置 DISPLAY 环境变量: export DISPLAY=:0\n")
+            print("3. 如果你在 Linux 服务器上：")
+            print("   - 请在有桌面环境的机器上运行\n")
+            print("4. 替代方案：")
+            print("   - 使用 joystick UI: python main.py")
+            print("   - 使用其他控制脚本（不需要键盘监听）\n")
+            print("="*80 + "\n")
+            import sys
+            sys.exit(1)
+        else:
+            # 其他导入错误
+            raise
 
 # ========== 配置参数 ==========
 CONFIG = {
