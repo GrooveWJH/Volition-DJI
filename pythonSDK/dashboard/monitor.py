@@ -6,12 +6,17 @@ Dashboard 监控循环模块
 """
 import os
 import time
+import threading
 from contextlib import contextmanager
 from rich.console import Console
 from rich.live import Live
 
 from djisdk import setup_multiple_drc_connections, stop_heartbeat, DRCConnectionManager
 from vrpn import VRPNClient
+
+# 导入新的 IVAS 实现
+from ivas import IVASClient
+from .ivas_threads import position_reporter, target_reporter, task_poller
 
 from .config import (
     MQTT_CONFIG,
@@ -29,8 +34,6 @@ from .config import (
     IVAS_SERVER,
 )
 from .panels import create_dashboard_layout
-from .ivas_adapter import IVASAdapter
-from .task_distributor import TaskDistributor
 
 
 @contextmanager
@@ -47,13 +50,16 @@ def setup_connections(console: Console):
         console: Rich Console 实例
 
     Yields:
-        (uav_clients, vrpn_clients, ivas_adapters) 元组
+        (uav_clients, vrpn_clients, ivas_threads) 元组
     """
     uav_clients = []
     vrpn_clients = []
-    ivas_adapters = []  # 新增：IVAS 适配器列表
-    conn_managers = []  # 新增：连接管理器列表
-    task_distributor = None  # 新增：任务分发器
+    conn_managers = []
+
+    # IVAS 相关资源
+    ivas_client = None
+    ivas_threads = []
+    ivas_stop_events = []
 
     try:
         # === 阶段 1: 建立 DJI 无人机连接 ===
@@ -148,14 +154,12 @@ def setup_connections(console: Console):
                 console.print(f"\n[bold bright_yellow]⚠ 无可用 VRPN 设备[/bold bright_yellow]")
                 vrpn_clients = []  # 清空列表
 
-        # === 阶段 3: 初始化 IVAS 客户端（如果启用）===
-        # 只要有任意 IVAS 功能启用，就启动 Adapter
+        # === 阶段 3: 初始化 IVAS 系统（如果启用）===
         has_any_ivas_feature = any(IVAS_FEATURES.values())
         if ENABLE_IVAS and has_any_ivas_feature:
             console.rule("[bold bright_blue]初始化 IVAS 系统[/bold bright_blue]")
 
-            # 创建全局任务分发器（TaskDistributor）
-            # 注意：使用统一账号轮询（任意一个adapter的账号即可）
+            # 获取第一个 IVAS 配置
             first_ivas_config = None
             for config in UAV_CONFIGS:
                 if 'ivas' in config:
@@ -163,90 +167,125 @@ def setup_connections(console: Console):
                     break
 
             if first_ivas_config:
-                task_distributor = TaskDistributor(
-                    ivas_config={
-                        'base_url': IVAS_SERVER['base_url'],
-                        'account': first_ivas_config['account'],
-                        'password': first_ivas_config['password'],
-                        'task_hz': IVAS_SERVER['task_hz']
-                    }
+                # 创建共享的 IVAS Client（单例）
+                ivas_client = IVASClient(
+                    base_url=IVAS_SERVER['base_url'],
+                    account=first_ivas_config['account'],
+                    password=first_ivas_config['password']
                 )
-                console.print("[bright_cyan]创建任务分发器...[/bright_cyan]")
 
-            for i, uav in enumerate(uav_clients):
-                config = UAV_CONFIGS[i]
+                # 登录
+                if not ivas_client.login():
+                    console.print("[bright_red]✗ IVAS 登录失败[/bright_red]")
+                else:
+                    console.print(f"[bright_cyan]✓ IVAS 客户端已登录 ({first_ivas_config['account']})[/bright_cyan]")
 
-                # 检查是否配置了 IVAS
-                if 'ivas' not in config:
-                    console.print(f"[yellow]⚠ {config['callsign']} 未配置 IVAS，跳过[/yellow]")
-                    continue
+                    # 为每个无人机启动位置上报线程
+                    if IVAS_FEATURES.get('position_report', False):
+                        for i, uav in enumerate(uav_clients):
+                            config = UAV_CONFIGS[i]
 
-                ivas_config = config['ivas']
+                            if 'ivas' not in config:
+                                continue
 
-                try:
-                    console.print(f"[bright_cyan]初始化 IVAS 适配器 #{i+1} ({ivas_config['account']})...[/bright_cyan]")
+                            device_code = config['ivas']['device_code']
+                            callsign = config['callsign']
 
-                    # 创建 IVAS 适配器
-                    # 关键：features.task_receive=False 禁用adapter内部的任务轮询
-                    # 任务轮询由TaskDistributor统一负责
-                    adapter = IVASAdapter(
-                        device_code=ivas_config['device_code'],
-                        mqtt_client=uav['mqtt'],
-                        ivas_config={
-                            **IVAS_SERVER,
-                            'account': ivas_config['account'],
-                            'password': ivas_config['password'],
-                        },
-                        uav_config=config,
-                        service_caller=uav['caller'],
-                        heartbeat_thread=uav['heartbeat'],
-                        features={
-                            'position_report': IVAS_FEATURES['position_report'],
-                            'target_report': IVAS_FEATURES['target_report'],
-                            'task_receive': False  # 禁用adapter内部任务轮询
-                        }
-                    )
+                            # 创建停止事件
+                            stop_event = threading.Event()
+                            ivas_stop_events.append(stop_event)
 
-                    # 注册到任务分发器
-                    if task_distributor:
-                        task_distributor.register(ivas_config['device_code'], adapter)
+                            # 启动位置上报线程
+                            thread = threading.Thread(
+                                target=position_reporter,
+                                args=(uav['mqtt'], ivas_client, device_code, callsign, 1.0, stop_event),
+                                daemon=True,
+                                name=f"ivas-position-{device_code}"
+                            )
+                            thread.start()
+                            ivas_threads.append(thread)
 
-                    # 启动 IVAS 客户端后台线程（仅负责位置/目标上报）
-                    adapter.start()
+                            # 添加额外字段到 uav_client（用于任务执行）
+                            uav['config'] = config
+                            uav['callsign'] = callsign
+                            uav['flight_height'] = config.get('flight_height', 100.0)
 
-                    ivas_adapters.append(adapter)
-                    uav['ivas'] = adapter  # 绑定到 UAV 客户端
+                            console.print(f"[bright_cyan]  ✓ 设备 {device_code} 位置上报线程已启动[/bright_cyan]")
 
-                    console.print(f"[bright_green]✓ IVAS 适配器 #{i+1} 已启动[/bright_green]")
-                except Exception as e:
-                    console.print(f"[bright_red]✗ IVAS 初始化失败: {e}[/bright_red]")
+                    # 启动目标上报线程（如果启用）
+                    if IVAS_FEATURES.get('target_report', False):
+                        # 使用第一个设备的基准位置
+                        base_lat = 23.0  # 可从配置获取
+                        base_lon = 113.0
+                        base_alt = 0.0
+                        coord_range = {'lat_offset': 0.01, 'lon_offset': 0.01, 'alt_offset': 10}
 
-            # 完成任务分发器注册并启动
-            if task_distributor:
-                task_distributor.finalize()
-                task_distributor.start()
-                console.print("[bright_green]✓ 任务分发器已启动[/bright_green]")
+                        stop_event = threading.Event()
+                        ivas_stop_events.append(stop_event)
 
-            if ivas_adapters:
-                console.print(f"\n[bold bright_green]✓ IVAS 系统已就绪 ({len(ivas_adapters)} 个设备)[/bold bright_green]")
-            else:
-                console.print(f"\n[bold bright_yellow]⚠ IVAS 系统未启动[/bold bright_yellow]")
+                        thread = threading.Thread(
+                            target=target_reporter,
+                            args=(ivas_client, base_lat, base_lon, base_alt, coord_range, 2.0, stop_event),
+                            daemon=True,
+                            name="ivas-target"
+                        )
+                        thread.start()
+                        ivas_threads.append(thread)
+
+                        console.print("[bright_cyan]  ✓ 目标上报线程已启动[/bright_cyan]")
+
+                    # 启动任务轮询线程（如果启用）
+                    if IVAS_FEATURES.get('task_receive', False):
+                        # 构建设备映射 {device_code: uav_client}
+                        uav_clients_map = {}
+                        for i, uav in enumerate(uav_clients):
+                            config = UAV_CONFIGS[i]
+                            if 'ivas' in config:
+                                device_code = config['ivas']['device_code']
+                                uav_clients_map[device_code] = uav
+
+                        stop_event = threading.Event()
+                        ivas_stop_events.append(stop_event)
+
+                        thread = threading.Thread(
+                            target=task_poller,
+                            args=(ivas_client, uav_clients_map, 0.5, stop_event),
+                            daemon=True,
+                            name="ivas-task-poller"
+                        )
+                        thread.start()
+                        ivas_threads.append(thread)
+
+                        console.print("[bright_cyan]  ✓ 任务轮询线程已启动[/bright_cyan]")
+
+                    console.print(f"\n[bold bright_green]✓ IVAS 系统已就绪 ({len(ivas_threads)} 个线程)[/bold bright_green]")
 
         # Yield 连接给调用者使用
-        yield uav_clients, vrpn_clients, ivas_adapters
+        yield uav_clients, vrpn_clients, ivas_threads
 
     finally:
         # === 自动清理资源 ===
         console.rule("[bold bright_magenta]断开连接[/bold bright_magenta]")
 
-        # 清理任务分发器
-        if task_distributor:
-            console.print("[bright_cyan]清理任务分发器...[/bright_cyan]")
+        # 清理 IVAS 线程
+        if ivas_stop_events:
+            console.print("[bright_cyan]清理 IVAS 线程...[/bright_cyan]")
             try:
-                task_distributor.stop()
-                console.print("[bright_green]✓ 任务分发器已停止[/bright_green]")
+                # 发送停止信号给所有线程
+                for stop_event in ivas_stop_events:
+                    stop_event.set()
+
+                # 等待线程结束
+                for thread in ivas_threads:
+                    thread.join(timeout=2.0)
+                    if thread.is_alive():
+                        console.print(f"[bright_yellow]⚠ 线程 {thread.name} 未在超时时间内结束[/bright_yellow]")
+                    else:
+                        console.print(f"[bright_green]✓ 线程 {thread.name} 已停止[/bright_green]")
+
+                console.print(f"[bright_green]✓ IVAS 系统已停止 ({len(ivas_threads)} 个线程)[/bright_green]")
             except Exception as e:
-                console.print(f"[bright_yellow]⚠ 任务分发器清理警告: {e}[/bright_yellow]")
+                console.print(f"[bright_yellow]⚠ IVAS 清理警告: {e}[/bright_yellow]")
 
         # 清理连接管理器
         if conn_managers:
@@ -257,16 +296,6 @@ def setup_connections(console: Console):
                     console.print(f"[bright_green]✓ 连接管理器 #{i+1} 已停止[/bright_green]")
                 except Exception as e:
                     console.print(f"[bright_yellow]⚠ 连接管理器清理警告: {e}[/bright_yellow]")
-
-        # 清理 IVAS 客户端
-        if ivas_adapters:
-            console.print("[bright_cyan]清理 IVAS 客户端...[/bright_cyan]")
-            for i, adapter in enumerate(ivas_adapters):
-                try:
-                    adapter.stop()
-                    console.print(f"[bright_green]✓ IVAS 适配器 #{i+1} 已停止[/bright_green]")
-                except Exception as e:
-                    console.print(f"[bright_yellow]⚠ IVAS 清理警告: {e}[/bright_yellow]")
 
         # 清理 VRPN 客户端
         if vrpn_clients:
@@ -306,13 +335,13 @@ def run():
     console = Console()
 
     # 使用上下文管理器自动管理资源
-    with setup_connections(console) as (uav_clients, vrpn_clients, ivas_adapters):
+    with setup_connections(console) as (uav_clients, vrpn_clients, ivas_threads):
         # 显示频率配置信息
         console.print(f"[bright_cyan]OSD 频率: {OSD_FREQUENCY} Hz | GUI 刷新频率: {GUI_REFRESH_RATE} Hz[/bright_cyan]")
         if ENABLE_VRPN and vrpn_clients:
             console.print(f"[bright_cyan]VRPN 动捕显示: [bright_green]已启用[/bright_green][/bright_cyan]")
-        if ENABLE_IVAS and ivas_adapters:
-            console.print(f"[bright_cyan]IVAS 系统: [bright_green]已启用[/bright_green] ({len(ivas_adapters)} 个设备)[/bright_cyan]")
+        if ENABLE_IVAS and ivas_threads:
+            console.print(f"[bright_cyan]IVAS 系统: [bright_green]已启用[/bright_green] ({len(ivas_threads)} 个线程)[/bright_cyan]")
         console.print(f"[bright_cyan]离线检测超时: {OFFLINE_TIMEOUT} 秒[/bright_cyan]")
         console.print("[bold bright_yellow]监控运行中... (按 Ctrl+C 退出)[/bold bright_yellow]\n")
 
@@ -332,9 +361,10 @@ def run():
                         UAV_CONFIGS,
                         elapsed,
                         OFFLINE_TIMEOUT,
-                        ivas_adapters=ivas_adapters,
+                        ivas_adapters=None,  # DEPRECATED
                         enable_ivas=ENABLE_IVAS,
                         ivas_features=IVAS_FEATURES,
+                        ivas_threads=ivas_threads,  # 传递线程列表
                     )
 
                     live.update(layout)

@@ -24,9 +24,10 @@ def create_dashboard_layout(
     uav_configs: List[Dict[str, str]],
     elapsed: int,
     offline_timeout: float = 2.0,
-    ivas_adapters: List = None,
+    ivas_adapters: List = None,  # DEPRECATED: 保留参数以兼容旧代码
     enable_ivas: bool = False,
-    ivas_features: Dict[str, bool] = None
+    ivas_features: Dict[str, bool] = None,
+    ivas_threads: List = None  # 新参数：IVAS 后台线程列表
 ):
     """
     生成整个 Dashboard 布局（3列UAV网格 + IVAS右侧列）
@@ -46,9 +47,10 @@ def create_dashboard_layout(
         uav_configs: 无人机配置列表
         elapsed: 运行时间（秒）
         offline_timeout: 离线超时时间（秒）
-        ivas_adapters: IVAS 适配器列表（可为空）
+        ivas_adapters: DEPRECATED - 已废弃，保留仅为兼容
         enable_ivas: 是否启用IVAS功能
         ivas_features: IVAS功能开关字典
+        ivas_threads: IVAS 后台线程列表
 
     Returns:
         Rich 可渲染对象
@@ -56,13 +58,8 @@ def create_dashboard_layout(
     panels = []
 
     for i, uav in enumerate(uav_clients):
-        # 获取对应的IVAS adapter（如果有）
-        ivas_adapter = None
-        if ivas_adapters and i < len(ivas_adapters):
-            ivas_adapter = ivas_adapters[i]
-
-        # 创建 DJI 面板（包含IVAS日志）
-        uav_panel = create_uav_panel(uav, uav_configs[i], elapsed, offline_timeout, ivas_adapter)
+        # 创建 DJI 面板
+        uav_panel = create_uav_panel(uav, uav_configs[i], elapsed, offline_timeout, ivas_adapter=None)
 
         # 如果有对应的 VRPN 数据，横向合并显示
         if vrpn_clients and i < len(vrpn_clients) and vrpn_clients[i] is not None:
@@ -95,11 +92,11 @@ def create_dashboard_layout(
             uav_grid.add_row(*row_panels)
 
     # 如果启用IVAS，创建右侧IVAS列
-    if enable_ivas and ivas_adapters:
+    if enable_ivas and ivas_threads:
         ivas_panels = []
 
         # IVAS全局信息面板
-        ivas_panels.append(create_ivas_global_panel(ivas_adapters, elapsed))
+        ivas_panels.append(create_ivas_global_panel(ivas_threads, elapsed))
 
         # 态势感知面板（如果启用）
         if ivas_features and ivas_features.get('situation_awareness', False):
