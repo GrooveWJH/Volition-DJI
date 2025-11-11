@@ -2,7 +2,7 @@
 """
 多无人机相机同步控制工具
 
-键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q/Ctrl+C退出
+键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a正下方 q/Ctrl+C退出
 """
 import sys
 import time
@@ -11,16 +11,16 @@ import termios
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-from djisdk import setup_multiple_drc_connections, stop_heartbeat, reset_gimbal, camera_look_at, set_camera_zoom
+from djisdk import setup_multiple_drc_connections, stop_heartbeat, reset_gimbal, camera_look_at, set_camera_zoom, camera_aim
 
 # ========== 配置 ==========
 
 MQTT_CONFIG = {'host': 'grve.me', 'port': 1883, 'username': 'dji', 'password': 'lab605605'}
 
 UAV_CONFIGS = [
-    {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'zoom': {'current': 7, 'step': 1, 'min': 1, 'max': 112}},
-    {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
-    {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
+    {'name': 'Drone001', 'sn': '9N9CN2J0012CXY', 'callsign': 'Alpha', 'camera_type': 'zoom', 'zoom': {'current': 7, 'step': 1, 'min': 1, 'max': 112}},
+    {'name': 'Drone002', 'sn': '9N9CN8400164WH', 'callsign': 'Bravo', 'camera_type': 'zoom', 'zoom': {'current': 5, 'step': 1, 'min': 1, 'max': 112}},
+    {'name': 'Drone003', 'sn': '9N9CN180011TJN', 'callsign': 'Charlie', 'camera_type': 'zoom', 'zoom': {'current': 10, 'step': 1, 'min': 1, 'max': 112}},
 ]
 
 # ========== 全局状态 ==========
@@ -79,6 +79,10 @@ def lookat_ground():
 
 def zoom_in():
     def action(cs, s):
+        # 只在变焦模式下有效
+        if s['config']['camera_type'] != 'zoom':
+            log(f"  - {cs}: 广角模式不支持变焦")
+            return
         z = s['config']['zoom']
         z['current'] = min(z['current'] + z['step'], z['max'])
         set_camera_zoom(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0", z['current'], "zoom")
@@ -87,11 +91,33 @@ def zoom_in():
 
 def zoom_out():
     def action(cs, s):
+        # 只在变焦模式下有效
+        if s['config']['camera_type'] != 'zoom':
+            log(f"  - {cs}: 广角模式不支持变焦")
+            return
         z = s['config']['zoom']
         z['current'] = max(z['current'] - z['step'], z['min'])
         set_camera_zoom(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0", z['current'], "zoom")
         log(f"  {cs}: {z['current']}x")
     parallel_run("缩小", action)
+
+def toggle_camera_type():
+    """切换相机类型（变焦 ↔ 广角）"""
+    def action(cs, s):
+        current_type = s['config']['camera_type']
+        new_type = 'wide' if current_type == 'zoom' else 'zoom'
+        s['config']['camera_type'] = new_type
+        type_name = '广角' if new_type == 'wide' else '变焦'
+        log(f"  {cs}: {type_name}")
+    parallel_run("切换镜头", action)
+
+def aim_down():
+    """AIM 正下方（x:0.5, y:1.0）"""
+    def action(cs, s):
+        camera_type = s['config']['camera_type']
+        camera_aim(s['mqtt'], s['mqtt'].get_payload_index() or "88-0-0",
+                   x=0.5, y=1.0, camera_type=camera_type, locked=False)
+    parallel_run("AIM 正下方", action)
 
 # ========== 低头锁定 ==========
 
@@ -150,6 +176,8 @@ def keyboard_loop():
         'z': zoom_in,
         'x': zoom_out,
         'l': toggle_lookdown,
+        'w': toggle_camera_type,
+        'a': aim_down,
     }
 
     while not stop_flag:
@@ -182,7 +210,7 @@ def main():
     for (mqtt, caller, heartbeat), config in zip(connections, UAV_CONFIGS):
         uav_states[config['callsign']] = {'mqtt': mqtt, 'caller': caller, 'heartbeat': heartbeat, 'config': config}
 
-    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 q/Ctrl+C退出\n")
+    print("控制: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a正下方 q/Ctrl+C退出\n")
 
     try:
         # 启动状态监控
