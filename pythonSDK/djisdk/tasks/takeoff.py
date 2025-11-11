@@ -81,10 +81,17 @@ def create_takeoff_mission(
         )
         console.print(f"[green]✓ [{callsign}] 解锁完成[/green]")
 
-        # 阶段3: 上升
+        # 阶段3: 上升（带无法运动检测）
         runner.status = "上升中"
         console.print(
             f"[bold cyan][{callsign}] 开始上升，目标高度: {target_height}m[/bold cyan]")
+
+        # 无法运动检测：记录初始状态
+        start_time = time.time()
+        last_check_time = start_time
+        last_check_height = mqtt.get_relative_height() or 0.0
+        stuck_threshold = 0.1  # 高度变化阈值（米）
+        check_interval = 5.0   # 检查间隔（秒）
 
         while runner.running:
             h = mqtt.get_relative_height()
@@ -94,11 +101,43 @@ def create_takeoff_mission(
 
             runner.data['height'] = h
 
+            # 检查是否到达目标高度
             if h >= target:
                 console.print(
                     f"[bold green]✓ [{callsign}] 到达目标高度: {h:.2f}m[/bold green]")
                 break
 
+            # 无法运动检测：每5秒检查一次
+            current_time = time.time()
+            if current_time - last_check_time >= check_interval:
+                height_change = abs(h - last_check_height)
+
+                if height_change < stuck_threshold:
+                    # 5秒内高度变化小于0.1m，判定无法运动
+                    console.print(
+                        f"[bold red]✗ [{callsign}] 检测到无法运动！[/bold red]")
+                    console.print(
+                        f"[yellow]  · 时间间隔: {check_interval}s[/yellow]")
+                    console.print(
+                        f"[yellow]  · 高度变化: {height_change:.3f}m (阈值: {stuck_threshold}m)[/yellow]")
+                    console.print(
+                        f"[yellow]  · 当前高度: {h:.2f}m → 目标: {target_height}m[/yellow]")
+
+                    # 停止发送杆量，归中遥杆
+                    console.print(f"[yellow][{callsign}] 停止上升，归中遥杆...[/yellow]")
+                    send_stick_repeatedly(mqtt, duration=1.0, frequency=10)
+
+                    # 标记失败并退出
+                    runner.status = "起飞失败：无法运动"
+                    raise RuntimeError(
+                        f"[{callsign}] 起飞失败：5秒内高度变化仅 {height_change:.3f}m，无法继续上升"
+                    )
+
+                # 更新检测基准
+                last_check_time = current_time
+                last_check_height = h
+
+            # 继续上升
             send_stick_control(mqtt, throttle=throttle_up)
             time.sleep(0.1)
 

@@ -32,6 +32,7 @@ from .config import (
     ENABLE_IVAS,
     IVAS_FEATURES,
     IVAS_SERVER,
+    IVAS_ADVANCED,  # 添加 IVAS_ADVANCED 导入
 )
 from .panels import create_dashboard_layout
 
@@ -198,7 +199,15 @@ def setup_connections(console: Console):
                             # 启动位置上报线程
                             thread = threading.Thread(
                                 target=position_reporter,
-                                args=(uav['mqtt'], ivas_client, device_code, callsign, 1.0, stop_event),
+                                args=(
+                                    uav['mqtt'],
+                                    ivas_client,
+                                    device_code,
+                                    callsign,
+                                    1.0 / IVAS_SERVER['report_hz'],  # 从配置计算上报间隔
+                                    stop_event,
+                                    IVAS_ADVANCED['require_gps']  # 从配置读取 GPS 要求
+                                ),
                                 daemon=True,
                                 name=f"ivas-position-{device_code}"
                             )
@@ -249,7 +258,13 @@ def setup_connections(console: Console):
 
                         thread = threading.Thread(
                             target=task_poller,
-                            args=(ivas_client, uav_clients_map, 0.5, stop_event),
+                            args=(
+                                ivas_client,
+                                uav_clients_map,
+                                1.0 / IVAS_SERVER['task_hz'],  # 从配置计算轮询间隔
+                                stop_event,
+                                IVAS_ADVANCED['enable_task_execution']  # 从配置读取任务执行开关
+                            ),
                             daemon=True,
                             name="ivas-task-poller"
                         )

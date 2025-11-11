@@ -175,10 +175,16 @@ def fly_trajectory_sequence(
                 )
                 fly_to_ids[callsign] = fly_to_id
             except Exception as e:
-                # service call 失败，跳过此无人机（用缺失 key 表示）
-                console.print(f"[bright_yellow]⚠ [{callsign}] Fly-to service 调用失败[/bright_yellow]")
-                console.print(f"[dim]   原因: {e}[/dim]")
-                all_success = False
+                # service call 失败，立即终止整个轨迹任务
+                console.print(f"\n[bold bright_red]✗ [{callsign}] Fly-to service 调用失败，终止轨迹任务[/bold bright_red]")
+                console.print(f"[yellow]   航点: {wp_index}/{total_waypoints}[/yellow]")
+                console.print(f"[yellow]   异常: {e}[/yellow]")
+
+                # 更新失败状态到文件
+                for r in runners:
+                    _update_mission_state_file(r, wp_index, f'失败(航点{wp_index})')
+
+                return False  # 立即返回失败
 
         # 监控飞行进度（实时打印距离、时间等信息）
         if show_progress:

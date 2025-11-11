@@ -103,7 +103,13 @@ IVAS_FEATURES = {
 # 生产模式: python main.py (使用默认地址)
 IVAS_SERVER = {
     'base_url': os.getenv('IVAS_BASE_URL', 'http://192.168.31.38:8888'),  # 可通过环境变量覆盖
-    'report_hz': 5.0,   # 位置和目标上报频率 (Hz)
+    'report_hz': 1.0,   # 位置上报频率 (Hz) - 推荐 1Hz
     'task_hz': 2.0,     # 任务轮询频率 (Hz) - 每 0.5 秒轮询一次
+}
+
+# IVAS 高级配置
+IVAS_ADVANCED = {
+    'require_gps': True,              # 位置上报是否要求GPS有效（False时无GPS也上报，lat/lon=0）
+    'enable_task_execution': True,    # 是否执行任务分发（False时仅监视，不执行）
 }
 

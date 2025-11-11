@@ -24,7 +24,8 @@ def position_reporter(
     device_code: int,
     callsign: str,
     interval: float,
-    stop_event: threading.Event
+    stop_event: threading.Event,
+    require_gps: bool = True
 ):
     """
     位置上报线程（纯函数）
@@ -36,37 +37,53 @@ def position_reporter(
         ivas_client: IVAS HTTP 客户端
         device_code: 设备编号（1, 2, 3）
         callsign: 设备呼号（用于日志显示）
-        interval: 上报间隔（秒）
+        interval: 上报间隔（秒，推荐 1.0 即 1Hz）
         stop_event: 停止事件（用于优雅退出）
+        require_gps: 是否要求GPS有效才上报（False则无GPS时lat/lon设为0）
     """
     next_tick = time.perf_counter()
+    start_time = time.perf_counter()
+    print_duration = 5.0  # 前5秒打印日志
 
     while not stop_event.is_set():
         current = time.perf_counter()
 
         if current >= next_tick:
             # 从 MQTT 获取真实数据
-            lat, lon, height = mqtt_client.get_position()
+            lat, lon, _ellipsoid_height = mqtt_client.get_position()
+            relative_height = mqtt_client.get_relative_height()  # ✅ 使用相对高度
             heading = mqtt_client.get_attitude_head()
             h_speed, _, _, _ = mqtt_client.get_speed()
 
-            # 检查 GPS 是否有效
-            if lat is not None and lon is not None:
+            # GPS 有效性检查
+            gps_valid = (lat is not None and lon is not None)
+
+            # 根据 require_gps 决定是否上报
+            should_report = gps_valid or (not require_gps)
+
+            if should_report:
+                # 如果 GPS 无效且 require_gps=False，则使用 0
+                if not gps_valid:
+                    lat, lon = 0.0, 0.0
+
                 # 判断运动状态（水平速度 > 0.5 m/s）
                 motion = 1 if h_speed and h_speed > 0.5 else 0
 
-                # 上报位置
+                # 上报位置（使用相对高度）
                 success = ivas_client.report_position(
                     device_code=device_code,
                     lat=lat,
                     lon=lon,
-                    alt=height or 0.0,
+                    alt=relative_height or 0.0,  # ✅ 使用相对高度
                     azimuth=int(heading or 0),
                     motion=motion
                 )
 
-                if success:
-                    print(f"[上报] [{callsign}] 纬度:{lat:.6f} 经度:{lon:.6f} 高度:{height:.2f}m")
+                # 前5秒打印日志
+                elapsed = current - start_time
+                if success and elapsed <= print_duration:
+                    gps_status = "GPS有效" if gps_valid else "无GPS"
+                    print(f"[上报] [{callsign}] {gps_status} | 纬度:{lat:.6f} 经度:{lon:.6f} 相对高度:{relative_height:.2f}m")
 
             next_tick += interval
 
@@ -144,7 +161,8 @@ def task_poller(
     ivas_client,
     uav_clients_map: Dict[int, Any],
     interval: float,
-    stop_event: threading.Event
+    stop_event: threading.Event,
+    enable_task_execution: bool = True
 ):
     """
     任务轮询和分发线程（纯函数）
@@ -161,6 +179,7 @@ def task_poller(
         uav_clients_map: 设备映射 {device_code: uav_client_dict}
         interval: 轮询间隔（秒）
         stop_event: 停止事件
+        enable_task_execution: 是否执行任务分发（False时仅监视，不执行）
     """
     next_tick = time.perf_counter()
     executed_tasks = set()  # 任务去重集合
@@ -181,6 +200,13 @@ def task_poller(
                 task_data = result['data']
                 target_id = task_data.get('id', 0)
                 mission = task_data.get('mission', 0)
+
+                # 检查是否启用任务执行
+                if not enable_task_execution:
+                    print(f"[任务] 👁️ 监视模式：任务已接收但不执行 (ID:{target_id}, mission={mission})")
+                    print("="*60 + "\n")
+                    next_tick += interval
+                    continue
 
                 # 路由分发
                 if target_id == 99:

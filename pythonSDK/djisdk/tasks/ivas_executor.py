@@ -57,19 +57,26 @@ def execute_ivas_task(
     console.print(f"[bold cyan][{callsign}] 执行 IVAS 任务 {mission}[/bold cyan]")
 
     try:
-        # 任务分发
+        # 任务分发（打印详细的函数调用信息）
         if mission == 1:
+            console.print(f"[dim][{callsign}] 📞 调用: _task_takeoff(target_height={uav_config.get('flight_height', 20.0)})[/dim]")
             _task_takeoff(mqtt_client, caller, heartbeat_thread, uav_config, runner)
         elif mission == 2:
+            console.print(f"[dim][{callsign}] 📞 调用: _task_land()[/dim]")
             _task_land(mqtt_client, callsign, runner)
         elif mission == 3:
+            console.print(f"[dim][{callsign}] 📞 调用: _task_return_home()[/dim]")
             _task_return_home(caller, callsign)
         elif mission == 4:
             lat = task_data.get('lat')
             lon = task_data.get('lon')
             alt = task_data.get('alt')
+            console.print(f"[dim][{callsign}] 📞 调用: _task_fly_to_point(lat={lat}, lon={lon}, alt={alt})[/dim]")
             _task_fly_to_point(caller, lat, lon, alt, callsign)
         elif mission in [5, 6, 7]:
+            trajectory_index = mission - 4
+            trajectory_file = f"Trajectory/uav{trajectory_index}.json"
+            console.print(f"[dim][{callsign}] 📞 调用: _task_trajectory(file={trajectory_file}, height={uav_config.get('flight_height', 20.0)})[/dim]")
             _task_trajectory(mqtt_client, caller, mission, uav_config, callsign, runner)
         else:
             console.print(f"[red][{callsign}] 未知任务类型: {mission}[/red]")
@@ -96,7 +103,7 @@ def _task_takeoff(mqtt, caller, heartbeat, uav_config: Dict[str, Any], runner=No
     takeoff_mission = create_takeoff_mission(
         target_height=target_height,
         height_tolerance=0.5,
-        throttle_offset=660  # 最大杆量以加快上升速度
+        throttle_offset=440
     )
 
     # 使用外部传入的 runner（用于中断），如果没有则创建新的
