@@ -35,12 +35,12 @@ from djisdk import request_control_auth, enter_drc_mode, start_heartbeat, stop_h
 from ivas import IVASClient
 
 # 导入共享的线程函数
-from dashboard.ivas_threads import task_poller
+from dashboard.ivas_threads import task_poller, position_reporter
 
 # 导入配置（同时导入 control 和 dashboard 配置）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import control.config as ctrl_cfg
-from dashboard.config import IVAS_SERVER, IVAS_ADVANCED
+from dashboard.config import IVAS_SERVER, IVAS_ADVANCED, IVAS_FEATURES
 
 console = Console()
 
@@ -288,6 +288,43 @@ def main():
 
     console.print()
 
+    # 2.5. 启动位置上报线程（如果启用）
+    position_threads = []
+    position_stop_events = []
+
+    if IVAS_FEATURES.get('position_report', False):
+        console.print("[bold]📍 步骤 2.5: 启动位置上报[/bold]")
+
+        for uav in uav_clients:
+            device_code = uav['device_code']
+            callsign = uav['callsign']
+
+            # 创建停止事件
+            stop_event = threading.Event()
+            position_stop_events.append(stop_event)
+
+            # 启动位置上报线程
+            thread = threading.Thread(
+                target=position_reporter,
+                args=(
+                    uav['mqtt'],
+                    ivas_client,
+                    device_code,
+                    callsign,
+                    1.0 / IVAS_SERVER['report_hz'],
+                    stop_event,
+                    IVAS_ADVANCED['require_gps']
+                ),
+                daemon=True,
+                name=f"ivas-position-{device_code}"
+            )
+            thread.start()
+            position_threads.append(thread)
+
+            console.print(f"[bright_green]✓ {callsign} 位置上报线程已启动[/bright_green]")
+
+        console.print()
+
     # 3. 启动任务轮询线程
     console.print("[bold]🎯 步骤 3: 启动任务轮询[/bold]")
 
@@ -299,7 +336,7 @@ def main():
             uav_clients_map,
             1.0 / IVAS_SERVER['task_hz'],
             task_stop_event,
-            IVAS_ADVANCED['enable_task_execution']  # 从配置读取任务执行开关
+            True  # pure.py 必须启用任务分发（监视模式仅对 dashboard 有意义）
         ),
         daemon=True,
         name="ivas-task-poller"
@@ -325,6 +362,19 @@ def main():
     finally:
         # 5. 清理资源
         console.print("\n[bold]🧹 清理资源...[/bold]")
+
+        # 停止位置上报线程
+        if position_stop_events:
+            console.print("[bright_cyan]停止位置上报线程...[/bright_cyan]")
+            for stop_event in position_stop_events:
+                stop_event.set()
+
+            for thread in position_threads:
+                thread.join(timeout=2.0)
+                if thread.is_alive():
+                    console.print(f"[yellow]⚠️  {thread.name} 未在超时时间内结束[/yellow]")
+                else:
+                    console.print(f"[bright_green]✓ {thread.name} 已停止[/bright_green]")
 
         # 停止任务轮询线程
         console.print("[bright_cyan]停止任务轮询线程...[/bright_cyan]")
