@@ -14,6 +14,7 @@
 
 import json
 import time
+import random
 import threading
 from rich.console import Console
 
@@ -26,6 +27,9 @@ from dashboard.config import UAV_CONFIGS, IVAS_SERVER
 console = Console()
 
 # ========== 配置段 ==========
+
+# IVAS 功能开关
+ENABLE_IVAS = True  # False 为 Dry-run 模式（仅打印，不连接 IVAS）
 
 # MQTT 配置
 MQTT_CONFIG = {
@@ -48,11 +52,16 @@ POSITION_LOG_DURATION = 5.0 # 位置上报日志打印时长（秒）
 
 # UWB 坐标系转换超参数
 UWB_TRANSFORM = {
-    'x_offset': 0.0,    # x 平移（米）
-    'y_offset': 0.0,    # y 平移（米）
+    'x_offset': -3.27,    # x 平移（米）
+    'y_offset': -0.015,    # y 平移（米）
     'x_scale': 1.0,     # x 缩放
     'y_scale': 1.0,     # y 缩放
 }
+
+# 高度控制配置
+USE_UWB_ALTITUDE = False         # 是否使用 UWB 高度（False 则使用固定高度）
+FIXED_ALTITUDE_BASE = 1.3       # 固定高度基础值（米）
+FIXED_ALTITUDE_RANGE = 0.05      # 固定高度波动范围（米，±range）
 
 # 使用配置（这里使用 IVAS 第一台设备的 device_code）
 UAV_CONFIG = UAV_CONFIGS[0]
@@ -104,6 +113,56 @@ def on_uwb_message(client, userdata, msg):
         print(f"[UWB] 主题解析失败: {e}")
 
 
+# ========== Dry-Run 模拟器 ==========
+
+class DryRunReporter:
+    """
+    Dry-run 模式：模拟 IVAS 客户端接口
+
+    用途：在无 IVAS 服务器环境下调试 UWB 数据流和坐标转换逻辑
+    - report_position(): 打印到控制台而不实际上报
+    - poll_task(): 返回 None（不轮询任务）
+    """
+
+    def report_position(self, device_code, lat, lon, alt, azimuth, motion, user_name):
+        """打印位置数据（模拟上报）"""
+        # 构建完整的 URL（用于调试）
+        base_url = IVAS_SERVER['base_url']
+        ivas_user_info_id = UAV_CONFIG['ivas']['account']
+        room_id = 22
+        local_time = int(time.time() * 1000)
+
+        report_url = (
+            f"{base_url}/jk-ivas/third/controller/reportUserData?"
+            f"ivasUserInfoId={ivas_user_info_id}&"
+            f"deviceCode={device_code}&"
+            f"userX={lat:.6f}&"
+            f"userY={lon:.6f}&"
+            f"userZ={alt:.4f}&"
+            f"azimuth={azimuth}&"
+            f"localTime={local_time}&"
+            f"motion={motion}&"
+            f"validCount=10&"
+            f"roomId={room_id}&"
+            f"refPositionType=0&"
+            f"userName={user_name}"
+        )
+
+        print(
+            f"[DRY-RUN] 上报位置 | "
+            f"device={device_code} user={user_name} | "
+            f"lat={lat:.6f} lon={lon:.6f} alt={alt:.4f}m | "
+            f"heading={azimuth}° motion={motion}"
+        )
+        print(f"[URL] {report_url}")
+        print()  # 空行分隔
+        return True  # 模拟成功
+
+    def poll_task(self):
+        """Dry-run 模式下不轮询任务"""
+        return None
+
+
 # ========== 主函数 ==========
 
 def uwb_position_reporter(
@@ -140,7 +199,13 @@ def uwb_position_reporter(
             # 应用超参数（平移 + 缩放）
             lat = (x + UWB_TRANSFORM['x_offset']) * UWB_TRANSFORM['x_scale']
             lon = (y + UWB_TRANSFORM['y_offset']) * UWB_TRANSFORM['y_scale']
-            alt = z
+
+            # 高度处理：根据配置选择 UWB 高度或固定高度
+            if USE_UWB_ALTITUDE:
+                alt = z
+            else:
+                # 固定高度 + 随机波动
+                alt = FIXED_ALTITUDE_BASE + random.uniform(-FIXED_ALTITUDE_RANGE, FIXED_ALTITUDE_RANGE)
 
             # 使用固参数
             heading = DEFAULT_HEADING
@@ -154,17 +219,42 @@ def uwb_position_reporter(
                 alt=alt,
                 azimuth=heading,
                 motion=motion,
-                user_name=callsign
+                # user_name=callsign
+                user_name="indoor"
             )
 
             # 打印日志（前 N 秒）
             elapsed = current - start_time
             if success and elapsed <= print_duration:
+                # 构建完整的上报 URL（用于调试）
+                base_url = IVAS_SERVER['base_url']
+                ivas_user_info_id = UAV_CONFIG['ivas']['account']
+                room_id = 22
+                local_time = int(time.time() * 1000)
+
+                report_url = (
+                    f"{base_url}/jk-ivas/third/controller/reportUserData?"
+                    f"ivasUserInfoId={ivas_user_info_id}&"
+                    f"deviceCode={device_code}&"
+                    f"userX={lat:.6f}&"
+                    f"userY={lon:.6f}&"
+                    f"userZ={alt:.4f}&"
+                    f"azimuth={heading}&"
+                    f"localTime={local_time}&"
+                    f"motion={motion}&"
+                    f"validCount=10&"
+                    f"roomId={room_id}&"
+                    f"refPositionType=0&"
+                    f"userName=indoor"
+                )
+
                 print(
                     f"[上报] [{callsign}] UWB 位置 | "
                     f"x(lat):{lat:.4f} y(lon):{lon:.4f} z(alt):{alt:.4f}m | "
                     f"heading:{heading}° motion:{motion}"
                 )
+                print(f"[URL] {report_url}")
+                print()  # 空行分隔
 
             next_tick += interval
 
@@ -267,27 +357,48 @@ def main():
     # 打印配置信息
     console.print(f"[bold]📋 配置信息[/bold]")
     console.print(f"  呼号: {CALLSIGN} (device_code={DEVICE_CODE})")
-    console.print(f"  IVAS 服务器: {IVAS_SERVER['base_url']}")
+
+    # IVAS 模式状态
+    if ENABLE_IVAS:
+        console.print(f"  IVAS 模式: [green]已启用[/green] ({IVAS_SERVER['base_url']})")
+    else:
+        console.print(f"  IVAS 模式: [yellow]Dry-run（仅打印，不连接服务器）[/yellow]")
+
     console.print(f"  UWB 订阅主题: {UWB_SUBSCRIBE_TOPIC}")
     console.print(f"  任务转发主题: {TASK_PUBLISH_TOPIC}")
     console.print(f"  位置上报频率: {IVAS_REPORT_HZ} Hz")
     console.print(f"  任务轮询频率: {IVAS_TASK_HZ} Hz")
+
+    # 高度配置状态
+    if USE_UWB_ALTITUDE:
+        console.print(f"  高度来源: [cyan]UWB 实时高度[/cyan]")
+    else:
+        console.print(f"  高度来源: [yellow]固定高度 {FIXED_ALTITUDE_BASE:.2f}m (±{FIXED_ALTITUDE_RANGE:.2f}m)[/yellow]")
+
     console.print()
 
-    # 1. 初始化 IVAS
+    # 1. 初始化 IVAS（或 Dry-run 模式）
     console.print("[bold]📡 步骤 1: 初始化 IVAS[/bold]")
-    ivas_config = UAV_CONFIG['ivas']
-    ivas_client = IVASClient(
-        base_url=IVAS_SERVER['base_url'],
-        account=ivas_config['account'],
-        password=ivas_config['password']
-    )
 
-    if not ivas_client.login():
-        console.print(f"[red]✗ IVAS 初始化失败 (账户: {ivas_config['account']})[/red]")
-        return
+    if ENABLE_IVAS:
+        # 真实 IVAS 连接
+        ivas_config = UAV_CONFIG['ivas']
+        ivas_client = IVASClient(
+            base_url=IVAS_SERVER['base_url'],
+            account=ivas_config['account'],
+            password=ivas_config['password']
+        )
 
-    console.print(f"[bright_green]✓ IVAS 客户端初始化 (账户: {ivas_config['account']})[/bright_green]")
+        if not ivas_client.login():
+            console.print(f"[red]✗ IVAS 初始化失败 (账户: {ivas_config['account']})[/red]")
+            return
+
+        console.print(f"[bright_green]✓ IVAS 客户端初始化 (账户: {ivas_config['account']})[/bright_green]")
+    else:
+        # Dry-run 模式
+        ivas_client = DryRunReporter()
+        console.print(f"[yellow]⚠️  Dry-run 模式已启用（不连接 IVAS 服务器）[/yellow]")
+
     console.print()
 
     # 2. 连接 MQTT
