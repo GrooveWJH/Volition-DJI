@@ -195,7 +195,8 @@ def uwb_position_reporter(
                 alt=alt,
                 azimuth=heading,
                 motion=motion,
-                user_name=callsign
+                # user_name=callsign
+                user_name="indoor"
             )
 
             # 打印日志（前 N 秒）
