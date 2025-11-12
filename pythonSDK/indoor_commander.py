@@ -58,25 +58,25 @@ FAKE_TARGET_LOG_DURATION = 5.0  # 假目标上报日志打印时长（秒）
 # 假目标触发区域（基于无人机 UWB 位置）
 # 目标1触发区域：矩形对角顶点 (x_a, y_a) - (x_b, y_b)
 TARGET1_TRIGGER_AREA = {
-    'x_min': -5.0,  # x_a
-    'y_min': -5.0,  # y_a
-    'x_max': 5.0,   # x_b
-    'y_max': 5.0    # y_b
+    'x_min': -292,  # x_a
+    'y_min': 435,   # y_a
+    'x_max': -159,  # x_b
+    'y_max': 645    # y_b
 }
 
 # 目标2触发区域：矩形对角顶点 (x_c, y_c) - (x_d, y_d)
 TARGET2_TRIGGER_AREA = {
-    'x_min': -10.0,  # x_c
-    'y_min': -10.0,  # y_c
-    'x_max': 10.0,   # x_d
-    'y_max': 10.0    # y_d
+    'x_min': -260,  # x_c
+    'y_min': 909,   # y_c
+    'x_max': -68,   # x_d
+    'y_max': 1097   # y_d
 }
 
 TARGET3_TRIGGER_AREA = {
-    'x_min': -10.0,  # x_c
-    'y_min': -10.0,  # y_c
-    'x_max': 10.0,   # x_d
-    'y_max': 10.0    # y_d
+    'x_min': 111,   # x_e
+    'y_min': 1081,  # y_e
+    'x_max': 279,   # x_f
+    'y_max': 1221   # y_f
 }
 
 
