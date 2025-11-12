@@ -87,7 +87,8 @@ def position_reporter(
                 if success and elapsed <= print_duration:
                     gps_status = "GPS有效" if gps_valid else "无GPS"
                     height_str = f"{relative_height:.2f}m" if relative_height is not None else "N/A"
-                    print(f"[上报] [{callsign}] {gps_status} | 纬度:{lat:.6f} 经度:{lon:.6f} 相对高度:{height_str}")
+                    print(
+                        f"[上报] [{callsign}] {gps_status} | 纬度:{lat:.6f} 经度:{lon:.6f} 相对高度:{height_str}")
 
             next_tick += interval
 
@@ -217,8 +218,12 @@ def fake_target_reporter(
                 objs = []
                 for _ in range(config['target_count']):
                     # 在10m范围内随机偏移
-                    target_lat = lat + random.uniform(-config['lat_offset'], config['lat_offset'])
-                    target_lon = lon + random.uniform(-config['lon_offset'], config['lon_offset'])
+                    target_lat = lat + \
+                        random.uniform(-config['lat_offset'],
+                                       config['lat_offset'])
+                    target_lon = lon + \
+                        random.uniform(-config['lon_offset'],
+                                       config['lon_offset'])
                     target_alt = config['altitude']  # 固定高度（地面目标）
 
                     # 随机选择目标类别
@@ -233,7 +238,7 @@ def fake_target_reporter(
                     objs.append({
                         'id': target_id_counter,
                         'cls': target_cls,
-                        'gis': [target_lon, target_lat, target_alt],  # 注意：lon在前
+                        'gis': [target_lat, target_lon, target_alt],
                         'bbox': [bbox_x, bbox_y, bbox_w, bbox_h],
                         'obj_img': f"http://example.com/fake_target_{target_id_counter}.jpg"
                     })
@@ -247,14 +252,16 @@ def fake_target_reporter(
                 )
 
                 print(f"上报假目标: {objs}")
-                
+
                 # 7. 前N秒打印日志
                 elapsed = current - start_time
                 if success and elapsed <= config['print_duration']:
                     gps_status = "GPS有效" if gps_valid else "无GPS"
                     cls_names = {0: '人', 1: '车', 2: '飞机'}
-                    target_info = ', '.join([f"ID:{obj['id']}({cls_names[obj['cls']]})" for obj in objs])
-                    print(f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
+                    target_info = ', '.join(
+                        [f"ID:{obj['id']}({cls_names[obj['cls']]})" for obj in objs])
+                    print(
+                        f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
 
             next_tick += interval
 
@@ -308,7 +315,8 @@ def task_poller(
 
                 # 检查是否启用任务执行
                 if not enable_task_execution:
-                    print(f"[任务] 👁️ 监视模式：任务已接收但不执行 (ID:{target_id}, mission={mission})")
+                    print(
+                        f"[任务] 👁️ 监视模式：任务已接收但不执行 (ID:{target_id}, mission={mission})")
                     print("="*60 + "\n")
                     next_tick += interval
                     continue
@@ -316,7 +324,8 @@ def task_poller(
                 # 路由分发
                 if target_id == 99:
                     # 广播模式：分发给所有设备
-                    _distribute_broadcast(task_data, uav_clients_map, executed_tasks)
+                    _distribute_broadcast(
+                        task_data, uav_clients_map, executed_tasks)
                 elif target_id in uav_clients_map:
                     # 单播模式：分发给指定设备
                     print(f"[任务] 路由到设备 {target_id} (mission={mission})")
@@ -433,7 +442,8 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
                 uav_client['mqtt'],                 # 第2个参数：mqtt_client
                 uav_client['caller'],               # 第3个参数：caller
                 uav_client.get('config', {}),       # 第4个参数：uav_config
-                heartbeat_thread=uav_client.get('heartbeat'),  # 可选参数：heartbeat_thread
+                heartbeat_thread=uav_client.get(
+                    'heartbeat'),  # 可选参数：heartbeat_thread
                 runner=runner                       # 可选参数：runner
             )
         except Exception as e:
