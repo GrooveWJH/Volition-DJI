@@ -197,11 +197,10 @@ def fake_target_reporter(
             - max_targets_per_uav: 每个 UAV 最多目标数
             - report_after_waypoint: 是否仅在航点后上报
             - report_duration: 航点后上报持续时间（秒）
-            - print_duration: 打印日志的时长（秒）
+            - enable_debug_log: 是否打印调试日志
         stop_event: 停止事件（用于优雅退出）
     """
     next_tick = time.perf_counter()
-    start_time = time.perf_counter()
 
     # ID 管理：每个 UAV 有固定的 ID 池
     base_id = device_code * 10  # UAV1: 10, UAV2: 20, UAV3: 30
@@ -308,14 +307,12 @@ def fake_target_reporter(
                 objs=[obj]
             )
 
-            # 6. 打印日志（可选，前N秒）
-            if config.get('enable_debug_log', False):
-                elapsed = current - start_time
-                if success and elapsed <= config['print_duration']:
-                    gps_status = "GPS有效" if gps_valid else "无GPS"
-                    cls_names = {0: '人', 1: '车', 2: '飞机'}
-                    target_info = f"ID:{obj['id']}({cls_names[obj['cls']]})"
-                    print(f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
+            # 6. 打印日志（可选）
+            if config.get('enable_debug_log', False) and success:
+                gps_status = "GPS有效" if gps_valid else "无GPS"
+                cls_names = {0: '人', 1: '车', 2: '飞机'}
+                target_info = f"ID:{obj['id']}({cls_names[obj['cls']]})"
+                print(f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
 
             # 7. 循环更新索引（0 → 1 → ... → 9 → 0）
             current_index = (current_index + 1) % max_targets
