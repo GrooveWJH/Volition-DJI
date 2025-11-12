@@ -55,6 +55,31 @@ ENABLE_FAKE_TARGETS = True  # 是否启用假目标上报
 FAKE_TARGET_HZ = 2.0        # 假目标上报频率（Hz）
 FAKE_TARGET_LOG_DURATION = 5.0  # 假目标上报日志打印时长（秒）
 
+# 假目标触发区域（基于无人机 UWB 位置）
+# 目标1触发区域：矩形对角顶点 (x_a, y_a) - (x_b, y_b)
+TARGET1_TRIGGER_AREA = {
+    'x_min': -5.0,  # x_a
+    'y_min': -5.0,  # y_a
+    'x_max': 5.0,   # x_b
+    'y_max': 5.0    # y_b
+}
+
+# 目标2触发区域：矩形对角顶点 (x_c, y_c) - (x_d, y_d)
+TARGET2_TRIGGER_AREA = {
+    'x_min': -10.0,  # x_c
+    'y_min': -10.0,  # y_c
+    'x_max': 10.0,   # x_d
+    'y_max': 10.0    # y_d
+}
+
+TARGET3_TRIGGER_AREA = {
+    'x_min': -10.0,  # x_c
+    'y_min': -10.0,  # y_c
+    'x_max': 10.0,   # x_d
+    'y_max': 10.0    # y_d
+}
+
+
 # UWB 坐标系转换超参数
 UWB_TRANSFORM = {
     'x_offset': -3.13,    # x 平移（米）
@@ -283,9 +308,12 @@ def fixed_target_reporter(
     print_duration: float = 5.0
 ):
     """
-    固定假目标上报线程
+    固定假目标上报线程（基于无人机位置触发）
 
-    定期上报两个固定位置的人员目标到 IVAS。
+    根据无人机当前 UWB 位置动态上报假目标：
+    - 目标1：仅在 TARGET1_TRIGGER_AREA 矩形范围内触发
+    - 目标2：仅在 TARGET2_TRIGGER_AREA 矩形范围内触发
+    - 目标3：仅在 TARGET3_TRIGGER_AREA 矩形范围内触发
 
     Args:
         ivas_client: IVAS HTTP 客户端
@@ -296,34 +324,68 @@ def fixed_target_reporter(
     next_tick = time.perf_counter()
     start_time = time.perf_counter()
 
-    # 固定目标配置
-    targets = [
-        {'id': 1, 'cls': 0, 'gis': [-168, 170, 10000]},      # 人员1：lon=-168, lat=170, alt=10000
-        {'id': 2, 'cls': 0, 'gis': [-237, 1703, 10000]}     # 人员2：lon=-237, lat=1703, alt=10000
-    ]
-
-    # 为每个目标添加 bbox 和 obj_img（模拟数据）
-    for target in targets:
-        target['bbox'] = [100, 100, 50, 50]  # 固定 bbox
-        target['obj_img'] = f"http://example.com/target_{target['id']}.jpg"
+    # 目标配置（固定位置）
+    target1_config = {'id': 1, 'cls': 0, 'gis': [-168, 170, 10000]}
+    target2_config = {'id': 2, 'cls': 0, 'gis': [-237, 1703, 10000]}
+    target3_config = {'id': 3, 'cls': 0, 'gis': [-300, 2000, 10000]}
 
     while not stop_event.is_set():
         current = time.perf_counter()
 
         if current >= next_tick:
-            # 上报目标
-            timestamp = int(time.time())
-            success = ivas_client.report_targets(timestamp=timestamp, objs=targets)
+            # 读取无人机当前 UWB 位置（使用共享数据）
+            with uwb_lock:
+                uav_x = uwb_data['x']
+                uav_y = uwb_data['y']
 
-            # 打印日志（前 N 秒）
-            elapsed = current - start_time
-            if success and elapsed <= print_duration:
-                print(
-                    f"[假目标] 上报 {len(targets)} 个目标 | "
-                    f"ID1:({targets[0]['gis'][1]:.1f},{targets[0]['gis'][0]:.1f}) "
-                    f"ID2:({targets[1]['gis'][1]:.1f},{targets[1]['gis'][0]:.1f}) "
-                    f"高度:{targets[0]['gis'][2]}m"
-                )
+            # 检查 UWB 数据有效性
+            if uav_x is None or uav_y is None:
+                next_tick += interval
+                continue
+
+            # 动态构建上报目标列表（基于触发区域）
+            active_targets = []
+
+            # 检查目标1触发条件
+            area1 = TARGET1_TRIGGER_AREA
+            if (area1['x_min'] <= uav_x <= area1['x_max'] and
+                area1['y_min'] <= uav_y <= area1['y_max']):
+                target1 = target1_config.copy()
+                target1['bbox'] = [100, 100, 50, 50]
+                target1['obj_img'] = f"http://example.com/target_{target1['id']}.jpg"
+                active_targets.append(target1)
+
+            # 检查目标2触发条件
+            area2 = TARGET2_TRIGGER_AREA
+            if (area2['x_min'] <= uav_x <= area2['x_max'] and
+                area2['y_min'] <= uav_y <= area2['y_max']):
+                target2 = target2_config.copy()
+                target2['bbox'] = [100, 100, 50, 50]
+                target2['obj_img'] = f"http://example.com/target_{target2['id']}.jpg"
+                active_targets.append(target2)
+
+            # 检查目标3触发条件
+            area3 = TARGET3_TRIGGER_AREA
+            if (area3['x_min'] <= uav_x <= area3['x_max'] and
+                area3['y_min'] <= uav_y <= area3['y_max']):
+                target3 = target3_config.copy()
+                target3['bbox'] = [100, 100, 50, 50]
+                target3['obj_img'] = f"http://example.com/target_{target3['id']}.jpg"
+                active_targets.append(target3)
+
+            # 仅在有激活目标时上报
+            if active_targets:
+                timestamp = int(time.time())
+                success = ivas_client.report_targets(timestamp=timestamp, objs=active_targets)
+
+                # 打印日志（前 N 秒）
+                elapsed = current - start_time
+                if success and elapsed <= print_duration:
+                    target_ids = [t['id'] for t in active_targets]
+                    print(
+                        f"[假目标] UAV位置:({uav_x:.2f},{uav_y:.2f}) | "
+                        f"上报 {len(active_targets)} 个目标 (ID: {target_ids})"
+                    )
 
             next_tick += interval
 
@@ -440,7 +502,7 @@ def main():
 
     # 假目标配置状态
     if ENABLE_FAKE_TARGETS:
-        console.print(f"  假目标上报: [green]已启用[/green] (频率: {FAKE_TARGET_HZ}Hz, 目标数: 2)")
+        console.print(f"  假目标上报: [green]已启用[/green] (频率: {FAKE_TARGET_HZ}Hz, 目标数: 3)")
     else:
         console.print(f"  假目标上报: [yellow]已禁用[/yellow]")
 
