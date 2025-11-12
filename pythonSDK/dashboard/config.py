@@ -112,19 +112,24 @@ IVAS_SERVER = {
 IVAS_ADVANCED = {
     'require_gps': False,              # 位置上报是否要求GPS有效（False时无GPS也上报，lat/lon=0）
     'enable_task_execution': True,    # 是否执行任务分发（False时仅监视，不执行）
+    'position_log_duration': 5.0,      # 位置上报日志打印时长（秒，前N秒打印）
 }
 
 # IVAS 假目标上报配置（用于测试和演示）
 IVAS_FAKE_TARGET = {
-    'enabled': True,              # 总开关（与 IVAS_FEATURES['fake_target_report'] 配合使用）
-    'report_hz': 1.0,             # 上报频率（Hz）- 每秒上报次数
-    'range_meters': 10.0,         # 范围说明（米）- 用于文档
-    'lat_offset': 0.0001,         # 纬度偏移（度）≈ 11m
-    'lon_offset': 0.0001,         # 经度偏移（度）≈ 8-10m（中纬度）
-    'target_count': 1,            # 每次上报的目标数量
-    'altitude': 0.0,              # 目标高度（固定值，代表地面目标）
-    'require_gps': True,          # 是否要求GPS有效（False时GPS无效也上报）
-    'target_classes': [0, 1],     # 目标类别列表（0:人, 1:车, 2:飞机）
-    'print_duration': 5.0,        # 打印日志的时长（秒，前N秒打印）
+    'enabled': True,                   # 总开关（与 IVAS_FEATURES['fake_target_report'] 配合使用）
+    'report_hz': 0.5,                  # 上报频率（Hz）- 每 2 秒上报一次
+    'range_meters': 10.0,              # 范围说明（米）- 用于文档
+    'lat_offset': 0.0001,              # 纬度偏移（度）≈ 11m
+    'lon_offset': 0.0001,              # 经度偏移（度）≈ 8-10m（中纬度）
+    'target_count': 1,                 # 每次上报的目标数量
+    'altitude': 0.0,                   # 目标高度（固定值，代表地面目标）
+    'require_gps': True,               # 是否要求GPS有效（False时GPS无效也上报）
+    'target_classes': [0, 1],          # 目标类别列表（0:人, 1:车）
+    'target_class_weights': [0.1, 0.9],  # 目标类别权重（10% 人，90% 车）
+    'max_targets_per_uav': 10,         # 每个 UAV 最多 10 个循环目标
+    'report_after_waypoint': True,     # 仅在到达航点后上报
+    'report_duration': 20.0,           # 到达航点后上报持续时间（秒）
+    'enable_debug_log': False,         # 是否打印调试日志（启动、航点、上报数据）
 }
 

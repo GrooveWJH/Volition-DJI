@@ -94,7 +94,6 @@ def create_uav_panel(
     config: Dict[str, str],
     elapsed: int,
     offline_timeout: float = 2.0,
-    ivas_adapter=None
 ) -> Panel:
     """
     为单个无人机创建实时监控面板
@@ -104,22 +103,17 @@ def create_uav_panel(
     2. UI 渲染：调用辅助函数构建各个显示区域（单一职责）
     3. 面板包装：使用 UAVState 的样式方法（消除重复条件判断）
 
-    UI 布局改进：
-    - IVAS 日志显示在主表格下方（而非表格右列）
-    - 宽度与主表格一致，避免左侧空白
-
     Args:
-        uav_client: 无人机客户端数据 (mqtt, caller, heartbeat, connection_manager, ivas)
+        uav_client: 无人机客户端数据 (mqtt, caller, heartbeat, connection_manager)
         config: 无人机配置 (sn, user_id, callsign)
         elapsed: 运行时间（秒）
         offline_timeout: 离线超时时间（秒）
-        ivas_adapter: IVAS 适配器实例（可选，用于显示IVAS日志）
 
     Returns:
         Rich Panel 对象
     """
     # ========== 阶段 1: 构建状态快照（数据聚合）==========
-    state = UAVState.from_uav_client(uav_client, config, elapsed, offline_timeout, ivas_adapter)
+    state = UAVState.from_uav_client(uav_client, config, elapsed, offline_timeout)
 
     # ========== 阶段 2: 创建 UI（只负责格式化显示）==========
     table = Table.grid(padding=(0, 2))
@@ -142,13 +136,8 @@ def create_uav_panel(
     # 任务进度区域
     _add_mission_progress(table, state, add_separator)
 
-    # ========== 组合内容（主表格 + IVAS 日志）==========
-    # 如果有 IVAS 日志，将其显示在主表格下方（宽度一致）
-    if state.ivas_logs:
-        ivas_panel = _create_ivas_panel(state.ivas_logs)
-        content = Group(table, ivas_panel)
-    else:
-        content = table
+    # ========== 组合内容 ==========
+    content = table
 
     # ========== 阶段 3: 包装面板（使用状态方法）==========
     return Panel(
