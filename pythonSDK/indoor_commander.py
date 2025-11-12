@@ -7,6 +7,7 @@
 2. 上报位置到 IVAS
 3. 轮询 IVAS 任务
 4. 转发 mission=1 任务到 MQTT（ivas/task/command）
+5. 基于位置触发目标上报（永久激活模式）
 
 使用方法：
     python indoor_commander.py
@@ -48,35 +49,35 @@ TASK_PUBLISH_TOPIC = 'ivas/task/command'  # 任务转发主题
 # IVAS 配置
 IVAS_REPORT_HZ = 1.0        # 位置上报频率（Hz）
 IVAS_TASK_HZ = 2.0          # 任务轮询频率（Hz）
-POSITION_LOG_DURATION = 5.0 # 位置上报日志打印时长（秒）
+POSITION_LOG_DURATION = .0 # 位置上报日志打印时长（秒）
 
-# 假目标上报配置
-ENABLE_FAKE_TARGETS = True  # 是否启用假目标上报
-FAKE_TARGET_HZ = 2.0        # 假目标上报频率（Hz）
-FAKE_TARGET_LOG_DURATION = 5.0  # 假目标上报日志打印时长（秒）
+# 目标上报配置
+ENABLE_FAKE_TARGETS = True  # 是否启用目标上报
+FAKE_TARGET_HZ = 2.0        # 目标上报频率（Hz）
+FAKE_TARGET_LOG_DURATION = 1000.0 # 目标上报日志打印时长（秒）
 
-# 假目标触发区域（基于无人机 UWB 位置）
+# 目标触发区域（基于无人机 UWB 位置）
 # 目标1触发区域：矩形对角顶点 (x_a, y_a) - (x_b, y_b)
 TARGET1_TRIGGER_AREA = {
-    'x_min': -5.0,  # x_a
-    'y_min': -5.0,  # y_a
-    'x_max': 5.0,   # x_b
-    'y_max': 5.0    # y_b
+    'x_min': -2.92,  # x_a
+    'y_min': 4.35,   # y_a
+    'x_max': -1.5,  # x_b
+    'y_max': 6.45    # y_b
 }
 
 # 目标2触发区域：矩形对角顶点 (x_c, y_c) - (x_d, y_d)
 TARGET2_TRIGGER_AREA = {
-    'x_min': -10.0,  # x_c
-    'y_min': -10.0,  # y_c
-    'x_max': 10.0,   # x_d
-    'y_max': 10.0    # y_d
+    'x_min': -2.60,  # x_c
+    'y_min': 9.09,   # y_c
+    'x_max': -.68,   # x_d
+    'y_max': 10.97   # y_d
 }
 
 TARGET3_TRIGGER_AREA = {
-    'x_min': -10.0,  # x_c
-    'y_min': -10.0,  # y_c
-    'x_max': 10.0,   # x_d
-    'y_max': 10.0    # y_d
+    'x_min': 1.11,   # x_e
+    'y_min': 10.81,  # y_e
+    'x_max': 2.79,   # x_f
+    'y_max': 12.21   # y_f
 }
 
 
@@ -90,7 +91,7 @@ UWB_TRANSFORM = {
 
 # 高度控制配置
 USE_UWB_ALTITUDE = False         # 是否使用 UWB 高度（False 则使用固定高度）
-FIXED_ALTITUDE_BASE = 1.3       # 固定高度基础值（米）
+FIXED_ALTITUDE_BASE = 10001.3       # 固定高度基础值（米）
 FIXED_ALTITUDE_RANGE = 0.05      # 固定高度波动范围（米，±range）
 
 # 使用配置（这里使用 IVAS 第一台设备的 device_code）
@@ -192,7 +193,7 @@ class DryRunReporter:
 
     用途：在无 IVAS 服务器环境下调试 UWB 数据流和坐标转换逻辑
     - report_position(): 打印到控制台而不实际上报
-    - report_targets(): 打印假目标数据
+    - report_targets(): 打印目标数据
     - poll_task(): 返回 None（不轮询任务）
     """
 
@@ -211,8 +212,8 @@ class DryRunReporter:
         return True  # 模拟成功
 
     def report_targets(self, timestamp: int, objs: list) -> bool:
-        """打印假目标数据（模拟上报）"""
-        print(f"[DRY-RUN] 上报假目标 | timestamp={timestamp} | 目标数={len(objs)}")
+        """打印目标数据（模拟上报）"""
+        print(f"[DRY-RUN] 上报目标 | timestamp={timestamp} | 目标数={len(objs)}")
         for obj in objs:
             print(f"  - ID:{obj['id']} 类别:{obj['cls']} 位置:{obj['gis']}")
         print()  # 空行分隔
@@ -308,12 +309,15 @@ def fixed_target_reporter(
     print_duration: float = 5.0
 ):
     """
-    固定假目标上报线程（基于无人机位置触发）
+    固定目标上报线程（基于无人机位置触发）
 
-    根据无人机当前 UWB 位置动态上报假目标：
-    - 目标1：仅在 TARGET1_TRIGGER_AREA 矩形范围内触发
-    - 目标2：仅在 TARGET2_TRIGGER_AREA 矩形范围内触发
-    - 目标3：仅在 TARGET3_TRIGGER_AREA 矩形范围内触发
+    根据无人机当前 UWB 位置动态上报目标：
+    - 目标1：进入 TARGET1_TRIGGER_AREA 后永久激活
+    - 目标2：进入 TARGET2_TRIGGER_AREA 后永久激活
+    - 目标3：进入 TARGET3_TRIGGER_AREA 后永久激活
+
+    特性：一旦进入某个区域触发target，即使离开区域也持续上报该target。
+    注意：触发区域坐标使用变换后的坐标系（与位置上报相同）
 
     Args:
         ivas_client: IVAS HTTP 客户端
@@ -325,9 +329,12 @@ def fixed_target_reporter(
     start_time = time.perf_counter()
 
     # 目标配置（固定位置）
-    target1_config = {'id': 1, 'cls': 0, 'gis': [-168, 170, 10000]}
-    target2_config = {'id': 2, 'cls': 0, 'gis': [-237, 1703, 10000]}
-    target3_config = {'id': 3, 'cls': 0, 'gis': [-300, 2000, 10000]}
+    target1_config = {'id': 1, 'cls': 0, 'gis': [-1.68, 1.70, 10000]}
+    target2_config = {'id': 2, 'cls': 0, 'gis': [-2.37, 17.03, 10000]}
+    target3_config = {'id': 3, 'cls': 0, 'gis': [0.5, 10.99, 10000]}
+
+    # 永久激活状态跟踪（一旦触发就持续上报）
+    activated_targets = set()  # 存储已激活的target ID
 
     while not stop_event.is_set():
         current = time.perf_counter()
@@ -335,39 +342,60 @@ def fixed_target_reporter(
         if current >= next_tick:
             # 读取无人机当前 UWB 位置（使用共享数据）
             with uwb_lock:
-                uav_x = uwb_data['x']
-                uav_y = uwb_data['y']
+                raw_x = uwb_data['x']
+                raw_y = uwb_data['y']
 
             # 检查 UWB 数据有效性
-            if uav_x is None or uav_y is None:
+            if raw_x is None or raw_y is None:
                 next_tick += interval
                 continue
 
-            # 动态构建上报目标列表（基于触发区域）
-            active_targets = []
+            # 应用平移和缩放变换（与位置上报使用相同的变换）
+            transformed_lat = (raw_x + UWB_TRANSFORM['x_offset']) * UWB_TRANSFORM['x_scale']
+            transformed_lon = (raw_y + UWB_TRANSFORM['y_offset']) * UWB_TRANSFORM['y_scale']
+
+            # 检查各个区域，一旦进入就永久激活对应target
+            print(f"[DEBUG] 变换后坐标: ({transformed_lat:.2f}, {transformed_lon:.2f})")
 
             # 检查目标1触发条件
             area1 = TARGET1_TRIGGER_AREA
-            if (area1['x_min'] <= uav_x <= area1['x_max'] and
-                area1['y_min'] <= uav_y <= area1['y_max']):
+            if (area1['x_min'] <= transformed_lat <= area1['x_max'] and
+                area1['y_min'] <= transformed_lon <= area1['y_max']):
+                if 1 not in activated_targets:
+                    activated_targets.add(1)
+                    print(f"[目标触发] 目标1已激活 (区域: x=[{area1['x_min']},{area1['x_max']}], y=[{area1['y_min']},{area1['y_max']}])")
+
+            # 检查目标2触发条件
+            area2 = TARGET2_TRIGGER_AREA
+            if (area2['x_min'] <= transformed_lat <= area2['x_max'] and
+                area2['y_min'] <= transformed_lon <= area2['y_max']):
+                if 2 not in activated_targets:
+                    activated_targets.add(2)
+                    print(f"[目标触发] 目标2已激活 (区域: x=[{area2['x_min']},{area2['x_max']}], y=[{area2['y_min']},{area2['y_max']}])")
+
+            # 检查目标3触发条件
+            area3 = TARGET3_TRIGGER_AREA
+            if (area3['x_min'] <= transformed_lat <= area3['x_max'] and
+                area3['y_min'] <= transformed_lon <= area3['y_max']):
+                if 3 not in activated_targets:
+                    activated_targets.add(3)
+                    print(f"[目标触发] 目标3已激活 (区域: x=[{area3['x_min']},{area3['x_max']}], y=[{area3['y_min']},{area3['y_max']}])")
+
+            # 构建所有已激活的目标列表（持续上报）
+            active_targets = []
+            if 1 in activated_targets:
                 target1 = target1_config.copy()
                 target1['bbox'] = [100, 100, 50, 50]
                 target1['obj_img'] = f"http://example.com/target_{target1['id']}.jpg"
                 active_targets.append(target1)
 
-            # 检查目标2触发条件
-            area2 = TARGET2_TRIGGER_AREA
-            if (area2['x_min'] <= uav_x <= area2['x_max'] and
-                area2['y_min'] <= uav_y <= area2['y_max']):
+            if 2 in activated_targets:
                 target2 = target2_config.copy()
                 target2['bbox'] = [100, 100, 50, 50]
                 target2['obj_img'] = f"http://example.com/target_{target2['id']}.jpg"
                 active_targets.append(target2)
 
-            # 检查目标3触发条件
-            area3 = TARGET3_TRIGGER_AREA
-            if (area3['x_min'] <= uav_x <= area3['x_max'] and
-                area3['y_min'] <= uav_y <= area3['y_max']):
+            if 3 in activated_targets:
                 target3 = target3_config.copy()
                 target3['bbox'] = [100, 100, 50, 50]
                 target3['obj_img'] = f"http://example.com/target_{target3['id']}.jpg"
@@ -383,7 +411,8 @@ def fixed_target_reporter(
                 if success and elapsed <= print_duration:
                     target_ids = [t['id'] for t in active_targets]
                     print(
-                        f"[假目标] UAV位置:({uav_x:.2f},{uav_y:.2f}) | "
+                        f"[上报] UAV原始:({raw_x:.2f},{raw_y:.2f}) "
+                        f"变换后:({transformed_lat:.2f},{transformed_lon:.2f}) | "
                         f"上报 {len(active_targets)} 个目标 (ID: {target_ids})"
                     )
 
@@ -500,11 +529,12 @@ def main():
     console.print(f"  位置上报频率: {IVAS_REPORT_HZ} Hz")
     console.print(f"  任务轮询频率: {IVAS_TASK_HZ} Hz")
 
-    # 假目标配置状态
+    # 目标配置状态
     if ENABLE_FAKE_TARGETS:
-        console.print(f"  假目标上报: [green]已启用[/green] (频率: {FAKE_TARGET_HZ}Hz, 目标数: 3)")
+        console.print(f"  目标上报: [green]已启用[/green] (频率: {FAKE_TARGET_HZ}Hz, 目标数: 3)")
+        console.print(f"  触发模式: [cyan]永久激活[/cyan] (进入区域后持续上报)")
     else:
-        console.print(f"  假目标上报: [yellow]已禁用[/yellow]")
+        console.print(f"  目标上报: [yellow]已禁用[/yellow]")
 
     # 高度配置状态
     if USE_UWB_ALTITUDE:
@@ -575,10 +605,10 @@ def main():
     console.print(f"[bright_green]✓ 位置上报线程已启动[/bright_green]")
     console.print()
 
-    # 4. 启动假目标上报线程（可选）
+    # 4. 启动目标上报线程（可选）
     fake_target_thread = None
     if ENABLE_FAKE_TARGETS:
-        console.print("[bold]🎯 步骤 4: 启动假目标上报线程[/bold]")
+        console.print("[bold]🎯 步骤 4: 启动目标上报线程[/bold]")
         fake_target_stop_event = threading.Event()
         fake_target_thread = threading.Thread(
             target=fixed_target_reporter,
@@ -589,10 +619,10 @@ def main():
                 FAKE_TARGET_LOG_DURATION
             ),
             daemon=True,
-            name="fake-target-reporter"
+            name="target-reporter"
         )
         fake_target_thread.start()
-        console.print(f"[bright_green]✓ 假目标上报线程已启动 (频率: {FAKE_TARGET_HZ}Hz)[/bright_green]")
+        console.print(f"[bright_green]✓ 目标上报线程已启动 (频率: {FAKE_TARGET_HZ}Hz)[/bright_green]")
         console.print()
 
     # 5. 启动任务轮询与发布线程
@@ -634,12 +664,12 @@ def main():
         position_thread.join(timeout=2.0)
         console.print(f"[bright_green]✓ 位置上报线程已停止[/bright_green]")
 
-        # 停止假目标上报线程（如果存在）
+        # 停止目标上报线程（如果存在）
         if fake_target_thread is not None:
-            console.print("[bright_cyan]停止假目标上报线程...[/bright_cyan]")
+            console.print("[bright_cyan]停止目标上报线程...[/bright_cyan]")
             fake_target_stop_event.set()
             fake_target_thread.join(timeout=2.0)
-            console.print(f"[bright_green]✓ 假目标上报线程已停止[/bright_green]")
+            console.print(f"[bright_green]✓ 目标上报线程已停止[/bright_green]")
 
         # 停止任务轮询线程
         console.print("[bright_cyan]停止任务轮询线程...[/bright_cyan]")
