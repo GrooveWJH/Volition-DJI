@@ -57,12 +57,15 @@ DEFAULT_SERIAL_PORT = "/dev/ttyACM0"
 DEFAULT_BAUDRATE = 1500000
 DEFAULT_TARGET_NODE_ID = 2  # TAG 节点 ID
 
+# 内存安全配置
+MAX_BUFFER_SIZE = 10240  # 最大缓冲区大小（10KB）
+
 # ================== Smoothing Filter (from uwb/getdata_smoothed.py) ===================
-FILTER_WINDOW_X = 5
-FILTER_WINDOW_Y = 3
-FILTER_WINDOW_Z = 3
-OUTLIER_THRESHOLD_X = 0.085  # 85mm
-OUTLIER_THRESHOLD_Y = 0.039  # 39mm
+FILTER_WINDOW_X = 40
+FILTER_WINDOW_Y = 40
+FILTER_WINDOW_Z = 20
+OUTLIER_THRESHOLD_X = 0.40  # 85mm
+OUTLIER_THRESHOLD_Y = 0.40  # 39mm
 OUTLIER_THRESHOLD_Z = 0.050  # 50mm
 
 
@@ -262,6 +265,12 @@ class UWBClient:
                 if data:
                     buffer.extend(data)
 
+                # 防止缓冲区无限增长（内存安全）
+                if len(buffer) > MAX_BUFFER_SIZE:
+                    print(f"[UWB] WARNING: Buffer overflow ({len(buffer)} bytes), clearing...")
+                    buffer.clear()
+                    continue
+
                 # 搜索完整帧
                 while len(buffer) >= FIXED_PART_SIZE:
                     # 查找帧头
@@ -269,6 +278,11 @@ class UWBClient:
                     if idx < 0:
                         buffer.clear()
                         break
+
+                    # 丢弃帧头之前的垃圾数据
+                    if idx > 0:
+                        buffer = buffer[idx:]
+                        idx = 0
 
                     # 检查是否有完整帧
                     if len(buffer) - idx < FIXED_PART_SIZE:

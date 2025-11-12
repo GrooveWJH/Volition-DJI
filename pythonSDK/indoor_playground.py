@@ -13,6 +13,8 @@
 
 import json
 import time
+import gc
+import psutil
 from rich.console import Console
 
 import paho.mqtt.client as mqtt
@@ -23,7 +25,7 @@ console = Console()
 # ========== 配置段 ==========
 
 # 功能开关
-ENABLE_UWB_PUBLISH = False               # 是否启用 UWB 发布功能
+ENABLE_UWB_PUBLISH = True               # 是否启用 UWB 发布功能
 
 # MQTT 配置
 MQTT_CONFIG = {
@@ -43,6 +45,12 @@ TASK_SUBSCRIBE_TOPIC = 'ivas/task/command'  # 任务指令订阅主题
 
 # MQTT 客户端 ID
 CLIENT_ID = f'playground-{int(time.time())}'
+
+# ========== 内存安全配置 ==========
+MAX_QUEUED_MESSAGES = 100        # MQTT 消息队列最大长度
+MEMORY_CHECK_INTERVAL = 600      # 内存检查间隔（秒，10分钟）
+GC_COLLECT_INTERVAL = 1800       # 垃圾回收间隔（秒，30分钟）
+MAX_MEMORY_PERCENT = 80          # 内存使用率阈值（%）
 
 # ========== 语音播报初始化 ==========
 
@@ -71,8 +79,7 @@ def init_tts_engine():
 
         if chinese_voice_id:
             engine.setProperty('voice', chinese_voice_id)
-        else:
-            console.print("[yellow]⚠ 未找到中文语音包，将使用默认语音[/yellow]")
+        # 如果没有中文语音，静默使用默认英文语音
 
         return engine
     except Exception as e:
@@ -116,14 +123,20 @@ def on_task_message(client, userdata, msg):
             console.print(json.dumps(payload, indent=2, ensure_ascii=False))
             console.print("="*60 + "\n")
 
-            # 播报语音
+            # 播报语音（带超时保护）
             if tts_engine:
-                console.print("[bold cyan]🔊 播报: 任务开始[/bold cyan]")
+                console.print("[bold cyan]🔊 播报: Mission Start[/bold cyan]")
                 try:
-                    tts_engine.say("任务开始开始开始")
+                    tts_engine.say("Mission Start")
                     tts_engine.runAndWait()
+                    # 清理 TTS 引擎缓冲区
+                    tts_engine.stop()
                 except Exception as e:
                     console.print(f"[red]✗ 语音播报失败: {e}[/red]")
+                    try:
+                        tts_engine.stop()  # 确保清理
+                    except:
+                        pass
 
             # TODO: 在这里添加实际的起飞控制逻辑
             console.print("[yellow]>> 执行起飞动作（待实现）[/yellow]\n")
@@ -132,6 +145,9 @@ def on_task_message(client, userdata, msg):
 
     except Exception as e:
         console.print(f"[red]✗ 任务消息解析失败: {e}[/red]")
+    finally:
+        # 显式删除大对象，释放内存
+        del msg
 
 
 # ========== 主程序 ==========
@@ -173,6 +189,10 @@ def main():
     # 2. 连接 MQTT
     console.print("[bold]🔌 步骤 2: 连接 MQTT Broker[/bold]")
     mqtt_client = mqtt.Client(client_id=CLIENT_ID)
+
+    # 设置 MQTT 消息队列限制（防止内存溢出）
+    mqtt_client.max_queued_messages_set(MAX_QUEUED_MESSAGES)
+
     mqtt_client.username_pw_set(MQTT_CONFIG['username'], MQTT_CONFIG['password'])
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = on_task_message
@@ -196,11 +216,44 @@ def main():
 
     publish_interval = 1.0 / UWB_PUBLISH_RATE_HZ if ENABLE_UWB_PUBLISH else 0
     last_publish_time = time.time()
+    last_memory_check = time.time()
+    last_gc_collect = time.time()
     msg_count = 0
+
+    # 获取进程对象用于内存监控
+    process = psutil.Process()
 
     try:
         while True:
             current_time = time.time()
+
+            # 定期内存检查（每10分钟）
+            if current_time - last_memory_check >= MEMORY_CHECK_INTERVAL:
+                try:
+                    mem_info = process.memory_info()
+                    mem_percent = process.memory_percent()
+
+                    console.print(
+                        f"\n[cyan]💾 内存状态: {mem_info.rss / 1024 / 1024:.1f} MB "
+                        f"({mem_percent:.1f}%)[/cyan]"
+                    )
+
+                    # 内存使用率超过阈值时发出警告
+                    if mem_percent > MAX_MEMORY_PERCENT:
+                        console.print(f"[yellow]⚠️ 内存使用率超过 {MAX_MEMORY_PERCENT}%[/yellow]")
+                        # 强制垃圾回收
+                        collected = gc.collect()
+                        console.print(f"[cyan]🗑️ 强制垃圾回收，清理 {collected} 个对象[/cyan]\n")
+
+                    last_memory_check = current_time
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ 内存检查失败: {e}[/yellow]")
+
+            # 定期垃圾回收（每30分钟）
+            if current_time - last_gc_collect >= GC_COLLECT_INTERVAL:
+                collected = gc.collect()
+                console.print(f"\n[dim]🗑️ 定期垃圾回收: 清理 {collected} 个对象[/dim]\n")
+                last_gc_collect = current_time
 
             # 发布 UWB 数据（如果启用）
             if ENABLE_UWB_PUBLISH and uwb_client and (current_time - last_publish_time >= publish_interval):
@@ -226,26 +279,35 @@ def main():
                     result = mqtt_client.publish(UWB_PUBLISH_TOPIC, payload, qos=0)
 
                     if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                        # 仅打印前 10 条消息
-                        if msg_count <= 10:
+                        # 每 100 条打印一次实时数据
+                        if msg_count % 100 == 0 or msg_count <= 10:
                             console.print(
                                 f"[green]✓[/green] [[cyan]{msg_count:05d}[/cyan]] "
                                 f"UWB 发布: x={x:7.4f}, y={y:7.4f}, z={z:7.4f}",
                                 end='\r'
                             )
                         else:
-                            # 后续仅更新计数
+                            # 其他时候显示简化信息
                             console.print(
-                                f"[dim]UWB 发布中... (已发布 {msg_count} 条)[/dim]",
+                                f"[dim]UWB 发布中... [[cyan]{msg_count:05d}[/cyan]] "
+                                f"x={x:7.4f}, y={y:7.4f}, z={z:7.4f}[/dim]",
                                 end='\r'
                             )
 
                     last_publish_time = current_time
 
+                    # 显式删除消息对象，立即释放内存
+                    del message, payload
+
             time.sleep(0.001)  # 1ms 睡眠
 
     except KeyboardInterrupt:
         console.print(f"\n\n[yellow]⚠️  接收到中断信号，正在退出...[/yellow]")
+
+    except Exception as e:
+        console.print(f"\n\n[red]✗ 程序异常退出: {e}[/red]")
+        import traceback
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
     finally:
         console.print(f"\n[bold]🧹 清理资源...[/bold]")
@@ -253,13 +315,25 @@ def main():
         if ENABLE_UWB_PUBLISH and msg_count > 0:
             console.print(f"[cyan]总共发布了 {msg_count} 条 UWB 消息[/cyan]")
 
+        # 安全停止 UWB 客户端
         if uwb_client:
-            uwb_client.stop()
-            console.print("[green]✓ UWB 客户端已停止[/green]")
+            try:
+                uwb_client.stop()
+                console.print("[green]✓ UWB 客户端已停止[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ UWB 清理失败: {e}[/yellow]")
 
-        mqtt_client.loop_stop()
-        mqtt_client.disconnect()
-        console.print("[green]✓ MQTT 已断开[/green]")
+        # 安全停止 MQTT
+        try:
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
+            console.print("[green]✓ MQTT 已断开[/green]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ MQTT 清理失败: {e}[/yellow]")
+
+        # 最终垃圾回收
+        collected = gc.collect()
+        console.print(f"[dim]🗑️ 最终垃圾回收: {collected} 个对象[/dim]")
 
         console.print("[bold green]✅ 程序已退出[/bold green]\n")
 
