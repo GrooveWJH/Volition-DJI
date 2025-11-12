@@ -72,6 +72,14 @@ TARGET2_TRIGGER_AREA = {
     'y_max': 10.0    # y_d
 }
 
+TARGET3_TRIGGER_AREA = {
+    'x_min': -10.0,  # x_c
+    'y_min': -10.0,  # y_c
+    'x_max': 10.0,   # x_d
+    'y_max': 10.0    # y_d
+}
+
+
 # UWB 坐标系转换超参数
 UWB_TRANSFORM = {
     'x_offset': -3.13,    # x 平移（米）
@@ -305,6 +313,7 @@ def fixed_target_reporter(
     根据无人机当前 UWB 位置动态上报假目标：
     - 目标1：仅在 TARGET1_TRIGGER_AREA 矩形范围内触发
     - 目标2：仅在 TARGET2_TRIGGER_AREA 矩形范围内触发
+    - 目标3：仅在 TARGET3_TRIGGER_AREA 矩形范围内触发
 
     Args:
         ivas_client: IVAS HTTP 客户端
@@ -318,6 +327,7 @@ def fixed_target_reporter(
     # 目标配置（固定位置）
     target1_config = {'id': 1, 'cls': 0, 'gis': [-168, 170, 10000]}
     target2_config = {'id': 2, 'cls': 0, 'gis': [-237, 1703, 10000]}
+    target3_config = {'id': 3, 'cls': 0, 'gis': [-300, 2000, 10000]}
 
     while not stop_event.is_set():
         current = time.perf_counter()
@@ -353,6 +363,15 @@ def fixed_target_reporter(
                 target2['bbox'] = [100, 100, 50, 50]
                 target2['obj_img'] = f"http://example.com/target_{target2['id']}.jpg"
                 active_targets.append(target2)
+
+            # 检查目标3触发条件
+            area3 = TARGET3_TRIGGER_AREA
+            if (area3['x_min'] <= uav_x <= area3['x_max'] and
+                area3['y_min'] <= uav_y <= area3['y_max']):
+                target3 = target3_config.copy()
+                target3['bbox'] = [100, 100, 50, 50]
+                target3['obj_img'] = f"http://example.com/target_{target3['id']}.jpg"
+                active_targets.append(target3)
 
             # 仅在有激活目标时上报
             if active_targets:
@@ -483,7 +502,7 @@ def main():
 
     # 假目标配置状态
     if ENABLE_FAKE_TARGETS:
-        console.print(f"  假目标上报: [green]已启用[/green] (频率: {FAKE_TARGET_HZ}Hz, 目标数: 2)")
+        console.print(f"  假目标上报: [green]已启用[/green] (频率: {FAKE_TARGET_HZ}Hz, 目标数: 3)")
     else:
         console.print(f"  假目标上报: [yellow]已禁用[/yellow]")
 
