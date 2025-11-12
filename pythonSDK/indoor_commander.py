@@ -50,11 +50,16 @@ IVAS_REPORT_HZ = 1.0        # 位置上报频率（Hz）
 IVAS_TASK_HZ = 2.0          # 任务轮询频率（Hz）
 POSITION_LOG_DURATION = 5.0 # 位置上报日志打印时长（秒）
 
+# 假目标上报配置
+ENABLE_FAKE_TARGETS = True  # 是否启用假目标上报
+FAKE_TARGET_HZ = 2.0        # 假目标上报频率（Hz）
+FAKE_TARGET_LOG_DURATION = 5.0  # 假目标上报日志打印时长（秒）
+
 # UWB 坐标系转换超参数
 UWB_TRANSFORM = {
-    'x_offset': -3.27,    # x 平移（米）
-    'y_offset': -0.015,    # y 平移（米）
-    'x_scale': 1.0,     # x 缩放
+    'x_offset': -3.13,    # x 平移（米）
+    'y_offset': +0.04,    # y 平移（米）
+    'x_scale': 0.90,     # x 缩放
     'y_scale': 1.0,     # y 缩放
 }
 
@@ -162,6 +167,7 @@ class DryRunReporter:
 
     用途：在无 IVAS 服务器环境下调试 UWB 数据流和坐标转换逻辑
     - report_position(): 打印到控制台而不实际上报
+    - report_targets(): 打印假目标数据
     - poll_task(): 返回 None（不轮询任务）
     """
 
@@ -176,6 +182,14 @@ class DryRunReporter:
             f"heading={azimuth}° motion={motion}"
         )
         print(f"[URL] {report_url}")
+        print()  # 空行分隔
+        return True  # 模拟成功
+
+    def report_targets(self, timestamp: int, objs: list) -> bool:
+        """打印假目标数据（模拟上报）"""
+        print(f"[DRY-RUN] 上报假目标 | timestamp={timestamp} | 目标数={len(objs)}")
+        for obj in objs:
+            print(f"  - ID:{obj['id']} 类别:{obj['cls']} 位置:{obj['gis']}")
         print()  # 空行分隔
         return True  # 模拟成功
 
@@ -256,6 +270,60 @@ def uwb_position_reporter(
                 )
                 print(f"[URL] {report_url}")
                 print()  # 空行分隔
+
+            next_tick += interval
+
+        time.sleep(0.001)
+
+
+def fixed_target_reporter(
+    ivas_client,
+    interval: float,
+    stop_event: threading.Event,
+    print_duration: float = 5.0
+):
+    """
+    固定假目标上报线程
+
+    定期上报两个固定位置的人员目标到 IVAS。
+
+    Args:
+        ivas_client: IVAS HTTP 客户端
+        interval: 上报间隔（秒）
+        stop_event: 停止事件
+        print_duration: 日志打印时长（秒）
+    """
+    next_tick = time.perf_counter()
+    start_time = time.perf_counter()
+
+    # 固定目标配置
+    targets = [
+        {'id': 1, 'cls': 0, 'gis': [-168, 170, 10000]},      # 人员1：lon=-168, lat=170, alt=10000
+        {'id': 2, 'cls': 0, 'gis': [-237, 1703, 10000]}     # 人员2：lon=-237, lat=1703, alt=10000
+    ]
+
+    # 为每个目标添加 bbox 和 obj_img（模拟数据）
+    for target in targets:
+        target['bbox'] = [100, 100, 50, 50]  # 固定 bbox
+        target['obj_img'] = f"http://example.com/target_{target['id']}.jpg"
+
+    while not stop_event.is_set():
+        current = time.perf_counter()
+
+        if current >= next_tick:
+            # 上报目标
+            timestamp = int(time.time())
+            success = ivas_client.report_targets(timestamp=timestamp, objs=targets)
+
+            # 打印日志（前 N 秒）
+            elapsed = current - start_time
+            if success and elapsed <= print_duration:
+                print(
+                    f"[假目标] 上报 {len(targets)} 个目标 | "
+                    f"ID1:({targets[0]['gis'][1]:.1f},{targets[0]['gis'][0]:.1f}) "
+                    f"ID2:({targets[1]['gis'][1]:.1f},{targets[1]['gis'][0]:.1f}) "
+                    f"高度:{targets[0]['gis'][2]}m"
+                )
 
             next_tick += interval
 
@@ -370,6 +438,12 @@ def main():
     console.print(f"  位置上报频率: {IVAS_REPORT_HZ} Hz")
     console.print(f"  任务轮询频率: {IVAS_TASK_HZ} Hz")
 
+    # 假目标配置状态
+    if ENABLE_FAKE_TARGETS:
+        console.print(f"  假目标上报: [green]已启用[/green] (频率: {FAKE_TARGET_HZ}Hz, 目标数: 2)")
+    else:
+        console.print(f"  假目标上报: [yellow]已禁用[/yellow]")
+
     # 高度配置状态
     if USE_UWB_ALTITUDE:
         console.print(f"  高度来源: [cyan]UWB 实时高度[/cyan]")
@@ -439,8 +513,28 @@ def main():
     console.print(f"[bright_green]✓ 位置上报线程已启动[/bright_green]")
     console.print()
 
-    # 4. 启动任务轮询与发布线程
-    console.print("[bold]🎯 步骤 4: 启动任务轮询与发布线程[/bold]")
+    # 4. 启动假目标上报线程（可选）
+    fake_target_thread = None
+    if ENABLE_FAKE_TARGETS:
+        console.print("[bold]🎯 步骤 4: 启动假目标上报线程[/bold]")
+        fake_target_stop_event = threading.Event()
+        fake_target_thread = threading.Thread(
+            target=fixed_target_reporter,
+            args=(
+                ivas_client,
+                1.0 / FAKE_TARGET_HZ,
+                fake_target_stop_event,
+                FAKE_TARGET_LOG_DURATION
+            ),
+            daemon=True,
+            name="fake-target-reporter"
+        )
+        fake_target_thread.start()
+        console.print(f"[bright_green]✓ 假目标上报线程已启动 (频率: {FAKE_TARGET_HZ}Hz)[/bright_green]")
+        console.print()
+
+    # 5. 启动任务轮询与发布线程
+    console.print("[bold]🎯 步骤 5: 启动任务轮询与发布线程[/bold]")
     task_stop_event = threading.Event()
     task_thread = threading.Thread(
         target=task_poller_and_publisher,
@@ -457,7 +551,7 @@ def main():
     console.print(f"[bright_green]✓ 任务轮询线程已启动（转发主题 {TASK_PUBLISH_TOPIC}）[/bright_green]")
     console.print()
 
-    # 5. 主循环
+    # 6. 主循环
     console.print("[bold green]✅ 系统就绪！正在监听 UWB 主题和 IVAS 任务...[/bold green]")
     console.print("[dim]按 Ctrl+C 退出[/dim]\n")
     console.print("[bold bright_cyan]" + "="*60 + "[/bold bright_cyan]\n")
@@ -477,6 +571,13 @@ def main():
         position_stop_event.set()
         position_thread.join(timeout=2.0)
         console.print(f"[bright_green]✓ 位置上报线程已停止[/bright_green]")
+
+        # 停止假目标上报线程（如果存在）
+        if fake_target_thread is not None:
+            console.print("[bright_cyan]停止假目标上报线程...[/bright_cyan]")
+            fake_target_stop_event.set()
+            fake_target_thread.join(timeout=2.0)
+            console.print(f"[bright_green]✓ 假目标上报线程已停止[/bright_green]")
 
         # 停止任务轮询线程
         console.print("[bright_cyan]停止任务轮询线程...[/bright_cyan]")
