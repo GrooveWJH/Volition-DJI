@@ -52,8 +52,8 @@ POSITION_LOG_DURATION = 5.0 # 位置上报日志打印时长（秒）
 
 # UWB 坐标系转换超参数
 UWB_TRANSFORM = {
-    'x_offset': 0.0,    # x 平移（米）
-    'y_offset': 0.0,    # y 平移（米）
+    'x_offset': -3.27,    # x 平移（米）
+    'y_offset': -0.015,    # y 平移（米）
     'x_scale': 1.0,     # x 缩放
     'y_scale': 1.0,     # y 缩放
 }
@@ -126,12 +126,36 @@ class DryRunReporter:
 
     def report_position(self, device_code, lat, lon, alt, azimuth, motion, user_name):
         """打印位置数据（模拟上报）"""
+        # 构建完整的 URL（用于调试）
+        base_url = IVAS_SERVER['base_url']
+        ivas_user_info_id = UAV_CONFIG['ivas']['account']
+        room_id = 22
+        local_time = int(time.time() * 1000)
+
+        report_url = (
+            f"{base_url}/jk-ivas/third/controller/reportUserData?"
+            f"ivasUserInfoId={ivas_user_info_id}&"
+            f"deviceCode={device_code}&"
+            f"userX={lat:.6f}&"
+            f"userY={lon:.6f}&"
+            f"userZ={alt:.4f}&"
+            f"azimuth={azimuth}&"
+            f"localTime={local_time}&"
+            f"motion={motion}&"
+            f"validCount=10&"
+            f"roomId={room_id}&"
+            f"refPositionType=0&"
+            f"userName={user_name}"
+        )
+
         print(
             f"[DRY-RUN] 上报位置 | "
             f"device={device_code} user={user_name} | "
             f"lat={lat:.6f} lon={lon:.6f} alt={alt:.4f}m | "
             f"heading={azimuth}° motion={motion}"
         )
+        print(f"[URL] {report_url}")
+        print()  # 空行分隔
         return True  # 模拟成功
 
     def poll_task(self):
@@ -202,11 +226,35 @@ def uwb_position_reporter(
             # 打印日志（前 N 秒）
             elapsed = current - start_time
             if success and elapsed <= print_duration:
+                # 构建完整的上报 URL（用于调试）
+                base_url = IVAS_SERVER['base_url']
+                ivas_user_info_id = UAV_CONFIG['ivas']['account']
+                room_id = 22
+                local_time = int(time.time() * 1000)
+
+                report_url = (
+                    f"{base_url}/jk-ivas/third/controller/reportUserData?"
+                    f"ivasUserInfoId={ivas_user_info_id}&"
+                    f"deviceCode={device_code}&"
+                    f"userX={lat:.6f}&"
+                    f"userY={lon:.6f}&"
+                    f"userZ={alt:.4f}&"
+                    f"azimuth={heading}&"
+                    f"localTime={local_time}&"
+                    f"motion={motion}&"
+                    f"validCount=10&"
+                    f"roomId={room_id}&"
+                    f"refPositionType=0&"
+                    f"userName=indoor"
+                )
+
                 print(
                     f"[上报] [{callsign}] UWB 位置 | "
                     f"x(lat):{lat:.4f} y(lon):{lon:.4f} z(alt):{alt:.4f}m | "
                     f"heading:{heading}° motion:{motion}"
                 )
+                print(f"[URL] {report_url}")
+                print()  # 空行分隔
 
             next_tick += interval
 
