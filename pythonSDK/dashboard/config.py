@@ -112,6 +112,7 @@ IVAS_SERVER = {
 IVAS_ADVANCED = {
     'require_gps': False,              # 位置上报是否要求GPS有效（False时无GPS也上报，lat/lon=0）
     'enable_task_execution': True,    # 是否执行任务分发（False时仅监视，不执行）
+    'position_log_duration': 5.0,      # 位置上报日志打印时长（秒，前N秒打印）
 }
 
 # IVAS 假目标上报配置（用于测试和演示）

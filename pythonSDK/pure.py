@@ -278,7 +278,8 @@ def main():
                     callsign,
                     1.0 / IVAS_SERVER['report_hz'],
                     stop_event,
-                    IVAS_ADVANCED['require_gps']
+                    IVAS_ADVANCED['require_gps'],
+                    IVAS_ADVANCED.get('position_log_duration', 5.0)  # ✅ 位置上报日志时长
                 ),
                 daemon=True,
                 name=f"ivas-position-{device_code}"
