@@ -86,7 +86,8 @@ def position_reporter(
                 elapsed = current - start_time
                 if success and elapsed <= print_duration:
                     gps_status = "GPS有效" if gps_valid else "无GPS"
-                    print(f"[上报] [{callsign}] {gps_status} | 纬度:{lat:.6f} 经度:{lon:.6f} 相对高度:{relative_height:.2f}m")
+                    height_str = f"{relative_height:.2f}m" if relative_height is not None else "N/A"
+                    print(f"[上报] [{callsign}] {gps_status} | 纬度:{lat:.6f} 经度:{lon:.6f} 相对高度:{height_str}")
 
             next_tick += interval
 
