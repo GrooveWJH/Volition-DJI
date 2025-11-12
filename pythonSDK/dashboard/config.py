@@ -32,30 +32,30 @@ UAV_CONFIGS = [
             'password': '000000'
         }
     },
-    # {
-    #     'sn': '9N9CN8400164WH',
-    #     'user_id': 'pilot_2',
-    #     'callsign': 'Pilot 2',
-    #     'vrpn_device': 'Drone002@192.168.31.100',
-    #     'flight_height': 100.0,  # 起飞和航点飞行高度（米）
-    #     'ivas': {
-    #         'device_code': 2,
-    #         'account': 'ZSDX002',
-    #         'password': '000000'
-    #     }
-    # },
-    # {
-    #     'sn': '9N9CN180011TJN',
-    #     'user_id': 'pilot_3',
-    #     'callsign': 'Pilot 3',
-    #     'vrpn_device': 'Drone003@192.168.31.100',
-    #     'flight_height': 110.0,  # 起飞和航点飞行高度（米）
-    #     'ivas': {
-    #         'device_code': 3,
-    #         'account': 'ZSDX003',
-    #         'password': '000000'
-    #     }
-    # },
+    {
+        'sn': '9N9CN8400164WH',
+        'user_id': 'pilot_2',
+        'callsign': 'Pilot 2',
+        'vrpn_device': 'Drone002@192.168.31.100',
+        'flight_height': 100.0,  # 起飞和航点飞行高度（米）
+        'ivas': {
+            'device_code': 2,
+            'account': 'ZSDX002',
+            'password': '000000'
+        }
+    },
+    {
+        'sn': '9N9CN180011TJN',
+        'user_id': 'pilot_3',
+        'callsign': 'Pilot 3',
+        'vrpn_device': 'Drone003@192.168.31.100',
+        'flight_height': 110.0,  # 起飞和航点飞行高度（米）
+        'ivas': {
+            'device_code': 3,
+            'account': 'ZSDX003',
+            'password': '000000'
+        }
+    },
 ]
 
 # ========== DRC 连接配置 ==========
@@ -92,9 +92,10 @@ ENABLE_IVAS = False
 
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {
-    'position_report': True,    # 无人机位置上报（实际执行，从真实MQTT获取数据）
-    'target_report': False,      # 目标检测上报（暂不启用，无数据源）
-    'task_receive': True,        # 任务接收
+    'position_report': True,      # 无人机位置上报（实际执行，从真实MQTT获取数据）
+    'target_report': False,       # 目标检测上报（暂不启用，无数据源）
+    'fake_target_report': True,   # 假目标上报（跟随无人机GPS，生成假数据）
+    'task_receive': True,         # 任务接收
 }
 
 # IVAS 服务器配置
@@ -111,5 +112,19 @@ IVAS_SERVER = {
 IVAS_ADVANCED = {
     'require_gps': False,              # 位置上报是否要求GPS有效（False时无GPS也上报，lat/lon=0）
     'enable_task_execution': True,    # 是否执行任务分发（False时仅监视，不执行）
+}
+
+# IVAS 假目标上报配置（用于测试和演示）
+IVAS_FAKE_TARGET = {
+    'enabled': True,              # 总开关（与 IVAS_FEATURES['fake_target_report'] 配合使用）
+    'report_hz': 1.0,             # 上报频率（Hz）- 每秒上报次数
+    'range_meters': 10.0,         # 范围说明（米）- 用于文档
+    'lat_offset': 0.0001,         # 纬度偏移（度）≈ 11m
+    'lon_offset': 0.0001,         # 经度偏移（度）≈ 8-10m（中纬度）
+    'target_count': 1,            # 每次上报的目标数量
+    'altitude': 0.0,              # 目标高度（固定值，代表地面目标）
+    'require_gps': True,          # 是否要求GPS有效（False时GPS无效也上报）
+    'target_classes': [0, 1],     # 目标类别列表（0:人, 1:车, 2:飞机）
+    'print_duration': 5.0,        # 打印日志的时长（秒，前N秒打印）
 }
 

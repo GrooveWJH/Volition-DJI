@@ -1,10 +1,11 @@
 """
 IVAS 线程函数 - 独立的后台任务
 
-包含三个纯函数，用于 IVAS 系统的后台任务：
-1. position_reporter - 位置上报线程
-2. target_reporter - 目标上报线程
-3. task_poller - 任务轮询和分发线程
+包含四个纯函数，用于 IVAS 系统的后台任务：
+1. position_reporter - 位置上报线程（从真实MQTT获取数据）
+2. target_reporter - 目标上报线程（固定基准点，生成假数据）
+3. fake_target_reporter - 假目标上报线程（跟随无人机GPS，生成假数据）
+4. task_poller - 任务轮询和分发线程
 
 设计原则：
 - 纯函数，无状态
@@ -152,6 +153,107 @@ def target_reporter(
                 timestamp=int(time.time()),
                 objs=objs
             )
+
+            next_tick += interval
+
+        # 精确睡眠
+        time.sleep(0.001)
+
+
+def fake_target_reporter(
+    mqtt_client,
+    ivas_client,
+    device_code: int,
+    callsign: str,
+    config: Dict[str, Any],
+    stop_event: threading.Event
+):
+    """
+    假目标上报线程（跟随无人机GPS位置）
+
+    从 MQTTClient 获取真实GPS位置，在其周围10m范围内生成假目标。
+
+    Args:
+        mqtt_client: DJI MQTT 客户端（用于获取无人机GPS）
+        ivas_client: IVAS HTTP 客户端
+        device_code: 设备编号（1, 2, 3）
+        callsign: 设备呼号（用于日志显示）
+        config: 配置字典，包含：
+            - report_hz: 上报频率（Hz）
+            - lat_offset, lon_offset: 经纬度偏移
+            - target_count: 每次上报的目标数量
+            - altitude: 目标高度（固定值）
+            - require_gps: 是否要求GPS有效
+            - target_classes: 目标类别列表
+            - print_duration: 打印日志的时长（秒）
+        stop_event: 停止事件（用于优雅退出）
+    """
+    next_tick = time.perf_counter()
+    start_time = time.perf_counter()
+    target_id_counter = 1000  # 递增ID起点
+
+    interval = 1.0 / config['report_hz']
+
+    while not stop_event.is_set():
+        current = time.perf_counter()
+
+        if current >= next_tick:
+            # 1. 获取无人机GPS位置
+            lat, lon, _ = mqtt_client.get_position()
+
+            # 2. GPS有效性检查
+            gps_valid = (lat is not None and lon is not None)
+
+            # 3. 根据 require_gps 决定是否上报
+            should_report = gps_valid or (not config['require_gps'])
+
+            if should_report:
+                # 4. 如果GPS无效但 require_gps=False，使用 (0, 0)
+                if not gps_valid:
+                    lat, lon = 0.0, 0.0
+
+                # 5. 生成假目标
+                objs = []
+                for _ in range(config['target_count']):
+                    # 在10m范围内随机偏移
+                    target_lat = lat + random.uniform(-config['lat_offset'], config['lat_offset'])
+                    target_lon = lon + random.uniform(-config['lon_offset'], config['lon_offset'])
+                    target_alt = config['altitude']  # 固定高度（地面目标）
+
+                    # 随机选择目标类别
+                    target_cls = random.choice(config['target_classes'])
+
+                    # 生成bbox（假设1920x1080图像）
+                    bbox_x = random.uniform(0, 1920 - 200)
+                    bbox_y = random.uniform(0, 1080 - 200)
+                    bbox_w = random.uniform(50, 200)
+                    bbox_h = random.uniform(50, 200)
+
+                    objs.append({
+                        'id': target_id_counter,
+                        'cls': target_cls,
+                        'gis': [target_lon, target_lat, target_alt],  # 注意：lon在前
+                        'bbox': [bbox_x, bbox_y, bbox_w, bbox_h],
+                        'obj_img': f"http://example.com/fake_target_{target_id_counter}.jpg"
+                    })
+
+                    target_id_counter += 1
+
+                # 6. 上报目标
+                success = ivas_client.report_targets(
+                    timestamp=int(time.time()),
+                    objs=objs
+                )
+
+                print(f"上报假目标: {objs}")
+                
+                # 7. 前N秒打印日志
+                elapsed = current - start_time
+                if success and elapsed <= config['print_duration']:
+                    gps_status = "GPS有效" if gps_valid else "无GPS"
+                    cls_names = {0: '人', 1: '车', 2: '飞机'}
+                    target_info = ', '.join([f"ID:{obj['id']}({cls_names[obj['cls']]})" for obj in objs])
+                    print(f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
 
             next_tick += interval
 

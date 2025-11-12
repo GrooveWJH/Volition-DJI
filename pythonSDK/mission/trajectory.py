@@ -5,7 +5,11 @@
 支持多架无人机同时执行不同的轨迹文件。
 每架无人机可以指定独立的轨迹文件、飞行参数和相机设置。
 """
+import sys
 import os
+# Add parent directory to path to allow importing djisdk
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import json
 import threading

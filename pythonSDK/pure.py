@@ -35,7 +35,7 @@ from djisdk import request_control_auth, enter_drc_mode, start_heartbeat, stop_h
 from ivas import IVASClient
 
 # 导入共享的线程函数
-from dashboard.ivas_threads import task_poller, position_reporter
+from dashboard.ivas_threads import task_poller, position_reporter, fake_target_reporter
 
 # 导入配置（复用 dashboard 配置，避免重复）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -45,7 +45,8 @@ from dashboard.config import (
     UAV_CONFIGS,
     IVAS_SERVER,
     IVAS_ADVANCED,
-    IVAS_FEATURES
+    IVAS_FEATURES,
+    IVAS_FAKE_TARGET
 )
 
 console = Console()
@@ -288,6 +289,42 @@ def main():
 
         console.print()
 
+    # 2.6. 启动假目标上报线程（如果启用）
+    fake_target_threads = []
+    fake_target_stop_events = []
+
+    if IVAS_FEATURES.get('fake_target_report', False) and IVAS_FAKE_TARGET['enabled']:
+        console.print("[bold]🎯 步骤 2.6: 启动假目标上报[/bold]")
+
+        for uav in uav_clients:
+            device_code = uav['device_code']
+            callsign = uav['callsign']
+
+            # 创建停止事件
+            stop_event = threading.Event()
+            fake_target_stop_events.append(stop_event)
+
+            # 启动假目标上报线程
+            thread = threading.Thread(
+                target=fake_target_reporter,
+                args=(
+                    uav['mqtt'],
+                    ivas_client,
+                    device_code,
+                    callsign,
+                    IVAS_FAKE_TARGET,
+                    stop_event
+                ),
+                daemon=True,
+                name=f"ivas-fake-target-{device_code}"
+            )
+            thread.start()
+            fake_target_threads.append(thread)
+
+            console.print(f"[bright_green]✓ {callsign} 假目标上报线程已启动[/bright_green]")
+
+        console.print()
+
     # 3. 启动任务轮询线程
     console.print("[bold]🎯 步骤 3: 启动任务轮询[/bold]")
 
@@ -333,6 +370,19 @@ def main():
                 stop_event.set()
 
             for thread in position_threads:
+                thread.join(timeout=2.0)
+                if thread.is_alive():
+                    console.print(f"[yellow]⚠️  {thread.name} 未在超时时间内结束[/yellow]")
+                else:
+                    console.print(f"[bright_green]✓ {thread.name} 已停止[/bright_green]")
+
+        # 停止假目标上报线程
+        if fake_target_stop_events:
+            console.print("[bright_cyan]停止假目标上报线程...[/bright_cyan]")
+            for stop_event in fake_target_stop_events:
+                stop_event.set()
+
+            for thread in fake_target_threads:
                 thread.join(timeout=2.0)
                 if thread.is_alive():
                     console.print(f"[yellow]⚠️  {thread.name} 未在超时时间内结束[/yellow]")
