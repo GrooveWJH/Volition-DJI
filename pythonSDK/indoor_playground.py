@@ -176,8 +176,10 @@ def main():
         console.print("[bold]📍 步骤 1: 初始化 UWB 客户端[/bold]")
         try:
             from uwb.uwb_client import UWBClient
-            uwb_client = UWBClient(target_node_id=UWB_NODE_ID, use_smoothing=True)
+            # 启用自动重连
+            uwb_client = UWBClient(target_node_id=UWB_NODE_ID, use_smoothing=True, auto_reconnect=True)
             console.print(f"[bright_green]✓ UWB 客户端已初始化 (Node ID: {UWB_NODE_ID})[/bright_green]")
+            console.print(f"[dim]  自动重连已启用，设备断开后将自动等待重连[/dim]")
         except Exception as e:
             console.print(f"[red]✗ UWB 客户端初始化失败: {e}[/red]")
             console.print("[yellow]⚠ 将继续运行，但不发布 UWB 数据[/yellow]")
@@ -219,6 +221,7 @@ def main():
     last_memory_check = time.time()
     last_gc_collect = time.time()
     msg_count = 0
+    last_uwb_connected = None  # 用于检测连接状态变化
 
     # 获取进程对象用于内存监控
     process = psutil.Process()
@@ -256,48 +259,59 @@ def main():
                 last_gc_collect = current_time
 
             # 发布 UWB 数据（如果启用）
-            if ENABLE_UWB_PUBLISH and uwb_client and (current_time - last_publish_time >= publish_interval):
-                pos = uwb_client.get_position()
+            if ENABLE_UWB_PUBLISH and uwb_client:
+                # 检测 UWB 连接状态变化
+                current_uwb_connected = uwb_client.is_connected()
+                if current_uwb_connected != last_uwb_connected:
+                    if current_uwb_connected:
+                        console.print(f"\n[green]✓ UWB 设备已连接[/green]\n")
+                    else:
+                        console.print(f"\n[yellow]⚠️ UWB 设备已断开，等待重连...[/yellow]\n")
+                    last_uwb_connected = current_uwb_connected
 
-                if pos:
-                    x, y, z = pos
-                    msg_count += 1
+                # 只在连接时发布数据
+                if current_uwb_connected and (current_time - last_publish_time >= publish_interval):
+                    pos = uwb_client.get_position()
 
-                    # 构造 JSON 消息
-                    message = {
-                        'node_id': UWB_NODE_ID,
-                        'timestamp': round(current_time, 3),
-                        'position': {
-                            'x': round(x, 4),
-                            'y': round(y, 4),
-                            'z': round(z, 4)
+                    if pos:
+                        x, y, z = pos
+                        msg_count += 1
+
+                        # 构造 JSON 消息
+                        message = {
+                            'node_id': UWB_NODE_ID,
+                            'timestamp': round(current_time, 3),
+                            'position': {
+                                'x': round(x, 4),
+                                'y': round(y, 4),
+                                'z': round(z, 4)
+                            }
                         }
-                    }
 
-                    # 发布到 MQTT
-                    payload = json.dumps(message)
-                    result = mqtt_client.publish(UWB_PUBLISH_TOPIC, payload, qos=0)
+                        # 发布到 MQTT
+                        payload = json.dumps(message)
+                        result = mqtt_client.publish(UWB_PUBLISH_TOPIC, payload, qos=0)
 
-                    if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                        # 每 100 条打印一次实时数据
-                        if msg_count % 100 == 0 or msg_count <= 10:
-                            console.print(
-                                f"[green]✓[/green] [[cyan]{msg_count:05d}[/cyan]] "
-                                f"UWB 发布: x={x:7.4f}, y={y:7.4f}, z={z:7.4f}",
-                                end='\r'
-                            )
-                        else:
-                            # 其他时候显示简化信息
-                            console.print(
-                                f"[dim]UWB 发布中... [[cyan]{msg_count:05d}[/cyan]] "
-                                f"x={x:7.4f}, y={y:7.4f}, z={z:7.4f}[/dim]",
-                                end='\r'
-                            )
+                        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            # 每 100 条打印一次实时数据
+                            if msg_count % 100 == 0 or msg_count <= 10:
+                                console.print(
+                                    f"[green]✓[/green] [[cyan]{msg_count:05d}[/cyan]] "
+                                    f"UWB 发布: x={x:7.4f}, y={y:7.4f}, z={z:7.4f}",
+                                    end='\r'
+                                )
+                            else:
+                                # 其他时候显示简化信息
+                                console.print(
+                                    f"[dim]UWB 发布中... [[cyan]{msg_count:05d}[/cyan]] "
+                                    f"x={x:7.4f}, y={y:7.4f}, z={z:7.4f}[/dim]",
+                                    end='\r'
+                                )
 
-                    last_publish_time = current_time
+                        last_publish_time = current_time
 
-                    # 显式删除消息对象，立即释放内存
-                    del message, payload
+                        # 显式删除消息对象，立即释放内存
+                        del message, payload
 
             time.sleep(0.001)  # 1ms 睡眠
 
