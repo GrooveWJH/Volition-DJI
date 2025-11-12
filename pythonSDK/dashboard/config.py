@@ -130,5 +130,6 @@ IVAS_FAKE_TARGET = {
     'report_after_waypoint': True,     # 仅在到达航点后上报
     'report_duration': 20.0,           # 到达航点后上报持续时间（秒）
     'print_duration': 5.0,             # 打印日志的时长（秒，前N秒打印）
+    'enable_debug_log': False,         # 是否打印调试日志（启动、航点、上报数据）
 }
 

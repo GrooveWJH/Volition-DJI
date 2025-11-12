@@ -215,9 +215,10 @@ def fake_target_reporter(
     # 上报间隔
     interval = 1.0 / config['report_hz']
 
-    # 启动提示
-    id_range = f"{base_id}~{base_id + max_targets - 1}"
-    print(f"[假目标] [{callsign}] 启动 - ID 池: {id_range}, 频率: {config['report_hz']}Hz, 窗口模式: {'开启' if config.get('report_after_waypoint') else '关闭'}")
+    # 启动提示（可选）
+    if config.get('enable_debug_log', False):
+        id_range = f"{base_id}~{base_id + max_targets - 1}"
+        print(f"[假目标] [{callsign}] 启动 - ID 池: {id_range}, 频率: {config['report_hz']}Hz, 窗口模式: {'开启' if config.get('report_after_waypoint') else '关闭'}")
 
     while not stop_event.is_set():
         current = time.perf_counter()
@@ -231,8 +232,9 @@ def fake_target_reporter(
                 # 检测到新到达航点
                 if current_status == 'wayline_ok' and last_flyto_status != 'wayline_ok':
                     waypoint_arrival_time = current
-                    way_point_index = progress.get('way_point_index', '?')
-                    print(f"[假目标] [{callsign}] 🎯 航点{way_point_index}到达，开始 {config.get('report_duration', 20.0)}s 上报窗口")
+                    if config.get('enable_debug_log', False):
+                        way_point_index = progress.get('way_point_index', '?')
+                        print(f"[假目标] [{callsign}] 🎯 航点{way_point_index}到达，开始 {config.get('report_duration', 20.0)}s 上报窗口")
 
                 last_flyto_status = current_status
 
@@ -248,7 +250,8 @@ def fake_target_reporter(
                 if elapsed > report_duration:
                     # 超过上报窗口，等待下一个航点
                     if waypoint_arrival_time is not None:  # 第一次超时打印提示
-                        print(f"[假目标] [{callsign}] ⏸️  上报窗口结束，等待下一个航点...")
+                        if config.get('enable_debug_log', False):
+                            print(f"[假目标] [{callsign}] ⏸️  上报窗口结束，等待下一个航点...")
                         waypoint_arrival_time = None  # 清空状态
                     next_tick += interval
                     continue
@@ -305,13 +308,14 @@ def fake_target_reporter(
                 objs=[obj]
             )
 
-            # 6. 打印日志（前N秒）
-            elapsed = current - start_time
-            if success and elapsed <= config['print_duration']:
-                gps_status = "GPS有效" if gps_valid else "无GPS"
-                cls_names = {0: '人', 1: '车', 2: '飞机'}
-                target_info = f"ID:{obj['id']}({cls_names[obj['cls']]})"
-                print(f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
+            # 6. 打印日志（可选，前N秒）
+            if config.get('enable_debug_log', False):
+                elapsed = current - start_time
+                if success and elapsed <= config['print_duration']:
+                    gps_status = "GPS有效" if gps_valid else "无GPS"
+                    cls_names = {0: '人', 1: '车', 2: '飞机'}
+                    target_info = f"ID:{obj['id']}({cls_names[obj['cls']]})"
+                    print(f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
 
             # 7. 循环更新索引（0 → 1 → ... → 9 → 0）
             current_index = (current_index + 1) % max_targets
