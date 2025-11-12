@@ -35,7 +35,7 @@ from djisdk import request_control_auth, enter_drc_mode, start_heartbeat, stop_h
 from ivas import IVASClient
 
 # 导入共享的线程函数
-from dashboard.ivas_threads import task_poller, position_reporter, fake_target_reporter
+from ivas.ivas_threads import task_poller, position_reporter, fake_target_reporter
 
 # 导入配置（复用 dashboard 配置，避免重复）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

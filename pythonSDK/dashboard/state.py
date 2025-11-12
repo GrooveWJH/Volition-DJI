@@ -55,9 +55,6 @@ class UAVState:
     mission_metadata: Optional[Dict[str, Any]]
     flyto_progress: Optional[Dict[str, Any]]
 
-    # IVAS 日志
-    ivas_logs: List[Dict[str, Any]]
-
     @classmethod
     def from_uav_client(
         cls,
@@ -65,7 +62,6 @@ class UAVState:
         config: Dict[str, str],
         elapsed: int,
         offline_timeout: float = 2.0,
-        ivas_adapter = None
     ) -> 'UAVState':
         """
         工厂方法：从各种数据源构建状态快照
@@ -74,11 +70,10 @@ class UAVState:
         UI 渲染代码只需要访问 UAVState 对象，不再需要关心数据从哪来。
 
         Args:
-            uav_client: 无人机客户端数据 (mqtt, caller, heartbeat, connection_manager, ivas)
+            uav_client: 无人机客户端数据 (mqtt, caller, heartbeat, connection_manager)
             config: 无人机配置 (sn, user_id, callsign)
             elapsed: 运行时间（秒）
             offline_timeout: 离线超时时间（秒）
-            ivas_adapter: IVAS 适配器（可选）
 
         Returns:
             UAVState 快照对象
@@ -104,14 +99,6 @@ class UAVState:
         except Exception:
             pass  # 静默失败
 
-        # IVAS 日志读取（逻辑集中在这里，只写一次）
-        ivas_logs = []
-        if ivas_adapter:
-            try:
-                ivas_logs = ivas_adapter.get_recent_logs(10)
-            except Exception:
-                pass  # 静默失败
-
         # 构建状态快照
         return cls(
             uav_id=uav_client['id'],
@@ -134,7 +121,6 @@ class UAVState:
             is_hsi_ok=mqtt.is_local_height_ok(),
             mission_metadata=mission_metadata,
             flyto_progress=mqtt.get_flyto_progress(),
-            ivas_logs=ivas_logs,
         )
 
     # ========== 样式决策方法（消除散落的条件分支）==========

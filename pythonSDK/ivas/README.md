@@ -297,9 +297,19 @@ pip install -e .
 
 ## 📖 相关文档
 
-- **[API_GUIDE.md](docs/API_GUIDE.md)** - 接口操作顺序、数据包格式、完整调用示例
+完整文档索引请查看 [docs/README.md](docs/README.md)
+
+### 用户指南
 - **[INSTALL.md](docs/INSTALL.md)** - 安装部署指南、不同场景的安装方法
+- **[API_GUIDE.md](docs/API_GUIDE.md)** - SDK API 使用指南、数据包格式、调用示例
 - **[example.py](examples/example.py)** - 单设备和多设备使用示例代码
+
+### API 参考
+- **[API_REFERENCE_v4.md](docs/API_REFERENCE_v4.md)** - IVAS 服务器 API v4 接口详细文档
+
+### 技术文档
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - 系统架构设计、组件关系、数据流
+- **[config_verification.md](docs/config_verification.md)** - 配置传递验证报告
 
 ## 技术支持
 
