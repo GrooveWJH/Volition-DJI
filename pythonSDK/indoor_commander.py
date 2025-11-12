@@ -113,6 +113,47 @@ def on_uwb_message(client, userdata, msg):
         print(f"[UWB] 主题解析失败: {e}")
 
 
+# ========== 辅助函数 ==========
+
+def build_report_url(device_code: int, lat: float, lon: float, alt: float,
+                     azimuth: int, motion: int, user_name: str) -> str:
+    """
+    构建 IVAS 位置上报的完整 URL（用于调试）
+
+    Args:
+        device_code: 设备编号
+        lat: 纬度
+        lon: 经度
+        alt: 高度（米）
+        azimuth: 航向角（度）
+        motion: 运动状态（0:静止, 1:运动）
+        user_name: 用户名称
+
+    Returns:
+        完整的 HTTP GET 请求 URL（带所有参数）
+    """
+    base_url = IVAS_SERVER['base_url']
+    ivas_user_info_id = UAV_CONFIG['ivas']['account']
+    room_id = 22
+    local_time = int(time.time() * 1000)
+
+    return (
+        f"{base_url}/jk-ivas/third/controller/reportUserData?"
+        f"ivasUserInfoId={ivas_user_info_id}&"
+        f"deviceCode={device_code}&"
+        f"userX={lat:.6f}&"
+        f"userY={lon:.6f}&"
+        f"userZ={alt:.4f}&"
+        f"azimuth={azimuth}&"
+        f"localTime={local_time}&"
+        f"motion={motion}&"
+        f"validCount=10&"
+        f"roomId={room_id}&"
+        f"refPositionType=0&"
+        f"userName={user_name}"
+    )
+
+
 # ========== Dry-Run 模拟器 ==========
 
 class DryRunReporter:
@@ -126,27 +167,7 @@ class DryRunReporter:
 
     def report_position(self, device_code, lat, lon, alt, azimuth, motion, user_name):
         """打印位置数据（模拟上报）"""
-        # 构建完整的 URL（用于调试）
-        base_url = IVAS_SERVER['base_url']
-        ivas_user_info_id = UAV_CONFIG['ivas']['account']
-        room_id = 22
-        local_time = int(time.time() * 1000)
-
-        report_url = (
-            f"{base_url}/jk-ivas/third/controller/reportUserData?"
-            f"ivasUserInfoId={ivas_user_info_id}&"
-            f"deviceCode={device_code}&"
-            f"userX={lat:.6f}&"
-            f"userY={lon:.6f}&"
-            f"userZ={alt:.4f}&"
-            f"azimuth={azimuth}&"
-            f"localTime={local_time}&"
-            f"motion={motion}&"
-            f"validCount=10&"
-            f"roomId={room_id}&"
-            f"refPositionType=0&"
-            f"userName={user_name}"
-        )
+        report_url = build_report_url(device_code, lat, lon, alt, azimuth, motion, user_name)
 
         print(
             f"[DRY-RUN] 上报位置 | "
@@ -226,27 +247,7 @@ def uwb_position_reporter(
             # 打印日志（前 N 秒）
             elapsed = current - start_time
             if success and elapsed <= print_duration:
-                # 构建完整的上报 URL（用于调试）
-                base_url = IVAS_SERVER['base_url']
-                ivas_user_info_id = UAV_CONFIG['ivas']['account']
-                room_id = 22
-                local_time = int(time.time() * 1000)
-
-                report_url = (
-                    f"{base_url}/jk-ivas/third/controller/reportUserData?"
-                    f"ivasUserInfoId={ivas_user_info_id}&"
-                    f"deviceCode={device_code}&"
-                    f"userX={lat:.6f}&"
-                    f"userY={lon:.6f}&"
-                    f"userZ={alt:.4f}&"
-                    f"azimuth={heading}&"
-                    f"localTime={local_time}&"
-                    f"motion={motion}&"
-                    f"validCount=10&"
-                    f"roomId={room_id}&"
-                    f"refPositionType=0&"
-                    f"userName=indoor"
-                )
+                report_url = build_report_url(device_code, lat, lon, alt, heading, motion, "indoor")
 
                 print(
                     f"[上报] [{callsign}] UWB 位置 | "
