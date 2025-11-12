@@ -315,6 +315,8 @@ def fixed_target_reporter(
     - 目标2：仅在 TARGET2_TRIGGER_AREA 矩形范围内触发
     - 目标3：仅在 TARGET3_TRIGGER_AREA 矩形范围内触发
 
+    注意：触发区域坐标使用变换后的坐标系（与位置上报相同）
+
     Args:
         ivas_client: IVAS HTTP 客户端
         interval: 上报间隔（秒）
@@ -335,21 +337,25 @@ def fixed_target_reporter(
         if current >= next_tick:
             # 读取无人机当前 UWB 位置（使用共享数据）
             with uwb_lock:
-                uav_x = uwb_data['x']
-                uav_y = uwb_data['y']
+                raw_x = uwb_data['x']
+                raw_y = uwb_data['y']
 
             # 检查 UWB 数据有效性
-            if uav_x is None or uav_y is None:
+            if raw_x is None or raw_y is None:
                 next_tick += interval
                 continue
 
-            # 动态构建上报目标列表（基于触发区域）
+            # 应用平移和缩放变换（与位置上报使用相同的变换）
+            transformed_lat = (raw_x + UWB_TRANSFORM['x_offset']) * UWB_TRANSFORM['x_scale']
+            transformed_lon = (raw_y + UWB_TRANSFORM['y_offset']) * UWB_TRANSFORM['y_scale']
+
+            # 动态构建上报目标列表（基于变换后的坐标与触发区域比较）
             active_targets = []
 
             # 检查目标1触发条件
             area1 = TARGET1_TRIGGER_AREA
-            if (area1['x_min'] <= uav_x <= area1['x_max'] and
-                area1['y_min'] <= uav_y <= area1['y_max']):
+            if (area1['x_min'] <= transformed_lat <= area1['x_max'] and
+                area1['y_min'] <= transformed_lon <= area1['y_max']):
                 target1 = target1_config.copy()
                 target1['bbox'] = [100, 100, 50, 50]
                 target1['obj_img'] = f"http://example.com/target_{target1['id']}.jpg"
@@ -357,8 +363,8 @@ def fixed_target_reporter(
 
             # 检查目标2触发条件
             area2 = TARGET2_TRIGGER_AREA
-            if (area2['x_min'] <= uav_x <= area2['x_max'] and
-                area2['y_min'] <= uav_y <= area2['y_max']):
+            if (area2['x_min'] <= transformed_lat <= area2['x_max'] and
+                area2['y_min'] <= transformed_lon <= area2['y_max']):
                 target2 = target2_config.copy()
                 target2['bbox'] = [100, 100, 50, 50]
                 target2['obj_img'] = f"http://example.com/target_{target2['id']}.jpg"
@@ -366,8 +372,8 @@ def fixed_target_reporter(
 
             # 检查目标3触发条件
             area3 = TARGET3_TRIGGER_AREA
-            if (area3['x_min'] <= uav_x <= area3['x_max'] and
-                area3['y_min'] <= uav_y <= area3['y_max']):
+            if (area3['x_min'] <= transformed_lat <= area3['x_max'] and
+                area3['y_min'] <= transformed_lon <= area3['y_max']):
                 target3 = target3_config.copy()
                 target3['bbox'] = [100, 100, 50, 50]
                 target3['obj_img'] = f"http://example.com/target_{target3['id']}.jpg"
@@ -383,7 +389,8 @@ def fixed_target_reporter(
                 if success and elapsed <= print_duration:
                     target_ids = [t['id'] for t in active_targets]
                     print(
-                        f"[假目标] UAV位置:({uav_x:.2f},{uav_y:.2f}) | "
+                        f"[假目标] UAV原始:({raw_x:.2f},{raw_y:.2f}) "
+                        f"变换后:({transformed_lat:.2f},{transformed_lon:.2f}) | "
                         f"上报 {len(active_targets)} 个目标 (ID: {target_ids})"
                     )
 
