@@ -28,7 +28,7 @@ from ivas.ivas_threads import (
 )
 
 # 加载统一配置（单一来源）
-from dashboard.config import (
+from config import (
     UAV_CONFIGS,
     IVAS_SERVER,
     MQTT_CONFIG,

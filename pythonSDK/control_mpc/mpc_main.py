@@ -36,7 +36,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 # 导入control模块 (复用配置)
-from config import *
+from control.config import *
 from control.logger import DataLogger
 
 # 导入MPC模块
