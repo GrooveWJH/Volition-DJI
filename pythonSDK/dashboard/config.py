@@ -133,3 +133,94 @@ IVAS_FAKE_TARGET = {
     'enable_debug_log': False,         # 是否打印调试日志（启动、航点、上报数据）
 }
 
+# ========== 室内系统配置 (UWB + IVAS) ==========
+
+# 室内指挥端系统配置（indoor_commander.py）
+INDOOR_SYSTEM = {
+    # 系统总开关
+    'enabled': True,                   # 室内系统是否启用
+    'use_dry_run': False,              # False=真实 IVAS 连接, True=Dry-run 模式（仅打印）
+
+    # UWB 室内定位配置
+    'uwb': {
+        'subscribe_topic': 'uwb/position',  # UWB 位置订阅主题
+
+        # 坐标变换参数（UWB 坐标系 → IVAS 坐标系）
+        # 公式: transformed = (raw + offset) * scale
+        'transform': {
+            'x_offset': -3.13,         # x 轴平移（米）
+            'y_offset': +0.04,         # y 轴平移（米）
+            'x_scale': 0.90,           # x 轴缩放系数
+            'y_scale': 1.0,            # y 轴缩放系数
+        },
+
+        # 高度处理配置
+        'use_altitude': False,         # 是否使用 UWB 实时高度（False 则使用固定高度）
+        'fixed_altitude_base': 10001.3,  # 固定高度基础值（米）
+                                          # 说明：IVAS 虚拟高度平面，用于 2D 平面投影
+                                          # 室内系统不需要真实高度，使用固定值简化处理
+        'fixed_altitude_range': 0.05,  # 固定高度随机波动范围（±米）
+                                        # 说明：模拟 GPS 噪声，使 IVAS 前端显示更真实
+    },
+
+    # 上报频率配置
+    'reporting': {
+        'position_hz': 1.0,            # 位置上报频率（Hz）- 推荐 1Hz
+        'task_hz': 2.0,                # 任务轮询频率（Hz）- 每 0.5 秒轮询一次
+        'target_hz': 2.0,              # 目标上报频率（Hz）- 每 0.5 秒上报一次
+        'position_log_duration': 0.0,  # 位置上报日志打印时长（秒，0=不打印）
+        'target_log_duration': 1000.0, # 目标上报日志打印时长（秒，1000=长期打印）
+    },
+
+    # 目标触发配置（基于 UWB 位置的触发区域）
+    'targets': {
+        'enabled': True,               # 目标上报功能总开关
+
+        # 触发区域定义（矩形区域，基于变换后的坐标）
+        # 格式: {target_id: {'x_min', 'x_max', 'y_min', 'y_max'}}
+        # 说明：无人机进入区域后，对应目标永久激活（即使离开区域也持续上报）
+        'trigger_areas': {
+            1: {  # 目标1触发区域（东北角货架区）
+                'x_min': -2.92,        # 矩形对角顶点 x_a
+                'y_min': 4.35,         # 矩形对角顶点 y_a
+                'x_max': -1.5,         # 矩形对角顶点 x_b
+                'y_max': 6.45          # 矩形对角顶点 y_b
+            },
+            2: {  # 目标2触发区域（中部通道区）
+                'x_min': -2.60,        # 矩形对角顶点 x_c
+                'y_min': 9.09,         # 矩形对角顶点 y_c
+                'x_max': -0.68,        # 矩形对角顶点 x_d
+                'y_max': 10.97         # 矩形对角顶点 y_d
+            },
+            3: {  # 目标3触发区域（西南角工作区）
+                'x_min': 1.11,         # 矩形对角顶点 x_e
+                'y_min': 10.81,        # 矩形对角顶点 y_e
+                'x_max': 2.79,         # 矩形对角顶点 x_f
+                'y_max': 12.21         # 矩形对角顶点 y_f
+            },
+        },
+
+        # 目标位置定义（固定位置）
+        # 格式: {target_id: {'id', 'cls', 'gis'}}
+        # 说明：gis=[经度, 纬度, 高度]（注意经度在前）
+        'positions': {
+            1: {'id': 1, 'cls': 0, 'gis': [-1.68, 1.70, 10000]},    # 目标1（人）
+            2: {'id': 2, 'cls': 0, 'gis': [-2.37, 17.03, 10000]},   # 目标2（人）
+            3: {'id': 3, 'cls': 0, 'gis': [0.5, 10.99, 10000]},     # 目标3（人）
+        }
+    },
+
+    # 任务转发配置
+    'task': {
+        'publish_topic': 'ivas/task/command',  # MQTT 任务转发主题
+        'mission_filter': 1,                   # 只转发特定 mission 类型
+                                               # 1=起飞, 2=降落, 3=返航, 4=前往指定点
+    },
+
+    # 无人机默认参数
+    'defaults': {
+        'heading': 0,                  # 默认航向角（度）- 室内系统无航向传感器
+        'motion': 1,                   # 默认运动状态（0:静止, 1:运动）
+    }
+}
+

@@ -216,3 +216,58 @@ class IVASClient:
         except requests.RequestException as e:
             print(f"[IVAS] 请求异常: {e}")
             return None
+
+
+class DryRunReporter:
+    """
+    Dry-run 模式：模拟 IVAS 客户端接口
+
+    用途：在无 IVAS 服务器环境下调试数据流和坐标转换逻辑
+    - report_position(): 打印到控制台而不实际上报
+    - report_targets(): 打印目标数据
+    - poll_task(): 返回 None（不轮询任务）
+
+    使用场景：
+    - 本地开发调试
+    - 无网络环境测试
+    - 坐标转换验证
+    """
+
+    def report_position(self, device_code, lat, lon, alt, azimuth, motion, user_name):
+        """打印位置数据（模拟上报）"""
+        from .utils import build_report_url
+
+        # 构建模拟URL（使用默认参数）
+        report_url = build_report_url(
+            base_url="http://example.com",
+            ivas_user_info_id=0,
+            device_code=device_code,
+            lat=lat,
+            lon=lon,
+            alt=alt,
+            azimuth=azimuth,
+            motion=motion,
+            user_name=user_name
+        )
+
+        print(
+            f"[DRY-RUN] 上报位置 | "
+            f"device={device_code} user={user_name} | "
+            f"lat={lat:.6f} lon={lon:.6f} alt={alt:.4f}m | "
+            f"heading={azimuth}° motion={motion}"
+        )
+        print(f"[URL] {report_url}")
+        print()  # 空行分隔
+        return True  # 模拟成功
+
+    def report_targets(self, timestamp: int, objs: list) -> bool:
+        """打印目标数据（模拟上报）"""
+        print(f"[DRY-RUN] 上报目标 | timestamp={timestamp} | 目标数={len(objs)}")
+        for obj in objs:
+            print(f"  - ID:{obj['id']} 类别:{obj['cls']} 位置:{obj['gis']}")
+        print()  # 空行分隔
+        return True  # 模拟成功
+
+    def poll_task(self):
+        """Dry-run 模式下不轮询任务"""
+        return None
