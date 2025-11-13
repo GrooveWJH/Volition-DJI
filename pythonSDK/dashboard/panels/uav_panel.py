@@ -272,41 +272,58 @@ def _add_flight_data(table: Table, state: UAVState, add_separator):
 
 def _add_mission_progress(table: Table, state: UAVState, add_separator):
     """
-    任务进度区域
+    任务进度区域（始终显示4行结构）
 
     显示：
-    - 航点进度条（如果有任务元数据）
-    - 任务状态
-    - 实时飞行数据（剩余距离、预计时间）
-    """
-    if not state.mission_metadata:
-        return
+    - 航点进度条（有任务时显示进度，无任务时显示占位符）
+    - 任务状态（有任务时显示状态，无任务时显示"空闲"）
+    - 剩余距离（有实时数据时显示，否则显示"暂不可用"）
+    - 预计时间（有实时数据时显示，否则显示"暂不可用"）
 
+    改进原因：保持UI一致性，避免行数跳变影响阅读体验
+    """
+    # ✅ 始终添加分隔符和显示区域
     add_separator()
 
-    # 从文件读取持久化的任务进度
-    current_waypoint = state.mission_metadata.get('current_waypoint', 0)
-    total_waypoints = state.mission_metadata.get('total_waypoints', 0)
-    task_status = state.mission_metadata.get('task_status', '未知')
+    # 第1行：航点进度条
+    if state.mission_metadata:
+        current_waypoint = state.mission_metadata.get('current_waypoint', 0)
+        total_waypoints = state.mission_metadata.get('total_waypoints', 0)
+        if total_waypoints > 0:
+            waypoint_bar = create_waypoint_progress_bar(current_waypoint, total_waypoints)
+            table.add_row("航点进度:", waypoint_bar)
+        else:
+            table.add_row("航点进度:", "[dim]无数据[/dim]")
+    else:
+        table.add_row("航点进度:", "[dim]无任务[/dim]")
 
-    # 显示航点进度条
-    if total_waypoints > 0:
-        waypoint_bar = create_waypoint_progress_bar(current_waypoint, total_waypoints)
-        table.add_row("航点进度:", waypoint_bar)
+    # 第2行：任务状态
+    if state.mission_metadata:
+        task_status = state.mission_metadata.get('task_status', '未知')
+        table.add_row("任务状态:", f"[bright_magenta]{task_status}[/bright_magenta]")
+    else:
+        table.add_row("任务状态:", "[dim]空闲[/dim]")
 
-    # 显示任务状态
-    table.add_row("任务状态:", f"[bright_magenta]{task_status}[/bright_magenta]")
-
-    # 实时飞行数据（来自 MQTT，可选显示）
+    # 第3-4行：剩余距离和预计时间（有实时数据时显示，否则显示"暂不可用"）
     if state.flyto_progress and state.flyto_progress.get('status') == 'wayline_progress':
         remaining_distance = state.flyto_progress.get('remaining_distance')
         remaining_time = state.flyto_progress.get('remaining_time')
 
-        # 显示实时剩余距离和时间（仅在飞行中显示）
+        # 剩余距离
         if remaining_distance is not None:
             table.add_row("剩余距离:", f"[bright_green]{remaining_distance:.1f}m[/bright_green]")
+        else:
+            table.add_row("剩余距离:", "[dim]暂不可用[/dim]")
+
+        # 预计时间
         if remaining_time is not None:
             table.add_row("预计时间:", f"[bright_yellow]{remaining_time:.1f}s[/bright_yellow]")
+        else:
+            table.add_row("预计时间:", "[dim]暂不可用[/dim]")
+    else:
+        # 无实时飞行数据
+        table.add_row("剩余距离:", "[dim]暂不可用[/dim]")
+        table.add_row("预计时间:", "[dim]暂不可用[/dim]")
 
 
 def _create_ivas_panel(logs: list) -> Panel:
