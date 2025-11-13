@@ -139,7 +139,7 @@ def target_reporter(
                 objs.append({
                     'id': random.randint(1000, 9999),
                     'cls': random.randint(0, 2),  # 0:人, 1:车, 2:飞机
-                    'gis': [target_lon, target_lat, target_alt],
+                    'gis': [target_lat, target_lon, target_alt],  # 纬度在前，经度在后
                     'bbox': [
                         random.uniform(0, 1920),
                         random.uniform(0, 1080),
@@ -295,7 +295,7 @@ def fake_target_reporter(
             obj = {
                 'id': target_id,
                 'cls': target_cls,
-                'gis': [target_lon, target_lat, target_alt],  # 注意：lon在前
+                'gis': [target_lat, target_lon, target_alt],  # 纬度在前，经度在后
                 'bbox': [bbox_x, bbox_y, bbox_w, bbox_h],
                 'obj_img': f"http://example.com/fake_target_{target_id}.jpg"
             }
