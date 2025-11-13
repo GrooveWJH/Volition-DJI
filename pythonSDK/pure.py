@@ -39,7 +39,7 @@ from ivas.ivas_threads import task_poller, position_reporter, fake_target_report
 
 # 导入配置（复用 dashboard 配置，避免重复）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import control.config as ctrl_cfg
+import config as ctrl_cfg
 from dashboard.config import (
     MQTT_CONFIG,
     UAV_CONFIGS,

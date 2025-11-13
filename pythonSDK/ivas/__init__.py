@@ -32,8 +32,10 @@ IVAS Python SDK
     client.run()
 """
 
-from .client import IVASClient
+from .client import IVASClient, DryRunReporter
+from .dataclasses import UWBPosition
+from .thread_manager import ThreadManager
 
 __version__ = '1.0.0'
 __author__ = 'IVAS Team'
-__all__ = ['IVASClient']
+__all__ = ['IVASClient', 'DryRunReporter', 'UWBPosition', 'ThreadManager']

@@ -23,7 +23,7 @@ def check_basic_config():
     console.print("\n[bold cyan]━━━ 基础配置检查 ━━━[/bold cyan]\n")
 
     try:
-        from control import config
+        import config
 
         checks = [
             ("GATEWAY_SN", config.GATEWAY_SN, lambda x: len(x) > 0, "无人机序列号"),
@@ -64,7 +64,7 @@ def check_pid_gains():
     console.print("\n[bold cyan]━━━ PID增益检查 ━━━[/bold cyan]\n")
 
     try:
-        from control import config
+        import config
 
         # 推荐范围（针对2m场地）
         recommended = {

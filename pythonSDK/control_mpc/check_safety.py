@@ -11,7 +11,7 @@ import os
 # 添加父目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from control.config import WAYPOINTS, PLANE_USE_RANDOM_WAYPOINTS, PLANE_RANDOM_MAX_DISTANCE
+from config import WAYPOINTS, PLANE_USE_RANDOM_WAYPOINTS, PLANE_RANDOM_MAX_DISTANCE
 from rich.console import Console
 from rich.table import Table
 import numpy as np

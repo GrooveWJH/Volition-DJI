@@ -510,3 +510,281 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
 
     thread = threading.Thread(target=task_wrapper, daemon=True)
     thread.start()
+
+
+# ========== UWB 室内系统专用线程函数 ==========
+
+
+def uwb_position_reporter(
+    uwb_position: 'UWBPosition',  # 改用 UWBPosition 对象（类型安全）
+    ivas_client,
+    device_code: int,
+    callsign: str,
+    transform_config: Dict[str, float],
+    interval: float,
+    stop_event: threading.Event,
+    use_uwb_altitude: bool = False,
+    fixed_altitude_base: float = 1.0,
+    fixed_altitude_range: float = 0.05,
+    default_heading: int = 0,
+    default_motion: int = 1,
+    user_name: str = "indoor",
+    print_duration: float = 5.0
+):
+    """
+    UWB 位置上报线程（室内系统专用）
+
+    从 UWBPosition 对象读取位置，应用坐标变换后上报到 IVAS。
+
+    Args:
+        uwb_position: UWBPosition 对象（内置线程安全）
+        ivas_client: IVAS HTTP 客户端
+        device_code: 设备编号
+        callsign: 呼号
+        transform_config: 坐标变换配置 {'x_offset', 'y_offset', 'x_scale', 'y_scale'}
+        interval: 上报间隔（秒）
+        stop_event: 停止事件
+        use_uwb_altitude: 是否使用 UWB 高度
+        fixed_altitude_base: 固定高度基础值（米）
+        fixed_altitude_range: 固定高度波动范围（米）
+        default_heading: 默认航向角（度）
+        default_motion: 默认运动状态
+        user_name: 用户名称
+        print_duration: 打印日志时长（秒）
+    """
+    next_tick = time.perf_counter()
+    start_time = time.perf_counter()
+
+    while not stop_event.is_set():
+        current = time.perf_counter()
+
+        if current >= next_tick:
+            # 读取 UWB 数据（线程安全）
+            x, y, z, ts = uwb_position.get()
+
+            # 检查数据有效性
+            if not uwb_position.is_valid():
+                next_tick += interval
+                continue
+
+            # 应用坐标变换（平移 + 缩放）
+            lat = (x + transform_config['x_offset']) * transform_config['x_scale']
+            lon = (y + transform_config['y_offset']) * transform_config['y_scale']
+
+            # 高度处理
+            if use_uwb_altitude:
+                alt = z
+            else:
+                # 固定高度 + 随机波动
+                alt = fixed_altitude_base + random.uniform(-fixed_altitude_range, fixed_altitude_range)
+
+            # 上报位置
+            success = ivas_client.report_position(
+                device_code=device_code,
+                lat=lat,
+                lon=lon,
+                alt=alt,
+                azimuth=default_heading,
+                motion=default_motion,
+                user_name=user_name
+            )
+
+            # 打印日志（前 N 秒）
+            elapsed = current - start_time
+            if success and elapsed <= print_duration:
+                print(
+                    f"[上报] [{callsign}] UWB 位置 | "
+                    f"x(lat):{lat:.4f} y(lon):{lon:.4f} z(alt):{alt:.4f}m | "
+                    f"heading:{default_heading}° motion:{default_motion}"
+                )
+
+            next_tick += interval
+
+        time.sleep(0.001)
+
+
+def uwb_trigger_target_reporter(
+    uwb_position: 'UWBPosition',  # 改用 UWBPosition 对象（类型安全）
+    ivas_client,
+    transform_config: Dict[str, float],
+    trigger_areas: Dict[int, Dict[str, float]],
+    target_configs: Dict[int, Dict[str, Any]],
+    interval: float,
+    stop_event: threading.Event,
+    print_duration: float = 5.0
+):
+    """
+    UWB 触发区域目标上报线程（室内系统专用）
+
+    根据无人机进入的触发区域，永久激活对应目标并持续上报。
+
+    特性：
+    - 永久激活：进入区域后即使离开也持续上报
+    - 多目标累积：可同时上报多个已激活目标
+    - 坐标变换：使用与位置上报相同的坐标变换
+
+    Args:
+        uwb_position: UWBPosition 对象（内置线程安全）
+        ivas_client: IVAS HTTP 客户端
+        transform_config: 坐标变换配置 {'x_offset', 'y_offset', 'x_scale', 'y_scale'}
+        trigger_areas: 触发区域配置 {target_id: {'x_min', 'x_max', 'y_min', 'y_max'}}
+        target_configs: 目标配置 {target_id: {'id', 'cls', 'gis'}}
+        interval: 上报间隔（秒）
+        stop_event: 停止事件
+        print_duration: 打印日志时长（秒）
+    """
+    next_tick = time.perf_counter()
+    start_time = time.perf_counter()
+
+    # 永久激活状态跟踪
+    activated_targets = set()
+
+    while not stop_event.is_set():
+        current = time.perf_counter()
+
+        if current >= next_tick:
+            # 读取 UWB 数据（线程安全）
+            raw_x, raw_y, _, _ = uwb_position.get()
+
+            # 检查数据有效性
+            if not uwb_position.is_valid():
+                next_tick += interval
+                continue
+
+            # 应用坐标变换
+            transformed_lat = (raw_x + transform_config['x_offset']) * transform_config['x_scale']
+            transformed_lon = (raw_y + transform_config['y_offset']) * transform_config['y_scale']
+
+            # 检查各个触发区域
+            for target_id, area in trigger_areas.items():
+                if (area['x_min'] <= transformed_lat <= area['x_max'] and
+                    area['y_min'] <= transformed_lon <= area['y_max']):
+                    if target_id not in activated_targets:
+                        activated_targets.add(target_id)
+                        print(f"[目标触发] 目标{target_id}已激活 (区域: x=[{area['x_min']},{area['x_max']}], y=[{area['y_min']},{area['y_max']}])")
+
+            # 构建所有已激活的目标列表
+            active_targets = []
+            for target_id in activated_targets:
+                if target_id in target_configs:
+                    target = target_configs[target_id].copy()
+                    target['bbox'] = [100, 100, 50, 50]
+                    target['obj_img'] = f"http://example.com/target_{target['id']}.jpg"
+                    active_targets.append(target)
+
+            # 上报目标
+            if active_targets:
+                timestamp = int(time.time())
+                success = ivas_client.report_targets(timestamp=timestamp, objs=active_targets)
+
+                # 打印日志（前 N 秒）
+                elapsed = current - start_time
+                if success and elapsed <= print_duration:
+                    target_ids = [t['id'] for t in active_targets]
+                    print(
+                        f"[上报] UAV原始:({raw_x:.2f},{raw_y:.2f}) "
+                        f"变换后:({transformed_lat:.2f},{transformed_lon:.2f}) | "
+                        f"上报 {len(active_targets)} 个目标 (ID: {target_ids})"
+                    )
+
+            next_tick += interval
+
+        time.sleep(0.001)
+
+
+def task_mqtt_forwarder(
+    ivas_client,
+    mqtt_client,
+    publish_topic: str,
+    mission_filter: int,
+    interval: float,
+    stop_event: threading.Event
+):
+    """
+    任务轮询与 MQTT 转发线程（室内系统专用）
+
+    轮询 IVAS 任务，并将特定 mission 类型转发到 MQTT 主题。
+
+    Args:
+        ivas_client: IVAS HTTP 客户端
+        mqtt_client: Paho MQTT 客户端
+        publish_topic: MQTT 发布主题
+        mission_filter: 需要转发的 mission 类型（例如 1 表示起飞）
+        interval: 轮询间隔（秒）
+        stop_event: 停止事件
+    """
+    import json
+    import paho.mqtt.client as mqtt
+
+    next_tick = time.perf_counter()
+    task_count = 0
+
+    # 任务字典映射
+    mission_names = {
+        1: "任务开始 - 原地起飞",
+        2: "原地降落",
+        3: "返航",
+        4: "前往指定点",
+        5: "执行预设多航点任务1",
+        6: "执行预设多航点任务2",
+        7: "执行预设多航点任务3"
+    }
+
+    while not stop_event.is_set():
+        current = time.perf_counter()
+
+        if current >= next_tick:
+            # 轮询任务
+            result = ivas_client.poll_task()
+
+            if result:
+                task_count += 1
+                task_data = result.get('data', {})
+                mission = task_data.get('mission', 0)
+                target_id = task_data.get('id', 0)
+                mission_name = mission_names.get(mission, f"未知任务({mission})")
+
+                # 打印日志信息
+                print("\n" + "="*60)
+                print(f"[任务] 🎯 接收到任务 #{task_count} (时间: {time.strftime('%H:%M:%S')})")
+                print(f"[任务] 类型: mission={mission} ({mission_name})")
+                print(f"[任务] 目标: ID={target_id}")
+                print("="*60)
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+                print("="*60)
+
+                # 判断是否需要转发到 MQTT
+                should_publish = (mission == mission_filter)
+
+                if should_publish:
+                    # 转发到 MQTT
+                    try:
+                        task_message = {
+                            'task_id': task_count,
+                            'received_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                            'timestamp': int(time.time()),
+                            'mission_type': mission,
+                            'mission_name': mission_name,
+                            'data': result
+                        }
+
+                        payload = json.dumps(task_message, ensure_ascii=False)
+                        mqtt_result = mqtt_client.publish(publish_topic, payload, qos=1)
+
+                        if mqtt_result.rc == mqtt.MQTT_ERR_SUCCESS:
+                            print(f"[任务] ✓ 已转发到 MQTT (topic: {publish_topic})")
+                        else:
+                            print(f"[任务] ✗ MQTT 转发失败 (rc={mqtt_result.rc})")
+
+                    except Exception as e:
+                        print(f"[任务] ✗ MQTT 转发异常: {e}")
+                else:
+                    # 不转发
+                    print(f"[任务] ⚠️  仅打印模式（mission={mission} 不转发 MQTT）")
+
+                print("="*60 + "\n")
+
+            next_tick += interval
+
+        time.sleep(0.001)
+
