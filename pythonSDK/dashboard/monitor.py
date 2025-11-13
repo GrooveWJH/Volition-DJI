@@ -12,7 +12,7 @@ from rich.live import Live
 from djisdk import setup_multiple_drc_connections, stop_heartbeat, DRCConnectionManager
 from vrpn import VRPNClient
 
-from .config import (
+from config import (
     MQTT_CONFIG,
     UAV_CONFIGS,
     OSD_FREQUENCY,

@@ -40,7 +40,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 # 导入control模块
-from config import *
+from .config import *
 from control.controller import PlaneController
 from control.logger import DataLogger
 from control.datasource import create_datasource

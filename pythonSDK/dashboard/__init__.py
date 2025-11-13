@@ -9,7 +9,7 @@ Dashboard - 多无人机实时监控系统
     python -m dashboard
 """
 
-from .config import (
+from config import (
     MQTT_CONFIG,
     UAV_CONFIGS,
     OSD_FREQUENCY,
