@@ -3,9 +3,6 @@
 测试修复后的滤波器 - 验证快速移动场景
 """
 
-import sys
-sys.path.insert(0, 'uwb')
-
 from collections import deque
 import numpy as np
 from typing import Optional, Deque

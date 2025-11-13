@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Minimal VRPN with Rich output."""
 
+import sys
+import os
+# Add parent directory (pythonSDK/) to path to import vrpn module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import math
 import time
 from typing import Iterable, Optional, Tuple
