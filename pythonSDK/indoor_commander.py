@@ -42,6 +42,9 @@ console = Console()
 # UWB 位置数据（线程安全）
 uwb_position = UWBPosition()
 
+# 目标检测事件（用于激活上报）
+detection_event = threading.Event()
+
 # ========== MQTT 回调 ==========
 
 def on_connect(client, userdata, flags, rc):
@@ -52,6 +55,9 @@ def on_connect(client, userdata, flags, rc):
         # 订阅 UWB 主题
         client.subscribe(cfg['uwb']['subscribe_topic'], qos=0)
         console.print(f"[green]✓ 已订阅 UWB 主题: {cfg['uwb']['subscribe_topic']}[/green]")
+        # 订阅检测主题
+        client.subscribe(cfg['detection']['subscribe_topic'], qos=0)
+        console.print(f"[green]✓ 已订阅检测主题: {cfg['detection']['subscribe_topic']}[/green]")
     else:
         console.print(f"[red]✗ 连接失败，错误码: {rc}[/red]")
 
@@ -71,6 +77,30 @@ def on_uwb_message(client, userdata, msg):
         )
     except Exception as e:
         print(f"[UWB] 主题解析失败: {e}")
+
+
+def on_detection_message(client, userdata, msg):
+    """目标检测 MQTT 消息回调"""
+    try:
+        payload = json.loads(msg.payload.decode('utf-8'))
+        # 触发检测事件，激活当前触发区域内的目标
+        detection_event.set()
+        console.print(f"[cyan]📡 收到检测消息 (timestamp: {payload.get('timestamp', 'N/A')})[/cyan]")
+    except Exception as e:
+        print(f"[检测] 主题解析失败: {e}")
+
+
+def on_message_router(client, userdata, msg):
+    """MQTT 消息路由器 - 根据主题分发到对应的处理函数"""
+    cfg = INDOOR_SYSTEM
+    topic = msg.topic
+
+    if topic == cfg['uwb']['subscribe_topic']:
+        on_uwb_message(client, userdata, msg)
+    elif topic == cfg['detection']['subscribe_topic']:
+        on_detection_message(client, userdata, msg)
+    else:
+        print(f"[警告] 未知主题: {topic}")
 
 
 # ========== 主程序 ==========
@@ -144,7 +174,7 @@ def main():
     mqtt_client = mqtt.Client(client_id=f'commander-{int(time.time())}')
     mqtt_client.username_pw_set(MQTT_CONFIG['username'], MQTT_CONFIG['password'])
     mqtt_client.on_connect = on_connect
-    mqtt_client.on_message = on_uwb_message
+    mqtt_client.on_message = on_message_router  # 使用路由器分发消息
 
     try:
         mqtt_client.connect(MQTT_CONFIG['host'], MQTT_CONFIG['port'], 60)
@@ -191,6 +221,7 @@ def main():
             cfg['targets']['trigger_areas'],
             cfg['targets']['positions'],
             1.0 / cfg['reporting']['target_hz'],
+            detection_event,  # 检测事件（用于激活上报）
             # stop_event 由 ThreadManager 自动管理
             print_duration=cfg['reporting']['target_log_duration']
         )

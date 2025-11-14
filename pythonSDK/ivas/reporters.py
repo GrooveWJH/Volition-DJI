@@ -420,16 +420,18 @@ def uwb_trigger_target_reporter(
     trigger_areas: Dict[int, Dict[str, float]],
     target_configs: Dict[int, Dict[str, Any]],
     interval: float,
+    detection_event: threading.Event,  # 新增：检测事件（用于激活上报）
     stop_event: threading.Event,
     print_duration: float = 5.0
 ):
     """
     UWB 触发区域目标上报线程（室内系统专用）
 
-    根据无人机进入的触发区域，永久激活对应目标并持续上报。
+    根据无人机进入的触发区域 + 收到检测消息，永久激活对应目标并持续上报。
 
     特性：
-    - 永久激活：进入区域后即使离开也持续上报
+    - 双重激活条件：进入触发区域 + 收到检测消息
+    - 永久激活：一旦激活即持续上报（即使离开区域）
     - 多目标累积：可同时上报多个已激活目标
     - 坐标变换：使用与位置上报相同的坐标变换
 
@@ -440,6 +442,7 @@ def uwb_trigger_target_reporter(
         trigger_areas: 触发区域配置 {target_id: {'x_min', 'x_max', 'y_min', 'y_max'}}
         target_configs: 目标配置 {target_id: {'id', 'cls', 'gis'}}
         interval: 上报间隔（秒）
+        detection_event: 检测事件（收到 MQTT 检测消息时触发）
         stop_event: 停止事件
         print_duration: 打印日志时长（秒）
     """
@@ -465,15 +468,22 @@ def uwb_trigger_target_reporter(
             transformed_lat = (raw_x + transform_config['x_offset']) * transform_config['x_scale']
             transformed_lon = (raw_y + transform_config['y_offset']) * transform_config['y_scale']
 
-            # 检查各个触发区域
+            # 1. 检测当前在哪些触发区域内
+            current_areas = set()
             for target_id, area in trigger_areas.items():
                 if (area['x_min'] <= transformed_lat <= area['x_max'] and
                     area['y_min'] <= transformed_lon <= area['y_max']):
+                    current_areas.add(target_id)
+
+            # 2. 如果收到检测消息，激活当前区域的所有目标
+            if detection_event.is_set():
+                for target_id in current_areas:
                     if target_id not in activated_targets:
                         activated_targets.add(target_id)
-                        print(f"[目标触发] 目标{target_id}已激活 (区域: x=[{area['x_min']},{area['x_max']}], y=[{area['y_min']},{area['y_max']}])")
+                        print(f"[检测确认] 检测消息 + 触发区域 → 激活目标{target_id}")
+                detection_event.clear()  # 清除标志
 
-            # 构建所有已激活的目标列表
+            # 3. 构建所有已激活的目标列表
             active_targets = []
             for target_id in activated_targets:
                 if target_id in target_configs:
@@ -482,7 +492,7 @@ def uwb_trigger_target_reporter(
                     target['obj_img'] = f"http://example.com/target_{target['id']}.jpg"
                     active_targets.append(target)
 
-            # 上报目标
+            # 4. 上报目标（只有列表非空才上报）
             if active_targets:
                 timestamp = int(time.time())
                 success = ivas_client.report_targets(timestamp=timestamp, objs=active_targets)
