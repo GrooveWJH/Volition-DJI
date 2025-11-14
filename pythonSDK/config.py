@@ -163,6 +163,13 @@ INDOOR_SYSTEM = {
                                         # 说明：模拟 GPS 噪声，使 IVAS 前端显示更真实
     },
 
+    # 目标检测配置（MQTT 订阅）
+    'detection': {
+        'subscribe_topic': 'indoor/target/detection',  # 目标检测订阅主题
+                                                       # 说明：收到此消息时，激活当前触发区域内的目标
+                                                       # 消息格式：{"detected": true, "timestamp": 1234567890}
+    },
+
     # 上报频率配置
     'reporting': {
         'position_hz': 1.0,            # 位置上报频率（Hz）- 推荐 1Hz
