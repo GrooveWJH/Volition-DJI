@@ -208,6 +208,7 @@ def fake_target_reporter(
 
     # 航点到达检测
     last_flyto_status = None
+    last_waypoint_index = None  # 跟踪航点索引，支持快速连续到达
     waypoint_arrival_time = None
 
     # 上报间隔
@@ -226,13 +227,20 @@ def fake_target_reporter(
             if config.get('report_after_waypoint', False):
                 progress = mqtt_client.get_flyto_progress()
                 current_status = progress.get('status')
+                current_waypoint_index = progress.get('way_point_index')
 
-                # 检测到新到达航点
-                if current_status == 'wayline_ok' and last_flyto_status != 'wayline_ok':
+                # 检测到新到达航点（状态变化 OR 航点索引变化）
+                # 修复：支持快速连续到达航点（间隔 < 20s）
+                if current_status == 'wayline_ok' and (
+                    last_flyto_status != 'wayline_ok' or
+                    (current_waypoint_index is not None and
+                     current_waypoint_index != last_waypoint_index)
+                ):
                     waypoint_arrival_time = current
                     if config.get('enable_debug_log', False):
                         way_point_index = progress.get('way_point_index', '?')
                         print(f"[假目标] [{callsign}] 🎯 航点{way_point_index}到达，开始 {config.get('report_duration', 20.0)}s 上报窗口")
+                    last_waypoint_index = current_waypoint_index  # 更新航点索引
 
                 last_flyto_status = current_status
 
