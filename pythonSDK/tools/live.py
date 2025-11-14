@@ -9,6 +9,11 @@ DJI 无人机 RTMP 直播工具 - 多机版本
 4. 统一启动/停止直播
 """
 
+import sys
+import os
+# Add parent directory (pythonSDK/) to path to import djisdk module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt, Confirm
@@ -28,7 +33,6 @@ from djisdk import (
 from djisdk.services.drc_commands import set_camera_zoom
 import time
 import threading
-import sys
 
 console = Console()
 

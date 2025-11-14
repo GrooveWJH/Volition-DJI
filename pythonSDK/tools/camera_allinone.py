@@ -5,6 +5,10 @@
 键盘: ↑回中 ↓向下 p看地面 z放大 x缩小 l低头锁定 w切换镜头 a AIM锁定 q/Ctrl+C退出
 """
 import sys
+import os
+# Add parent directory (pythonSDK/) to path to import djisdk module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import tty
 import termios
