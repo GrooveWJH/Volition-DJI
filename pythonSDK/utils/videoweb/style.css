@@ -6,6 +6,48 @@ body {
     overflow: hidden;
 }
 
+/* Mode Toggle Button */
+.mode-toggle-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+}
+
+.mode-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    padding: 12px 24px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    transition: all 0.3s ease;
+}
+
+.mode-toggle-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.mode-toggle-btn:active {
+    transform: translateY(0);
+}
+
+.mode-icon {
+    font-size: 20px;
+}
+
+.mode-text {
+    font-size: 14px;
+}
+
+/* Container Layouts */
 .container {
     display: flex;
     justify-content: center;
@@ -17,10 +59,33 @@ body {
     box-sizing: border-box;
 }
 
-.video-wrapper {
-    position: relative;
+/* Outdoor Mode (3 equal videos) */
+.container.outdoor-mode {
+    flex-direction: row;
+}
+
+.container.outdoor-mode .video-wrapper {
     width: 30%;
     aspect-ratio: 4 / 3;
+}
+
+/* Indoor Mode (2 videos, 3:7 ratio) */
+.container.indoor-mode {
+    flex-direction: row;
+}
+
+.container.indoor-mode .video-wrapper:nth-child(1) {
+    width: 25%; /* Drone001 - smaller */
+    aspect-ratio: 4 / 3;
+}
+
+.container.indoor-mode .video-wrapper:nth-child(2) {
+    width: 65%; /* indoor - larger */
+    aspect-ratio: 4 / 3;
+}
+
+.video-wrapper {
+    position: relative;
     background-color: #000;
     display: flex;
     flex-direction: column;
@@ -28,6 +93,7 @@ body {
     border-radius: 8px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     border: 1px solid #333;
+    transition: all 0.3s ease;
 }
 
 .header {
@@ -132,7 +198,7 @@ video {
 }
 
 .video-wrapper.zoomed {
-    width: 90vw;
+    width: 90vw !important;
     height: auto;
     max-height: 90vh;
     position: absolute;
