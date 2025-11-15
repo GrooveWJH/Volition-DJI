@@ -137,9 +137,7 @@ IVAS_FAKE_TARGET = {
 
 # 室内指挥端系统配置（indoor_commander.py）
 INDOOR_SYSTEM = {
-    # 系统总开关
-    'enabled': True,                   # 室内系统是否启用
-    'use_dry_run': False,              # False=真实 IVAS 连接, True=Dry-run 模式（仅打印）
+    'use_dry_run': True,              # False=真实 IVAS 连接, True=Dry-run 模式（仅打印）
 
     # UWB 室内定位配置
     'uwb': {
