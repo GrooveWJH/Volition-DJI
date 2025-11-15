@@ -33,7 +33,7 @@ IVAS Python SDK
 """
 
 from .client import IVASClient, DryRunReporter
-from .dataclasses import UWBPosition
+from .data_models import UWBPosition
 from .thread_manager import ThreadManager
 
 __version__ = '1.0.0'
