@@ -10,8 +10,8 @@ IVAS 系统现在支持两种运行模式：
 
 | 模式 | 服务器地址 | 用途 | 环境变量 |
 |------|-----------|------|---------|
-| **Mock 模式** | `http://localhost:5001` | 本地测试、开发、演示 | `IVAS_MODE=mock` |
-| **Production 模式** | `http://192.168.31.38:8888` | 真实部署、生产环境 | `IVAS_MODE=production` (默认) |
+| **Mock 模式** | `http://localhost:5001` | 本地测试、开发、演示 | `IVAS_BASE_URL=http://localhost:5001` |
+| **Production 模式** | `http://192.168.31.38:8888` | 真实部署、生产环境 | (默认，无需设置) |
 
 ---
 
@@ -47,7 +47,7 @@ python ivas/task_mock_server.py
 
 ```bash
 cd /home/groove/work/Volition-DJI/pythonSDK
-IVAS_MODE=mock python ivas/keyboard_commander.py
+IVAS_BASE_URL=http://localhost:5001 python ivas/keyboard_commander.py
 ```
 
 **终端输出：**
@@ -84,14 +84,14 @@ IVAS_MODE=mock python ivas/keyboard_commander.py
 
 ```bash
 cd /home/groove/work/Volition-DJI/pythonSDK
-IVAS_MODE=mock python pure.py
+IVAS_BASE_URL=http://localhost:5001 python pure.py
 ```
 
 或者使用快速启动脚本：
 
 ```bash
 ./start_mock_system.sh
-# 然后选择: IVAS_MODE=mock python pure.py
+# 然后选择: IVAS_BASE_URL=http://localhost:5001 python pure.py
 ```
 
 ---
@@ -102,18 +102,11 @@ IVAS_MODE=mock python pure.py
 
 ```bash
 cd /home/groove/work/Volition-DJI/pythonSDK
-IVAS_MODE=production python pure.py
-```
-
-或者直接运行（默认即为 Production 模式）：
-
-```bash
-python pure.py
+python pure.py  # 默认即为 Production 模式
 ```
 
 **终端输出：**
 ```
-[IVAS] 模式: production
 [IVAS] 服务器: http://192.168.31.38:8888
 [IVAS] 设备: ZSDX001 (device_code=1)
 ```
@@ -156,10 +149,10 @@ python ivas/task_mock_server.py
 **使用示例：**
 ```bash
 # Mock 模式
-IVAS_MODE=mock python ivas/keyboard_commander.py
+IVAS_BASE_URL=http://localhost:5001 python ivas/keyboard_commander.py
 
-# Production 模式
-IVAS_MODE=production python ivas/keyboard_commander.py
+# Production 模式（默认）
+python ivas/keyboard_commander.py
 ```
 
 **键盘操作：**
@@ -177,31 +170,23 @@ IVAS_MODE=production python ivas/keyboard_commander.py
 ```python
 import os
 
-# 模式选择：'mock' 或 'production'
-IVAS_MODE = os.getenv('IVAS_MODE', 'production')
-
-# Mock 服务器配置
-MOCK_IVAS_SERVER = {
-    'base_url': 'http://localhost:5001',
-    'report_hz': 1.0,
-    'task_hz': 2.0,
-}
-
-# 生产服务器配置
-PRODUCTION_IVAS_SERVER = {
+# IVAS 服务器配置
+# 支持环境变量切换测试/生产环境
+IVAS_SERVER = {
     'base_url': os.getenv('IVAS_BASE_URL', 'http://192.168.31.38:8888'),
     'report_hz': 1.0,
     'task_hz': 2.0,
 }
-
-# 自动选择配置
-IVAS_SERVER = MOCK_IVAS_SERVER if IVAS_MODE == 'mock' else PRODUCTION_IVAS_SERVER
 ```
 
-**环境变量优先级：**
-1. `IVAS_MODE=mock` → 强制 Mock 模式
-2. `IVAS_MODE=production` → 强制 Production 模式
-3. 无环境变量 → 默认 Production 模式
+**环境变量使用：**
+```bash
+# Mock 模式：设置 IVAS_BASE_URL 为本地服务器
+IVAS_BASE_URL=http://localhost:5001 python pure.py
+
+# Production 模式：不设置环境变量，使用默认值
+python pure.py
+```
 
 ---
 
@@ -213,11 +198,11 @@ IVAS_SERVER = MOCK_IVAS_SERVER if IVAS_MODE == 'mock' else PRODUCTION_IVAS_SERVE
 # 终端 1: 启动 Mock Server
 python ivas/task_mock_server.py
 
-# 终端 2: 启动键盘控制器
-IVAS_MODE=mock python ivas/keyboard_commander.py
+# 终端 2: 启动键盘控制器（Mock 模式）
+IVAS_BASE_URL=http://localhost:5001 python ivas/keyboard_commander.py
 
-# 终端 3: 运行客户端
-IVAS_MODE=mock python pure.py
+# 终端 3: 运行客户端（Mock 模式）
+IVAS_BASE_URL=http://localhost:5001 python pure.py
 
 # 在键盘控制器中按 '1' 发送起飞任务
 # 客户端会立即收到任务并执行

@@ -15,7 +15,7 @@ from typing import Dict, Any, TYPE_CHECKING
 
 # 类型导入（仅用于静态类型检查，避免运行时循环导入）
 if TYPE_CHECKING:
-    from .dataclasses import UWBPosition
+    from .data_models import UWBPosition
 
 
 def position_reporter(
