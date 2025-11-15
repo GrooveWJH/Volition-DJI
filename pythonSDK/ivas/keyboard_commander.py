@@ -2,15 +2,25 @@
 """
 IVAS 键盘控制器 - 通过键盘发送任务指令
 
-用于本地测试，替代真实 IVAS 服务器发送任务。
+支持两种模式：
+1. Mock 模式：连接本地 Mock Server (localhost:5001)
+2. Production 模式：连接真实 IVAS 服务器
 
 使用方法：
-    python ivas/keyboard_commander.py
+    python ivas/keyboard_commander.py              # 使用 config.py 中的配置
+    IVAS_MODE=mock python ivas/keyboard_commander.py    # 强制 Mock 模式
+    IVAS_MODE=production python ivas/keyboard_commander.py  # 强制生产模式
 """
+import sys
+import os
 import requests
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+
+# 导入配置
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import IVAS_SERVER, IVAS_MODE
 
 console = Console()
 
@@ -146,14 +156,16 @@ def clear_server_queues(base_url: str) -> bool:
 
 def main():
     """主函数"""
-    # 配置
-    BASE_URL = "http://localhost:5001"
+    # 从 config.py 获取服务器地址
+    BASE_URL = IVAS_SERVER['base_url']
     current_device_id = 1  # 初始设备
 
-    # 显示标题
+    # 显示标题（带模式提示）
+    mode_display = "[bold cyan]Mock 模式[/bold cyan]" if IVAS_MODE == 'mock' else "[bold green]生产模式[/bold green]"
     console.print(Panel.fit(
-        "[bold cyan]IVAS 键盘控制器[/bold cyan]\n"
-        f"[dim]Mock Server: {BASE_URL}[/dim]",
+        f"[bold cyan]IVAS 键盘控制器[/bold cyan]\n"
+        f"[dim]服务器: {BASE_URL}[/dim]\n"
+        f"[dim]模式: {mode_display}[/dim]",
         border_style="cyan"
     ))
     console.print()
