@@ -16,6 +16,8 @@
 import json
 import time
 import threading
+import sys
+import select
 from rich.console import Console
 import paho.mqtt.client as mqtt
 
@@ -44,6 +46,9 @@ uwb_position = UWBPosition()
 
 # 目标检测事件（用于激活上报）
 detection_event = threading.Event()
+
+# 目标重置事件（用于清空已激活目标）
+reset_targets_event = threading.Event()
 
 # ========== MQTT 回调 ==========
 
@@ -222,6 +227,7 @@ def main():
             cfg['targets']['positions'],
             1.0 / cfg['reporting']['target_hz'],
             detection_event,  # 检测事件（用于激活上报）
+            reset_targets_event,  # 重置事件（用于清空已激活目标）
             # stop_event 由 ThreadManager 自动管理
             print_duration=cfg['reporting']['target_log_duration']
         )
@@ -242,12 +248,32 @@ def main():
 
     # 6. 主循环
     console.print("[bold green]✅ 系统就绪！正在监听 UWB 主题和 IVAS 任务...[/bold green]")
-    console.print("[dim]按 Ctrl+C 退出[/dim]\n")
+    console.print("[dim]按 Ctrl+C 退出 | 按 'r' 键清空已激活目标[/dim]\n")
     console.print("[bold bright_cyan]" + "="*60 + "[/bold bright_cyan]\n")
 
     try:
-        while True:
-            time.sleep(1)
+        # 设置终端为非阻塞模式（用于键盘输入检测）
+        import termios
+        import tty
+        old_settings = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+
+        try:
+            while True:
+                # 检查是否有键盘输入（100ms 超时）
+                if select.select([sys.stdin], [], [], 0.1)[0]:
+                    key = sys.stdin.read(1).lower()
+                    if key == 'r':
+                        reset_targets_event.set()
+                        console.print("\n[bold yellow]🔄 手动重置：清空所有已激活目标[/bold yellow]\n")
+                        # 清除事件标志，准备下次使用
+                        time.sleep(0.1)  # 等待线程处理
+                        reset_targets_event.clear()
+
+                time.sleep(0.1)
+        finally:
+            # 恢复终端设置
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠️  接收到中断信号，正在退出...[/yellow]")

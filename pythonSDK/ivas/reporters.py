@@ -428,7 +428,8 @@ def uwb_trigger_target_reporter(
     trigger_areas: Dict[int, Dict[str, float]],
     target_configs: Dict[int, Dict[str, Any]],
     interval: float,
-    detection_event: threading.Event,  # 新增：检测事件（用于激活上报）
+    detection_event: threading.Event,  # 检测事件（用于激活上报）
+    reset_targets_event: threading.Event,  # 重置事件（用于清空已激活目标）
     stop_event: threading.Event,
     print_duration: float = 5.0
 ):
@@ -441,6 +442,7 @@ def uwb_trigger_target_reporter(
     - 双重激活条件：进入触发区域 + 收到检测消息
     - 永久激活：一旦激活即持续上报（即使离开区域）
     - 多目标累积：可同时上报多个已激活目标
+    - 手动重置：支持通过 reset_targets_event 清空所有已激活目标
     - 坐标变换：使用与位置上报相同的坐标变换
 
     Args:
@@ -451,6 +453,7 @@ def uwb_trigger_target_reporter(
         target_configs: 目标配置 {target_id: {'id', 'cls', 'gis'}}
         interval: 上报间隔（秒）
         detection_event: 检测事件（收到 MQTT 检测消息时触发）
+        reset_targets_event: 重置事件（收到重置信号时清空已激活目标）
         stop_event: 停止事件
         print_duration: 打印日志时长（秒）
     """
@@ -462,6 +465,13 @@ def uwb_trigger_target_reporter(
 
     while not stop_event.is_set():
         current = time.perf_counter()
+
+        # 检查重置事件
+        if reset_targets_event.is_set():
+            if activated_targets:
+                print(f"[重置] 清空 {len(activated_targets)} 个已激活目标: {activated_targets}")
+                activated_targets.clear()
+            reset_targets_event.clear()
 
         if current >= next_tick:
             # 读取 UWB 数据（线程安全）
