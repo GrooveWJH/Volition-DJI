@@ -18,7 +18,11 @@ from rich.console import Console
 
 from ..services import fly_to_point, return_home, send_stick_control
 from .takeoff import create_takeoff_mission
-from .trajectory import load_trajectory, fly_trajectory_sequence
+from .trajectory import (
+    load_trajectory,
+    fly_trajectory_sequence,
+    _update_mission_state_file,  # 复用同一状态文件，便于 Dashboard 展示
+)
 from .runner import MissionRunner
 
 console = Console()
@@ -51,6 +55,17 @@ def execute_ivas_task(
     target_id = task_data.get('id')
     callsign = uav_config.get('callsign', '未知')
 
+    def write_state(status: str, wp_index: int = 0, total: int = 0, trajectory_file: str = ""):
+        """统一写入 /tmp 状态文件，确保 Dashboard 显示非航线任务"""
+        try:
+            _update_mission_state_file(
+                runner or MissionRunner(mqtt_client, caller, heartbeat_thread, uav_config),
+                wp_index,
+                status
+            )
+        except Exception:
+            pass
+
     # 🔍 DEBUG: 确认进入执行器
     console.print(f"[bold magenta]🔍 [DEBUG] [{callsign}] execute_ivas_task 被调用: mission={mission}, id={target_id}, caller={caller is not None}, heartbeat={heartbeat_thread is not None}[/bold magenta]")
 
@@ -60,19 +75,25 @@ def execute_ivas_task(
         # 任务分发（打印详细的函数调用信息）
         if mission == 1:
             console.print(f"[dim][{callsign}] 📞 调用: _task_takeoff(target_height={uav_config.get('flight_height', 20.0)})[/dim]")
+            write_state("起飞中", wp_index=0, total=0)
             _task_takeoff(mqtt_client, caller, heartbeat_thread, uav_config, runner)
+            write_state("起飞完成", wp_index=0, total=0)
         elif mission == 2:
             console.print(f"[dim][{callsign}] 📞 调用: _task_land()[/dim]")
             _task_land(mqtt_client, callsign, runner)
         elif mission == 3:
             console.print(f"[dim][{callsign}] 📞 调用: _task_return_home()[/dim]")
+            write_state("返航中", wp_index=0, total=0)
             _task_return_home(caller, callsign)
+            write_state("返航指令已发送", wp_index=0, total=0)
         elif mission == 4:
             lat = task_data.get('lat')
             lon = task_data.get('lon')
             alt = task_data.get('alt')
             console.print(f"[dim][{callsign}] 📞 调用: _task_fly_to_point(lat={lat}, lon={lon}, alt={alt})[/dim]")
+            write_state("飞向指定点", wp_index=0, total=0)
             _task_fly_to_point(caller, lat, lon, alt, callsign)
+            write_state("飞向指定点完成", wp_index=0, total=0)
         elif mission in [5, 6, 7]:
             trajectory_index = mission - 4
             trajectory_file = f"Trajectory/uav{trajectory_index}.json"

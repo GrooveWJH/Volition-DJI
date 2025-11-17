@@ -145,7 +145,15 @@ def fly_trajectory_sequence(
     total_waypoints = len(waypoints)
     all_success = True
 
+    def _should_abort() -> bool:
+        """外部停止信号（如返航）时立即终止后续航点"""
+        return any(not r.running for r in runners)
+
     for wp_index, waypoint in enumerate(waypoints, 1):
+        if _should_abort():
+            for r in runners:
+                _update_mission_state_file(r, wp_index - 1, '已取消')
+            return False
         wp_id = waypoint.get('id', wp_index)
         lat = waypoint['lat']
         lon = waypoint['lon']
@@ -165,6 +173,11 @@ def fly_trajectory_sequence(
         # 发送 Fly-to 指令到所有无人机，并记录 fly_to_id
         fly_to_ids = {}  # {callsign: fly_to_id}
         for runner in runners:
+            if _should_abort():
+                for r in runners:
+                    _update_mission_state_file(r, wp_index - 1, '已取消')
+                return False
+
             caller = runner.caller
             callsign = runner.config.get('callsign', 'UAV')
             if show_progress:
@@ -214,6 +227,11 @@ def fly_trajectory_sequence(
                 print_interval = 1.0  # 每秒打印一次进度
 
                 while True:
+                    if not runner.running:
+                        all_success = False
+                        _update_mission_state_file(runner, wp_index, '已取消')
+                        break
+
                     elapsed = time.time() - start_time
                     if elapsed > 120.0:  # 2分钟超时
                         raise TimeoutError(
@@ -302,6 +320,11 @@ def fly_trajectory_sequence(
 
         # 航点间等待（除了最后一个航点）
         if wp_index < total_waypoints and hover_between_waypoints > 0:
+            if _should_abort():
+                for r in runners:
+                    _update_mission_state_file(r, wp_index, '已取消')
+                return False
+
             if show_progress:
                 console.print(
                     f"[bright_cyan]━━━ 航点 {wp_index} 悬停操作 ━━━[/bright_cyan]")

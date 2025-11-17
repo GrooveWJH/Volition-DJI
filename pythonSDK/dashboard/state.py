@@ -200,6 +200,6 @@ class UAVState:
             return "bright_yellow"
         if self.flight_mode_name in ["未连接", "未知"]:
             return "bright_red"
-        if self.flight_mode_name in ["手动飞行", "虚拟摇杆状态", "指令飞行"]:
+        if self.flight_mode_name in ["摇杆控制", "虚拟摇杆状态", "指令飞行"]:
             return "bright_cyan"
         return "bright_green"
