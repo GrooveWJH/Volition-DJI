@@ -19,6 +19,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, Any
 
+from .reporters import fake_target_reporter
 
 # ========== 任务状态管理 ==========
 
@@ -205,6 +206,7 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
     """
     from djisdk.tasks.ivas_executor import execute_ivas_task
     from djisdk.tasks.runner import MissionRunner
+    import threading
 
     # 停止旧任务（如果存在）
     if 'current_runner' in uav_client and uav_client['current_runner']:
@@ -215,6 +217,43 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
             # ✅ 新增：清除任务状态（解决Dashboard显示过期航线问题）
             callsign = uav_client.get('callsign', 'Unknown')
             _clear_mission_state(callsign)
+
+    # 假目标上报：仅对航线任务（mission 5/6/7）按需启动，其他任务停止
+    mission = task_data.get('mission')
+    fake_cfg = uav_client.get('fake_target_config')
+    if fake_cfg:
+        # 需要启动
+        if mission in (5, 6, 7):
+            thread = uav_client.get('fake_target_thread')
+            stop_event = uav_client.get('fake_target_stop')
+            if not thread or not thread.is_alive():
+                stop_event = threading.Event()
+                uav_client['fake_target_stop'] = stop_event
+                thread = threading.Thread(
+                    target=fake_target_reporter,
+                    args=(
+                        uav_client['mqtt'],
+                        uav_client['ivas_client'],
+                        uav_client['device_code'],
+                        uav_client['callsign'],
+                        fake_cfg,
+                        stop_event
+                    ),
+                    daemon=True,
+                    name=f"ivas-fake-target-{uav_client['device_code']}"
+                )
+                thread.start()
+                uav_client['fake_target_thread'] = thread
+        else:
+            # 非航线任务，关闭已有假目标线程
+            stop_event = uav_client.get('fake_target_stop')
+            thread = uav_client.get('fake_target_thread')
+            if stop_event:
+                stop_event.set()
+            if thread:
+                thread.join(timeout=2.0)
+            uav_client['fake_target_thread'] = None
+            uav_client['fake_target_stop'] = None
 
     # 创建新的 runner
     runner_config = {

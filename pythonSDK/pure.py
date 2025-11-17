@@ -245,7 +245,11 @@ def main():
             'ivas_client': ivas_client,  # 每架无人机独立的 IVAS 客户端
             'config': uav_config,
             'flight_height': uav_config.get('flight_height', 100.0),
-            'current_runner': None  # 用于任务执行
+            'current_runner': None,  # 用于任务执行
+            # 假目标上报的按需启动/关闭
+            'fake_target_config': IVAS_FAKE_TARGET if (IVAS_FEATURES.get('fake_target_report', False) and IVAS_FAKE_TARGET['enabled']) else None,
+            'fake_target_thread': None,
+            'fake_target_stop': None
         }
 
         uav_clients.append(uav_client)
@@ -291,41 +295,11 @@ def main():
 
         console.print()
 
-    # 2.6. 启动假目标上报线程（如果启用）
+    # 2.6. 假目标上报不在此处全局启动：仅在任务执行阶段针对航线任务（mission 5/6/7）按需启动
     fake_target_threads = []
     fake_target_stop_events = []
-
     if IVAS_FEATURES.get('fake_target_report', False) and IVAS_FAKE_TARGET['enabled']:
-        console.print("[bold]🎯 步骤 2.6: 启动假目标上报[/bold]")
-
-        for uav in uav_clients:
-            device_code = uav['device_code']
-            callsign = uav['callsign']
-
-            # 创建停止事件
-            stop_event = threading.Event()
-            fake_target_stop_events.append(stop_event)
-
-            # 启动假目标上报线程（使用各自的 IVAS 客户端）
-            thread = threading.Thread(
-                target=fake_target_reporter,
-                args=(
-                    uav['mqtt'],
-                    uav['ivas_client'],  # ✅ 使用各自的 IVAS 客户端
-                    device_code,
-                    callsign,
-                    IVAS_FAKE_TARGET,
-                    stop_event
-                ),
-                daemon=True,
-                name=f"ivas-fake-target-{device_code}"
-            )
-            thread.start()
-            fake_target_threads.append(thread)
-
-            console.print(f"[bright_green]✓ {callsign} 假目标上报线程已启动 (账号: {uav['config']['ivas']['account']})[/bright_green]")
-
-        console.print()
+        console.print("[bold]🎯 步骤 2.6: 假目标上报将按需在航线任务启动[/bold]")
 
     # 3. 启动任务轮询线程（使用共享 IVAS 客户端进行单点轮询）
     console.print("[bold]🎯 步骤 3: 启动任务轮询[/bold]")
