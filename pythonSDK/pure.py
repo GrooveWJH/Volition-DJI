@@ -409,6 +409,14 @@ def main():
                 uav['device_code']
             )
 
+        # 清理任务状态文件，防止 Dashboard 读取过期任务数据
+        if MISSION_STATE_FILE.exists():
+            try:
+                MISSION_STATE_FILE.unlink()
+                console.print("[bright_yellow]✓ 已删除任务状态文件[/bright_yellow]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️  删除任务状态文件失败: {e}[/yellow]")
+
         console.print("[bold green]✅ 程序已退出[/bold green]\n")
 
 

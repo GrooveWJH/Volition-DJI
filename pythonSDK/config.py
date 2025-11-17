@@ -88,7 +88,7 @@ ENABLE_VRPN = False
 # ========== IVAS 集成配置 ==========
 
 # IVAS 功能总开关
-ENABLE_IVAS = False
+ENABLE_IVAS = True
 
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {
@@ -137,7 +137,7 @@ IVAS_FAKE_TARGET = {
 
 # 室内指挥端系统配置（indoor_commander.py）
 INDOOR_SYSTEM = {
-    'use_dry_run': True,              # False=真实 IVAS 连接, True=Dry-run 模式（仅打印）
+    'use_dry_run': False,              # False=真实 IVAS 连接, True=Dry-run 模式（仅打印）
 
     # UWB 室内定位配置
     'uwb': {
