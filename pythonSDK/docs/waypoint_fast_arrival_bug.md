@@ -298,7 +298,7 @@ def fake_target_reporter(
     stop_event: threading.Event
 ):
     """
-    假目标上报线程（跟随无人机GPS位置）
+    spuriou目标上报线程（跟随无人机GPS位置）
 
     修复：支持航点快速连续到达
     """
@@ -335,7 +335,7 @@ def fake_target_reporter(
                 ):
                     waypoint_arrival_time = current
                     if config.get('enable_debug_log', False):
-                        print(f"[假目标] [{callsign}] 🎯 航点{current_waypoint_index}到达，开始 {config.get('report_duration', 20.0)}s 上报窗口")
+                        print(f"[spuriou目标] [{callsign}] 🎯 航点{current_waypoint_index}到达，开始 {config.get('report_duration', 20.0)}s 上报窗口")
                     last_waypoint_index = current_waypoint_index  # ← 更新
 
                 last_flyto_status = current_status
@@ -350,12 +350,12 @@ def fake_target_reporter(
 
                 if elapsed > report_duration:
                     if config.get('enable_debug_log', False):
-                        print(f"[假目标] [{callsign}] ⏸️  上报窗口结束，等待下一个航点...")
+                        print(f"[spuriou目标] [{callsign}] ⏸️  上报窗口结束，等待下一个航点...")
                     waypoint_arrival_time = None
                     next_tick += interval
                     continue
 
-            # 2-7. 生成和上报假目标（逻辑不变）
+            # 2-7. 生成和上报 spuriou目标（逻辑不变）
             # ...
 ```
 

@@ -2,7 +2,7 @@
 IVAS 上报线程模块 - 数据上报功能
 
 包含户外和室内系统的所有上报线程：
-- 户外系统：位置上报、目标上报、假目标上报
+- 户外系统：位置上报、目标上报、spuriou目标上报
 - 室内系统：UWB位置上报、触发区域目标上报
 
 所有函数都是纯函数，使用 perf_counter 精确定时。
@@ -170,9 +170,9 @@ def fake_target_reporter(
     stop_event: threading.Event
 ):
     """
-    假目标上报线程（跟随无人机GPS位置）
+    spuriou目标上报线程（跟随无人机GPS位置）
 
-    从 MQTTClient 获取真实GPS位置，在其周围10m范围内生成假目标。
+    从 MQTTClient 获取真实GPS位置，在其周围10m范围内生成 spuriou目标。
 
     新特性（v2.0）：
     - 固定 ID 池：每个 UAV 循环使用 10 个固定 ID
@@ -217,7 +217,7 @@ def fake_target_reporter(
     # 启动提示（可选）
     if config.get('enable_debug_log', False):
         id_range = f"{base_id}~{base_id + max_targets - 1}"
-        print(f"[假目标] [{callsign}] 启动 - ID 池: {id_range}, 频率: {config['report_hz']}Hz, 窗口模式: {'开启' if config.get('report_after_waypoint') else '关闭'}")
+        print(f"[spuriou目标] [{callsign}] 启动 - ID 池: {id_range}, 频率: {config['report_hz']}Hz, 窗口模式: {'开启' if config.get('report_after_waypoint') else '关闭'}")
 
     while not stop_event.is_set():
         current = time.perf_counter()
@@ -239,7 +239,7 @@ def fake_target_reporter(
                     waypoint_arrival_time = current
                     if config.get('enable_debug_log', False):
                         way_point_index = progress.get('way_point_index', '?')
-                        print(f"[假目标] [{callsign}] 🎯 航点{way_point_index}到达，开始 {config.get('report_duration', 20.0)}s 上报窗口")
+                        print(f"[spuriou目标] [{callsign}] 🎯 航点{way_point_index}到达，开始 {config.get('report_duration', 20.0)}s 上报窗口")
                     last_waypoint_index = current_waypoint_index  # 更新航点索引
 
                 last_flyto_status = current_status
@@ -257,7 +257,7 @@ def fake_target_reporter(
                     # 超过上报窗口，等待下一个航点
                     if waypoint_arrival_time is not None:  # 第一次超时打印提示
                         if config.get('enable_debug_log', False):
-                            print(f"[假目标] [{callsign}] ⏸️  上报窗口结束，等待下一个航点...")
+                            print(f"[spuriou目标] [{callsign}] ⏸️  上报窗口结束，等待下一个航点...")
                         waypoint_arrival_time = None  # 清空状态
                     next_tick += interval
                     continue
@@ -279,7 +279,7 @@ def fake_target_reporter(
             if not gps_valid:
                 lat, lon = 0.0, 0.0
 
-            # 4. 生成假目标
+            # 4. 生成 spuriou目标
             target_id = base_id + current_index
 
             # 在 10m 范围内随机偏移
@@ -319,7 +319,7 @@ def fake_target_reporter(
                 gps_status = "GPS有效" if gps_valid else "无GPS"
                 cls_names = {0: '人', 1: '车', 2: '飞机'}
                 target_info = f"ID:{obj['id']}({cls_names[obj['cls']]})"
-                print(f"[假目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
+                print(f"[spuriou目标] [{callsign}] {gps_status} | 基准GPS:({lat:.6f}, {lon:.6f}) | {target_info}")
 
             # 7. 循环更新索引（0 → 1 → ... → 9 → 0）
             current_index = (current_index + 1) % max_targets

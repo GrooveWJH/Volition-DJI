@@ -246,7 +246,7 @@ def main():
             'config': uav_config,
             'flight_height': uav_config.get('flight_height', 100.0),
             'current_runner': None,  # 用于任务执行
-            # 假目标上报的按需启动/关闭
+            # spuriou目标上报的按需启动/关闭
             'fake_target_config': IVAS_FAKE_TARGET if (IVAS_FEATURES.get('fake_target_report', False) and IVAS_FAKE_TARGET['enabled']) else None,
             'fake_target_thread': None,
             'fake_target_stop': None
@@ -295,11 +295,11 @@ def main():
 
         console.print()
 
-    # 2.6. 假目标上报不在此处全局启动：仅在任务执行阶段针对航线任务（mission 5/6/7）按需启动
+    # 2.6. spuriou目标上报不在此处全局启动：仅在任务执行阶段针对航线任务（mission 5/6/7）按需启动
     fake_target_threads = []
     fake_target_stop_events = []
     if IVAS_FEATURES.get('fake_target_report', False) and IVAS_FAKE_TARGET['enabled']:
-        console.print("[bold]🎯 步骤 2.6: 假目标上报将按需在航线任务启动[/bold]")
+        console.print("[bold]🎯 步骤 2.6: spuriou目标上报将按需在航线任务启动[/bold]")
 
     # 3. 启动任务轮询线程（使用共享 IVAS 客户端进行单点轮询）
     console.print("[bold]🎯 步骤 3: 启动任务轮询[/bold]")
@@ -352,9 +352,9 @@ def main():
                 else:
                     console.print(f"[bright_green]✓ {thread.name} 已停止[/bright_green]")
 
-        # 停止假目标上报线程
+        # 停止spuriou目标上报线程
         if fake_target_stop_events:
-            console.print("[bright_cyan]停止假目标上报线程...[/bright_cyan]")
+            console.print("[bright_cyan]停止spuriou目标上报线程...[/bright_cyan]")
             for stop_event in fake_target_stop_events:
                 stop_event.set()
 
