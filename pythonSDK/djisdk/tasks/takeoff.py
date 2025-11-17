@@ -69,7 +69,7 @@ def create_takeoff_mission(
 
         # 阶段2: 解锁（外八：左摇杆左下 + 右摇杆右下）
         runner.status = "解锁中"
-        console.print(f"[cyan][{callsign}] 外八解锁，持续 1秒...[/cyan]")
+        console.print(f"[cyan][{callsign}] 外八解锁，持续 3秒...[/cyan]")
         send_stick_repeatedly(
             mqtt,
             roll=1684,      # 右摇杆右（横滚最右）
