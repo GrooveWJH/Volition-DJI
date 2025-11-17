@@ -69,19 +69,14 @@ def get_outdoor_task():
     """
     轮询任务接口（模拟真实 IVAS 服务器）
 
-    客户端通过此接口轮询任务。如果有任务，返回任务数据；否则返回空。
-
-    参数:
-        deviceCode (int): 设备编号（来自 UAV_CONFIGS 中的 ivas.device_code）
+    兼容原生 IVAS 客户端（不带 deviceCode 参数）：
+    - 缺省时使用 deviceCode=1
+    - 仍支持带 deviceCode 的请求
 
     Returns:
         JSON: {'code': 200, 'data': task_data} 或 {'code': 200, 'data': None}
     """
-    # 直接从 query 参数获取 deviceCode
-    device_id = request.args.get('deviceCode', type=int)
-
-    if not device_id:
-        return jsonify({'code': 400, 'msg': '缺少 deviceCode 参数', 'data': None}), 400
+    device_id = request.args.get('deviceCode', default=1, type=int)
 
     if device_id in task_queues and task_queues[device_id]:
         task = task_queues[device_id].popleft()
@@ -182,6 +177,14 @@ def push_task():
     )
 
     return jsonify({'status': 'ok', 'queue_size': queue_size})
+
+
+@app.route('/jk-ivas/third/controller/reportUserData', methods=['POST'])
+def report_user_data():
+    """
+    兼容位置上报接口的空实现：直接返回成功
+    """
+    return jsonify({'code': 200, 'msg': '位置已接收 (mock)', 'data': None})
 
 
 @app.route('/mock/stats', methods=['GET'])

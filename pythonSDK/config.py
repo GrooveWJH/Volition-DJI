@@ -93,8 +93,8 @@ ENABLE_IVAS = True
 # IVAS 功能细粒度开关
 IVAS_FEATURES = {
     'position_report': True,      # 无人机位置上报（实际执行，从真实MQTT获取数据）
-    'target_report': False,       # 目标检测上报（暂不启用，无数据源）
-    'fake_target_report': True,   # 假目标上报（跟随无人机GPS，生成假数据）
+    'target_report': True,       # 目标检测上报（暂不启用，无数据源）
+    'fake_target_report': True,   # spuriou目标上报（跟随无人机GPS，生成假数据）
     'task_receive': True,         # 任务接收
 }
 
@@ -115,7 +115,7 @@ IVAS_ADVANCED = {
     'position_log_duration': 5.0,      # 位置上报日志打印时长（秒，前N秒打印）
 }
 
-# IVAS 假目标上报配置（用于测试和演示）
+# IVAS spuriou目标上报配置（用于测试和演示）
 IVAS_FAKE_TARGET = {
     'enabled': True,                   # 总开关（与 IVAS_FEATURES['fake_target_report'] 配合使用）
     'report_hz': 0.5,                  # 上报频率（Hz）- 每 2 秒上报一次
@@ -228,4 +228,3 @@ INDOOR_SYSTEM = {
         'motion': 1,                   # 默认运动状态（0:静止, 1:运动）
     }
 }
-

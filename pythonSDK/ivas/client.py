@@ -153,7 +153,7 @@ class IVASClient:
         resp = self._request('POST', url, json=data)
         return resp is not None and resp.status_code == 200
 
-    def poll_task(self) -> Optional[Dict[str, Any]]:
+    def poll_task(self, device_code: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """
         从 IVAS 服务器轮询任务
 
@@ -162,7 +162,11 @@ class IVASClient:
         """
         url = f"{self.base_url}/jk-ivas/third/controller/outdoorTask"
 
-        resp = self._request('GET', url, params={})
+        params = {}
+        if device_code is not None:
+            params['deviceCode'] = device_code
+
+        resp = self._request('GET', url, params=params)
 
         if resp and resp.status_code == 200:
             try:

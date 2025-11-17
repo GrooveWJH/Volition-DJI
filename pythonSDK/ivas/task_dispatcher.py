@@ -126,8 +126,8 @@ def task_poller(
                 elif target_id in uav_clients_map:
                     # 单播模式：分发给指定设备
                     print(f"[任务] 路由到设备 {target_id} (mission={mission})")
-                    uav = uav_clients_map[target_id]
-                    _execute_task(uav, task_data)
+                    uav_target = uav_clients_map[target_id]
+                    _execute_task(uav_target, task_data)
                 else:
                     print(f"[任务] ⚠️ 未知任务 ID: {target_id} (mission={mission})")
 
@@ -218,7 +218,7 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
             callsign = uav_client.get('callsign', 'Unknown')
             _clear_mission_state(callsign)
 
-    # 假目标上报：仅对航线任务（mission 5/6/7）按需启动，其他任务停止
+    # spuriou目标上报：仅对航线任务（mission 5/6/7）按需启动，其他任务停止
     mission = task_data.get('mission')
     fake_cfg = uav_client.get('fake_target_config')
     if fake_cfg:
@@ -245,7 +245,7 @@ def _execute_task(uav_client: Dict[str, Any], task_data: Dict[str, Any]):
                 thread.start()
                 uav_client['fake_target_thread'] = thread
         else:
-            # 非航线任务，关闭已有假目标线程
+            # 非航线任务，关闭已有 spuriou目标线程
             stop_event = uav_client.get('fake_target_stop')
             thread = uav_client.get('fake_target_thread')
             if stop_event:

@@ -1,8 +1,8 @@
-# Pure.py 假目标上报逻辑详解
+# Pure.py spuriou目标上报逻辑详解
 
 ## 📋 概述
 
-`pure.py` 是纯净版 IVAS + 多 DRC 程序，专注于 IVAS 任务接收、分发和多无人机控制。本文档详细说明其假目标上报（Fake Target Reporting）的逻辑，特别是三架无人机并行工作的场景。
+`pure.py` 是纯净版 IVAS + 多 DRC 程序，专注于 IVAS 任务接收、分发和多无人机控制。本文档详细说明其 spuriou目标上报（Fake Target Reporting）的逻辑，特别是三架无人机并行工作的场景。
 
 ## 🏗️ 系统架构
 
@@ -52,9 +52,9 @@ pos1 --> ivas1 : 上报位置
 pos2 --> ivas2 : 上报位置
 pos3 --> ivas3 : 上报位置
 
-fake1 --> ivas1 : 上报假目标
-fake2 --> ivas2 : 上报假目标
-fake3 --> ivas3 : 上报假目标
+fake1 --> ivas1 : 上报 spuriou目标
+fake2 --> ivas2 : 上报 spuriou目标
+fake3 --> ivas3 : 上报 spuriou目标
 
 ivas1 --> ivas_server : HTTP API
 ivas2 --> ivas_server : HTTP API
@@ -88,9 +88,9 @@ end note
 1. **完全并行**: 三架无人机独立运行，互不干扰
 2. **独立账户**: 每架 UAV 使用独立的 IVAS 账户登录
 3. **ID 隔离**: 每架 UAV 使用不重叠的目标 ID 池
-4. **时间窗口**: 仅在到达航点后 20 秒内上报假目标
+4. **时间窗口**: 仅在到达航点后 20 秒内上报 spuriou目标
 
-## 🎯 假目标上报逻辑
+## 🎯 spuriou目标上报逻辑
 
 ### 核心配置
 
@@ -174,7 +174,7 @@ end note
 
 航点到达 --> 上报窗口内 : 开始计时
 
-上报窗口内 : 每 2 秒生成 1 个假目标
+上报窗口内 : 每 2 秒生成 1 个 spuriou目标
 上报窗口内 : 循环使用 ID 池
 上报窗口内 : 加权随机选择类别
 
@@ -183,7 +183,7 @@ end note
 上报窗口内 --> 等待航点 : elapsed > 20s\n停止上报
 
 note right of 上报窗口内
-  生成假目标流程:
+  生成 spuriou目标流程:
   1. 获取无人机 GPS (lat, lon)
   2. 随机偏移 ±10m
   3. 选择类别 (90% 车, 10% 人)
@@ -323,7 +323,7 @@ if (GPS 有效?) then (yes)
   :调用 IVAS API\nivas_client.report_targets(timestamp, [obj]);
 
   if (调试日志开启?) then (yes)
-    :打印: [假目标] [Callsign] GPS有效 | ID:X(车/人);
+    :打印: [spuriou目标] [Callsign] GPS有效 | ID:X(车/人);
   else (no)
   endif
 
