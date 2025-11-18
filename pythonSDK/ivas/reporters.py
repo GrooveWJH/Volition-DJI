@@ -431,7 +431,9 @@ def uwb_trigger_target_reporter(
     detection_event: threading.Event,  # 检测事件（用于激活上报）
     reset_targets_event: threading.Event,  # 重置事件（用于清空已激活目标）
     stop_event: threading.Event,
-    print_duration: float = 5.0
+    print_duration: float = 5.0,
+    allowed_trigger_areas: set = None,  # 允许上报的触发区域集合（线程安全访问需配合锁）
+    allowed_trigger_areas_lock: threading.Lock = None  # 保护 allowed_trigger_areas 的锁
 ):
     """
     UWB 触发区域目标上报线程（室内系统专用）
@@ -493,22 +495,41 @@ def uwb_trigger_target_reporter(
                     area['y_min'] <= transformed_lon <= area['y_max']):
                     current_areas.add(target_id)
 
-            # 2. 如果收到检测消息，激活当前区域的所有目标
+            # 2. 如果收到检测消息，激活当前区域的所有目标（过滤允许的区域）
             if detection_event.is_set():
+                # 获取允许的触发区域（线程安全）
+                if allowed_trigger_areas_lock is not None:
+                    with allowed_trigger_areas_lock:
+                        allowed_areas = allowed_trigger_areas.copy() if allowed_trigger_areas else None
+                else:
+                    allowed_areas = None  # 如果没有锁，则不限制
+
                 for target_id in current_areas:
-                    if target_id not in activated_targets:
-                        activated_targets.add(target_id)
-                        print(f"[检测确认] 检测消息 + 触发区域 → 激活目标{target_id}")
+                    # 只激活允许的区域
+                    if allowed_areas is None or target_id in allowed_areas:
+                        if target_id not in activated_targets:
+                            activated_targets.add(target_id)
+                            print(f"[检测确认] 检测消息 + 触发区域 → 激活目标{target_id}")
                 detection_event.clear()  # 清除标志
 
-            # 3. 构建所有已激活的目标列表
+            # 3. 构建所有已激活的目标列表（过滤允许的区域）
             active_targets = []
+
+            # 获取允许的触发区域（线程安全）
+            if allowed_trigger_areas_lock is not None:
+                with allowed_trigger_areas_lock:
+                    allowed_areas = allowed_trigger_areas.copy() if allowed_trigger_areas else None
+            else:
+                allowed_areas = None  # 如果没有锁，则不限制
+
             for target_id in activated_targets:
-                if target_id in target_configs:
-                    target = target_configs[target_id].copy()
-                    target['bbox'] = [100, 100, 50, 50]
-                    target['obj_img'] = f"http://example.com/target_{target['id']}.jpg"
-                    active_targets.append(target)
+                # 只上报允许的区域
+                if allowed_areas is None or target_id in allowed_areas:
+                    if target_id in target_configs:
+                        target = target_configs[target_id].copy()
+                        target['bbox'] = [100, 100, 50, 50]
+                        target['obj_img'] = f"http://example.com/target_{target['id']}.jpg"
+                        active_targets.append(target)
 
             # 4. 上报目标（只有列表非空才上报）
             if active_targets:

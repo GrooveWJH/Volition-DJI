@@ -50,6 +50,10 @@ detection_event = threading.Event()
 # 目标重置事件（用于清空已激活目标）
 reset_targets_event = threading.Event()
 
+# 允许上报的触发区域集合（用于按键 1/2/3 控制）
+allowed_trigger_areas = set([1, 2, 3])  # 初始允许所有区域
+allowed_trigger_areas_lock = threading.Lock()  # 线程安全锁
+
 # ========== MQTT 回调 ==========
 
 def on_connect(client, userdata, flags, rc):
@@ -229,7 +233,9 @@ def main():
             detection_event,  # 检测事件（用于激活上报）
             reset_targets_event,  # 重置事件（用于清空已激活目标）
             # stop_event 由 ThreadManager 自动管理
-            print_duration=cfg['reporting']['target_log_duration']
+            print_duration=cfg['reporting']['target_log_duration'],
+            allowed_trigger_areas=allowed_trigger_areas,  # 允许上报的触发区域
+            allowed_trigger_areas_lock=allowed_trigger_areas_lock  # 线程安全锁
         )
 
     # 启动任务轮询线程
@@ -248,7 +254,8 @@ def main():
 
     # 6. 主循环
     console.print("[bold green]✅ 系统就绪！正在监听 UWB 主题和 IVAS 任务...[/bold green]")
-    console.print("[dim]按 Ctrl+C 退出 | 按 'r' 键清空已激活目标[/dim]\n")
+    console.print("[dim]按 Ctrl+C 退出 | 按 'r' 键清空已激活目标 | 按 1/2/3 键切换上报目标数量[/dim]")
+    console.print("[dim]  1: 仅上报目标1 | 2: 上报目标1+2 | 3: 上报所有目标[/dim]\n")
     console.print("[bold bright_cyan]" + "="*60 + "[/bold bright_cyan]\n")
 
     try:
@@ -263,12 +270,35 @@ def main():
                 # 检查是否有键盘输入（100ms 超时）
                 if select.select([sys.stdin], [], [], 0.1)[0]:
                     key = sys.stdin.read(1).lower()
+
                     if key == 'r':
+                        # 清空已激活目标
                         reset_targets_event.set()
                         console.print("\n[bold yellow]🔄 手动重置：清空所有已激活目标[/bold yellow]\n")
                         # 清除事件标志，准备下次使用
                         time.sleep(0.1)  # 等待线程处理
                         reset_targets_event.clear()
+
+                    elif key == '1':
+                        # 仅上报目标1
+                        with allowed_trigger_areas_lock:
+                            allowed_trigger_areas.clear()
+                            allowed_trigger_areas.add(1)
+                        console.print("\n[bold cyan]🎯 切换模式：仅上报目标1[/bold cyan]\n")
+
+                    elif key == '2':
+                        # 上报目标1+2
+                        with allowed_trigger_areas_lock:
+                            allowed_trigger_areas.clear()
+                            allowed_trigger_areas.update([1, 2])
+                        console.print("\n[bold cyan]🎯 切换模式：上报目标1+2[/bold cyan]\n")
+
+                    elif key == '3':
+                        # 上报所有目标
+                        with allowed_trigger_areas_lock:
+                            allowed_trigger_areas.clear()
+                            allowed_trigger_areas.update([1, 2, 3])
+                        console.print("\n[bold cyan]🎯 切换模式：上报所有目标（1+2+3）[/bold cyan]\n")
 
                 time.sleep(0.1)
         finally:
