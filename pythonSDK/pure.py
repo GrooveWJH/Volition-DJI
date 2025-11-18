@@ -304,6 +304,11 @@ def main():
     # 3. 启动任务轮询线程（使用共享 IVAS 客户端进行单点轮询）
     console.print("[bold]🎯 步骤 3: 启动任务轮询[/bold]")
 
+    # 读取任务执行配置
+    enable_task_execution = IVAS_ADVANCED.get('enable_task_execution', True)
+    task_mode = "执行模式" if enable_task_execution else "监视模式（仅打印，不执行）"
+    console.print(f"[dim]任务分发模式: {task_mode}[/dim]")
+
     task_stop_event = threading.Event()
     task_thread = threading.Thread(
         target=task_poller,
@@ -312,7 +317,7 @@ def main():
             uav_clients_map,
             1.0 / IVAS_SERVER['task_hz'],
             task_stop_event,
-            True  # pure.py 必须启用任务分发（监视模式仅对 dashboard 有意义）
+            enable_task_execution  # 从配置读取（可在 config.py 中切换监视/执行模式）
         ),
         daemon=True,
         name="ivas-task-poller"
