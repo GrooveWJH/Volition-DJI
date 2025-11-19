@@ -2,26 +2,97 @@
 
 本文档说明 `docs/` 目录中各文档的用途、状态和推荐阅读顺序。
 
-**最后更新**: 2025-01-10
+**最后更新**: 2024-11-19 (文档结构重组)
+
+## 📁 目录结构
+
+```
+docs/
+├── README_DOCS.md              # 本文档 - 总览和索引
+├── architecture/               # 系统架构文档
+│   ├── Arch.md                # 系统架构总览
+│   ├── 接口设计.md            # 接口设计说明
+│   ├── 通讯链路.md            # 通讯链路文档
+│   ├── 视频推流方案.md        # 视频推流技术方案
+│   └── 无人机后端服务器.md    # 后端服务器架构
+├── control/                    # 控制系统相关文档
+│   ├── CONTROL_MODULE_GUIDE.md # 控制模块指南
+│   ├── PID_TUNING_GUIDE.md    # PID调参指南
+│   └── TRAJECTORY_GUIDE.md     # 轨迹飞行指南
+├── guides/                     # 使用指南和参考
+│   ├── PYTHON_IMPORT_GUIDE.md # Python导入系统详解
+│   ├── JOYSTICK_UI_DESIGN.md  # 虚拟摇杆UI设计
+│   └── QUICK_REFERENCE.md      # 快速参考手册
+├── diagrams/                   # 架构图表和流程图
+│   ├── IVAS多无人机通信架构.svg
+│   ├── IVAS接口组件关系概览.svg
+│   ├── 地面站与IVAS典型调用时序.svg
+│   ├── 无人机后端服务器核心模块关系.svg
+│   └── 无人机与地面站通讯链路拓扑.svg
+├── troubleshooting/            # 问题排查和调试
+│   ├── waypoint_fast_arrival_bug.md  # 航点快速到达问题
+│   ├── pure_fake_target_logic.md     # 纯虚假目标逻辑
+│   └── GPS_PRECISION_AUDIT.md        # GPS精度审计
+├── api/                        # API文档 (预留)
+└── archive/                    # 历史文档归档
+    ├── DATA_LOGGING_README.md
+    ├── live_tool_guide.md
+    ├── MOCK_SIMULATOR_GUIDE.md
+    ├── MQTT_CLIENT_ID_FIX.md
+    └── TRAJECTORY_REFACTOR.md
+```
 
 ---
 
 ## 📊 文档概览
 
+### 🏗️ 架构文档 (`architecture/`)
 | 文档名称 | 状态 | 用途 | 推荐度 |
 |---------|------|------|--------|
-| [IVAS 系统架构](../ivas/ARCHITECTURE.md) | ✅ 最新 | IVAS 完整架构说明（含 PlantUML） | ⭐⭐⭐⭐⭐ |
-| [TRAJECTORY_GUIDE.md](#trajectory_guidemd) | ✅ 有效 | 轨迹飞行指南 | ⭐⭐⭐⭐⭐ |
-| [QUICK_REFERENCE.md](#quick_referencemd) | ✅ 有效 | 快速参考手册 | ⭐⭐⭐⭐ |
-| [PYTHON_IMPORT_GUIDE.md](#python_import_guidemd) | ✅ 有效 | Python 导入系统详解 | ⭐⭐⭐⭐ |
-| [PID_TUNING_GUIDE.md](#pid_tuning_guidemd) | ⚠️ 参考 | PID 调参指南（control 模块） | ⭐⭐⭐ |
-| [CONTROL_MODULE_GUIDE.md](#control_module_guidemd) | ⚠️ 参考 | 控制模块指南 | ⭐⭐⭐ |
-| [JOYSTICK_UI_DESIGN.md](#joystick_ui_designmd) | ⚠️ 参考 | 虚拟摇杆 UI 设计 | ⭐⭐ |
-| [MQTT_CLIENT_ID_FIX.md](#mqtt_client_id_fixmd) | ⚠️ 历史 | MQTT 客户端ID修复记录 | ⭐ |
-| [DATA_LOGGING_README.md](#data_logging_readmemd) | ⚠️ 历史 | 数据日志记录说明（control 模块） | ⭐ |
-| [MOCK_SIMULATOR_GUIDE.md](#mock_simulator_guidemd) | ❌ 过时 | 模拟器指南（已废弃） | ❌ |
-| [live_tool_guide.md](#live_tool_guidemd) | ❌ 过时 | 直播工具指南（已废弃） | ❌ |
-| [TRAJECTORY_REFACTOR.md](#trajectory_refactormd) | ❌ 过时 | 轨迹重构记录（已完成） | ❌ |
+| [Arch.md](architecture/Arch.md) | ✅ 最新 | 系统架构总览 | ⭐⭐⭐⭐⭐ |
+| [接口设计.md](architecture/接口设计.md) | ✅ 有效 | 接口设计说明 | ⭐⭐⭐⭐ |
+| [通讯链路.md](architecture/通讯链路.md) | ✅ 有效 | 通讯链路文档 | ⭐⭐⭐⭐ |
+| [视频推流方案.md](architecture/视频推流方案.md) | ✅ 有效 | 视频推流技术方案 | ⭐⭐⭐ |
+| [无人机后端服务器.md](architecture/无人机后端服务器.md) | ✅ 有效 | 后端服务器架构 | ⭐⭐⭐⭐ |
+
+### 🎮 控制系统文档 (`control/`)
+| 文档名称 | 状态 | 用途 | 推荐度 |
+|---------|------|------|--------|
+| [TRAJECTORY_GUIDE.md](control/TRAJECTORY_GUIDE.md) | ✅ 有效 | 轨迹飞行指南 | ⭐⭐⭐⭐⭐ |
+| [CONTROL_MODULE_GUIDE.md](control/CONTROL_MODULE_GUIDE.md) | ⚠️ 参考 | 控制模块指南 | ⭐⭐⭐ |
+| [PID_TUNING_GUIDE.md](control/PID_TUNING_GUIDE.md) | ⚠️ 参考 | PID 调参指南 | ⭐⭐⭐ |
+
+### 📖 使用指南 (`guides/`)
+| 文档名称 | 状态 | 用途 | 推荐度 |
+|---------|------|------|--------|
+| [QUICK_REFERENCE.md](guides/QUICK_REFERENCE.md) | ✅ 有效 | 快速参考手册 | ⭐⭐⭐⭐ |
+| [PYTHON_IMPORT_GUIDE.md](guides/PYTHON_IMPORT_GUIDE.md) | ✅ 有效 | Python 导入系统详解 | ⭐⭐⭐⭐ |
+| [JOYSTICK_UI_DESIGN.md](guides/JOYSTICK_UI_DESIGN.md) | ⚠️ 参考 | 虚拟摇杆 UI 设计 | ⭐⭐ |
+
+### 🔧 问题排查 (`troubleshooting/`)
+| 文档名称 | 状态 | 用途 | 推荐度 |
+|---------|------|------|--------|
+| [waypoint_fast_arrival_bug.md](troubleshooting/waypoint_fast_arrival_bug.md) | ✅ 有效 | 航点快速到达问题分析 | ⭐⭐⭐ |
+| [pure_fake_target_logic.md](troubleshooting/pure_fake_target_logic.md) | ✅ 有效 | 纯虚假目标逻辑分析 | ⭐⭐⭐ |
+| [GPS_PRECISION_AUDIT.md](troubleshooting/GPS_PRECISION_AUDIT.md) | ✅ 有效 | GPS精度审计报告 | ⭐⭐⭐ |
+
+### 📊 架构图表 (`diagrams/`)
+| 文件名称 | 用途 |
+|---------|------|
+| IVAS多无人机通信架构.svg | IVAS多无人机通信完整架构图 |
+| IVAS接口组件关系概览.svg | 接口组件关系总览 |
+| 地面站与IVAS典型调用时序.svg | 调用时序图 |
+| 无人机后端服务器核心模块关系.svg | 后端服务器模块关系 |
+| 无人机与地面站通讯链路拓扑.svg | 通讯链路拓扑图 |
+
+### 📁 历史归档 (`archive/`)
+| 文档名称 | 状态 | 备注 |
+|---------|------|------|
+| MQTT_CLIENT_ID_FIX.md | ⚠️ 历史 | MQTT 客户端ID修复记录 |
+| DATA_LOGGING_README.md | ⚠️ 历史 | 数据日志记录说明（control 模块） |
+| MOCK_SIMULATOR_GUIDE.md | ❌ 过时 | 模拟器指南（已废弃） |
+| live_tool_guide.md | ❌ 过时 | 直播工具指南（已废弃） |
+| TRAJECTORY_REFACTOR.md | ❌ 过时 | 轨迹重构记录（已完成） |
 
 ---
 
@@ -185,17 +256,30 @@
 ## 🗂️ 推荐阅读顺序
 
 ### 新用户入门
-1. [IVAS 系统架构](../ivas/ARCHITECTURE.md) - 了解整体架构
-2. [QUICK_REFERENCE.md](#quick_referencemd) - 快速上手
-3. [TRAJECTORY_GUIDE.md](#trajectory_guidemd) - 轨迹飞行
+1. [系统架构总览](architecture/Arch.md) - 了解整体架构
+2. [快速参考手册](guides/QUICK_REFERENCE.md) - 快速上手
+3. [轨迹飞行指南](control/TRAJECTORY_GUIDE.md) - 轨迹飞行
+
+### 架构理解
+1. [系统架构总览](architecture/Arch.md) - 系统整体设计
+2. [接口设计](architecture/接口设计.md) - 接口规范
+3. [通讯链路](architecture/通讯链路.md) - 通信协议
+4. [后端服务器](architecture/无人机后端服务器.md) - 服务端架构
+
+### 开发指南
+1. [快速参考手册](guides/QUICK_REFERENCE.md) - djisdk API速查
+2. [Python导入指南](guides/PYTHON_IMPORT_GUIDE.md) - 导入系统详解
+3. [控制模块指南](control/CONTROL_MODULE_GUIDE.md) - 控制系统开发
 
 ### 问题排查
-1. [PYTHON_IMPORT_GUIDE.md](#python_import_guidemd) - 导入错误
-2. [IVAS 系统架构](../ivas/ARCHITECTURE.md) - 任务执行问题
+1. [Python导入指南](guides/PYTHON_IMPORT_GUIDE.md) - 解决导入错误
+2. [航点快速到达问题](troubleshooting/waypoint_fast_arrival_bug.md) - 航点问题排查
+3. [GPS精度审计](troubleshooting/GPS_PRECISION_AUDIT.md) - GPS相关问题
 
 ### 深入开发
-1. [CONTROL_MODULE_GUIDE.md](#control_module_guidemd) - 控制算法
-2. [PID_TUNING_GUIDE.md](#pid_tuning_guidemd) - PID 调参
+1. [控制模块指南](control/CONTROL_MODULE_GUIDE.md) - 控制算法
+2. [PID调参指南](control/PID_TUNING_GUIDE.md) - PID调参
+3. [虚拟摇杆UI设计](guides/JOYSTICK_UI_DESIGN.md) - UI开发
 
 ---
 
