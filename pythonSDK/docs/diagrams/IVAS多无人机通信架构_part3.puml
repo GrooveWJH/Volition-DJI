@@ -1,0 +1,31 @@
+@startuml IVAS_MultiUAV_Arch_part3
+title 典型任务时序（Part 3）
+
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+
+rectangle "典型时序-任务执行" as FLOW {
+  left to right direction
+  () "1. 指挥端在 IVAS 上创建任务\n(区域巡逻 / 定点侦察 / 事件响应)" as F1
+  () "2. IVAS 将任务分配给\n绑定的 UAV 账号 / 设备编码" as F2
+  () "3. 地面站任务管理模块\n周期拉取任务并写入本地缓存\n同时触发对应任务执行流程" as F3
+  () "4. 控制链路模块向指定 UAV 下发飞行指令\n无人机进入远程控制模式完成任务" as F4
+  () "5. 态势上报模块持续上报位置信息\nIVAS 侧展示态势 / 航迹 / 覆盖区域" as F5
+  () "6. 无人机机载相机通过加密 RTMP\n将视频推送到云端视频中转服务器" as F6
+  () "7. 地面站从云端视频中转服务器\n加密拉流并解码视频\n调用 YOLOv8-VisDrone 模型进行推理" as F7
+  () "8. 检测到的真实目标\n转换为结构化目标信息\n通过加密接口实时上报到 IVAS" as F8
+  () "9. 任务完成 / 中止状态回传\n指挥端在 IVAS 中查看综合结果\n包括轨迹、目标、告警与视频回放" as F9
+
+  F1 --> F2
+  F2 --> F3
+  F3 --> F4
+  F4 --> F5
+  F4 --> F6
+  F6 --> F7
+  F7 --> F8
+  F5 --> F9
+  F8 --> F9
+}
+
+@enduml

@@ -1,0 +1,48 @@
+@startuml IVAS_API_Sequence
+title 地面站与 IVAS 典型调用时序
+
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+
+actor "运维 / 指挥人员" as OP
+participant "IVAS 系统" as IVAS
+participant "无人机地面站" as GCS
+
+== 启动与登陆 ==
+OP -> IVAS : 预先配置账号\n分配接口访问权限
+activate IVAS
+IVAS --> OP : 账号信息就绪
+deactivate IVAS
+
+GCS -> IVAS : POST /jk-ivas/third/controller/zsLogin\n{account, password}
+activate IVAS
+IVAS --> GCS : {resCode=1, token, 用户信息}
+deactivate IVAS
+
+== 周期性位置上报 ==
+loop 每 N 秒
+  GCS -> IVAS : POST /jk-ivas/third/controller/reportUserData\nHeader: token\nQuery: deviceCode, userX, userY, userZ,\n        azimuth, localTime, motion, validCount, roomId, refPositionType
+  activate IVAS
+  IVAS --> GCS : {resCode, resMsg}\n位置数据写入态势库
+  deactivate IVAS
+end
+
+== 目标识别结果上报 ==
+opt 识别到新目标
+  GCS -> IVAS : POST /jk-ivas/non/controller/postTarPos\nHeader: token\nBody: timestamp, obj_cnt, objs[cls, gis, bbox, obj_img]
+  activate IVAS
+  IVAS --> GCS : {resCode, resMsg}\n目标写入目标库 / 告警系统
+  deactivate IVAS
+end
+
+== 室外任务获取 ==
+loop 每 M 秒
+  GCS -> IVAS : GET /jk-ivas/third/controller/outdoorTask\nHeader: token
+  activate IVAS
+  IVAS --> GCS : {code, msg, data{mission, id, lon, lat, alt}}
+  deactivate IVAS
+  GCS -> GCS : 解析任务\n映射到具体无人机控制逻辑
+end
+
+@enduml
