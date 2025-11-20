@@ -1,0 +1,44 @@
+@startuml IVAS_MultiUAV_Arch_part2
+title 地面站内部逻辑（Part 2）
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+left to right direction
+
+node "IVAS 中心服务器" as IVAS_SRVR
+node "云端视频中转" as MEDIA_CLOUD
+folder "无人机集群" as UAVS {
+  node "UAV-1" as UAV1
+  node "UAV-2" as UAV2
+  node "UAV-3" as UAV3
+}
+node "MQTT 控制通道" as MQTT
+
+package "地面站内部逻辑" as GCS_LOGIC {
+  component "多账号任务接入模块" as IVAS_CLIENTS
+  component "任务轮询与分发模块" as TASK_POLLER
+  component "态势上报模块" as POS_REPORTER
+  component "视频分析与目标上报模块\n(YOLOv8-VisDrone)" as DETECT_REPORT
+  component "DRC 控制链路管理" as DRC_LINKS
+  database "本地任务与状态缓存" as MISSION_STATE
+}
+
+TASK_POLLER -[#FireBrick]-> IVAS_SRVR : 周期性拉取任务\n统一解析与调度
+POS_REPORTER -[#FireBrick]-> IVAS_SRVR : 周期性上报位置\n更新态势
+DETECT_REPORT -[#FireBrick]-> IVAS_SRVR : 上报目标识别结果
+
+DETECT_REPORT -[#DarkOrange]-> MEDIA_CLOUD : 拉取多路视频
+DRC_LINKS -[#RoyalBlue]-> MQTT : 控制指令传输
+MQTT -[#RoyalBlue]-> UAV1
+MQTT -[#RoyalBlue]-> UAV2
+MQTT -[#RoyalBlue]-> UAV3
+
+TASK_POLLER -[#DarkGreen]-> DRC_LINKS : 任务转化为控制指令
+TASK_POLLER -[#Black]-> MISSION_STATE : 记录任务执行状态
+POS_REPORTER -[#Black]-> MISSION_STATE : 缓存轨迹数据
+DETECT_REPORT -[#Black]-> MISSION_STATE : 缓存目标记录
+
+@enduml

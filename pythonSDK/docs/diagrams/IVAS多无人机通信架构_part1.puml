@@ -1,0 +1,60 @@
+@startuml IVAS_MultiUAV_Arch_part1
+title IVAS 多无人机通信拓扑（Part 1）
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+
+rectangle "公网 / 专网" as NET {
+  node "MQTT 云服务器\n(遥控 / 状态)\nTLS 加密连接" as MQTT {
+  }
+  node "视频中转云服务器\n(RTMP/mediamtx)\nTLS 加密推流与拉流" as MEDIA_CLOUD {
+  }
+}
+
+node "IVAS 中心服务器\n(任务下发 / 态势感知 / 任务管控)" as IVAS_SRVR {
+}
+
+node "无人机地面站\n多机控制 / 目标识别\n任务协调与执行" as GCS {
+}
+
+folder "现场无人机集群" as UAVS {
+  node "UAV-1\n(device_code = 1)" as UAV1
+  node "UAV-2\n(device_code = 2)" as UAV2
+  node "UAV-3\n(device_code = 3)" as UAV3
+}
+
+cloud "运维 / 指挥端\n(浏览器 / 上位指挥系统)" as OP_CONSOLE
+
+' 1) 地面站 ↔ MQTT 云服务器（加密）
+GCS -[#DarkGreen]-> MQTT : TLS 加密 MQTT\n会话建立 / 认证\n控制指令下发
+MQTT -[#DarkGreen]-> GCS : 控制响应 / 状态\n(心跳 / OSD / HSI)
+
+' 2) MQTT 云服务器 ↔ 无人机（DRC 通道）
+MQTT -[#RoyalBlue]-> UAV1 : DRC 控制通道\n遥控指令 / 模式切换\n心跳保持
+MQTT -[#RoyalBlue]-> UAV2 : DRC 控制通道
+MQTT -[#RoyalBlue]-> UAV3 : DRC 控制通道
+
+UAV1 -[#RoyalBlue]-> MQTT : OSD / 飞行状态上报
+UAV2 -[#RoyalBlue]-> MQTT : OSD / 飞行状态上报
+UAV3 -[#RoyalBlue]-> MQTT : OSD / 飞行状态上报
+
+' 3) 无人机 ↔ 云端视频中转（加密 RTMP）
+UAV1 -[#DarkOrange]-> MEDIA_CLOUD : 加密 RTMP 推流\n机载相机视频
+UAV2 -[#DarkOrange]-> MEDIA_CLOUD : 加密 RTMP 推流
+UAV3 -[#DarkOrange]-> MEDIA_CLOUD : 加密 RTMP 推流
+
+' 4) 地面站 ↔ 云端视频中转（加密拉流）
+GCS -[#DarkOrange]-> MEDIA_CLOUD : 通过 RTMP/RTSP/HLS\n加密拉流多个视频通道
+MEDIA_CLOUD -[#DarkOrange]-> GCS : 实时视频帧 / 关键帧流
+
+' 5) 地面站 ↔ IVAS（加密）
+GCS -[#FireBrick]-> IVAS_SRVR : HTTPS(TLS) / WebSocket\n身份认证 / 任务拉取\n目标上报 / 状态同步
+IVAS_SRVR -[#FireBrick]-> GCS : 任务下发\n任务状态回传\n策略参数下发
+
+' 6) IVAS ↔ 指挥端 / 其他系统
+OP_CONSOLE -[#Black]-> IVAS_SRVR : 态势展示 / 任务编排\n告警处置 / 回放分析
+
+@enduml

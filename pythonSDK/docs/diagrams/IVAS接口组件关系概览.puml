@@ -1,0 +1,35 @@
+@startuml IVAS_API_Components
+title IVAS 接口组件关系概览
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+
+actor "运维 / 指挥人员" as OP
+node "IVAS 系统" as IVAS
+node "无人机地面站" as GCS
+
+rectangle "IVAS 接口层" as API_LAYER {
+  component "/jk-ivas/third/controller/zsLogin\n系统登陆接口" as API_LOGIN
+  component "/jk-ivas/third/controller/reportUserData\n无人机位置上报" as API_POS
+  component "/jk-ivas/non/controller/postTarPos\n目标识别结果上报" as API_TAR
+  component "/jk-ivas/third/controller/outdoorTask\n室外任务获取" as API_TASK
+}
+
+IVAS -[hidden]- API_LAYER
+
+OP -[#Black]-> IVAS : 配置账号 / 查看态势\n创建室外任务
+
+GCS -[#FireBrick]-> API_LOGIN : POST\n账号 + 密码\n获取 token
+GCS -[#FireBrick]-> API_POS : POST\n周期上报位置\n(需要 token)
+GCS -[#FireBrick]-> API_TAR : POST\n上报识别目标\n(需要 token)
+GCS -[#FireBrick]-> API_TASK : GET\n定期拉取任务\n(需要 token)
+
+API_LOGIN -[#Black]-> IVAS : 用户认证\n生成访问令牌
+API_POS -[#Black]-> IVAS : 更新无人机态势数据
+API_TAR -[#Black]-> IVAS : 写入目标库\n触发告警 / 标注
+API_TASK -[#Black]-> IVAS : 输出任务描述\n提供给地面站执行
+
+@enduml

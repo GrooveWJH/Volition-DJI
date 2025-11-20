@@ -1,0 +1,92 @@
+@startuml IVAS_MultiUAV_Comprehensive_Architecture
+title IVAS 多无人机通信架构概览
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+
+!define CONSOLE_COLOR #Black
+!define CONTROL_COLOR #RoyalBlue
+!define VIDEO_COLOR #DarkOrange
+!define IVAS_COLOR #FireBrick
+!define NETWORK_COLOR #DarkGreen
+
+rectangle "公网 / 专网" as NET {
+  node "MQTT 云服务器\n(遥控 / 状态)\nTLS 加密连接" as MQTT {
+  }
+  node "视频中转云服务器\n(RTMP/mediamtx)\nTLS 加密推流与拉流" as MEDIA_CLOUD {
+  }
+}
+
+node "IVAS 中心服务器\n(任务下发 / 态势感知 / 任务管控)" as IVAS_SRVR {
+}
+
+cloud "运维 / 指挥端\n(浏览器 / 上位指挥系统)" as OP_CONSOLE
+
+folder "现场无人机集群" as UAVS {
+  node "UAV-1\n(device_code = 1)" as UAV1
+  node "UAV-2\n(device_code = 2)" as UAV2
+  node "UAV-3\n(device_code = 3)" as UAV3
+}
+
+package "地面站内部逻辑" as GCS_LOGIC {
+  component "多账号任务接入模块" as IVAS_CLIENTS
+  component "任务轮询与分发模块" as TASK_POLLER
+  component "态势上报模块" as POS_REPORTER
+  component "视频分析与目标上报模块\n(YOLOv8-VisDrone)" as DETECT_REPORT
+  component "DRC 控制链路管理" as DRC_LINKS
+  database "本地任务与状态缓存" as MISSION_STATE
+}
+
+' 1) 地面站 ↔ MQTT 云服务器（加密）
+GCS_LOGIC -[NETWORK_COLOR]-> MQTT : TLS 加密 MQTT\n会话建立 / 认证\n控制指令下发
+MQTT -[NETWORK_COLOR]-> GCS_LOGIC : 控制响应 / 状态\n(心跳 / OSD / HSI)
+
+' 2) MQTT 云服务器 ↔ 无人机（DRC 通道）
+MQTT -[CONTROL_COLOR]-> UAV1 : DRC 控制通道\n遥控指令 / 模式切换\n心跳保持
+MQTT -[CONTROL_COLOR]-> UAV2 : DRC 控制通道
+MQTT -[CONTROL_COLOR]-> UAV3 : DRC 控制通道
+
+UAV1 -[CONTROL_COLOR]-> MQTT : OSD / 飞行状态上报
+UAV2 -[CONTROL_COLOR]-> MQTT : OSD / 飞行状态上报
+UAV3 -[CONTROL_COLOR]-> MQTT : OSD / 飞行状态上报
+
+' 3) 无人机 ↔ 云端视频中转（加密 RTMP）
+UAV1 -[VIDEO_COLOR]-> MEDIA_CLOUD : 加密 RTMP 推流\n机载相机视频
+UAV2 -[VIDEO_COLOR]-> MEDIA_CLOUD : 加密 RTMP 推流
+UAV3 -[VIDEO_COLOR]-> MEDIA_CLOUD : 加密 RTMP 推流
+
+' 4) 地面站 ↔ 云端视频中转（加密拉流）
+DETECT_REPORT -[VIDEO_COLOR]-> MEDIA_CLOUD : 通过 RTMP/RTSP/HLS\n加密拉流多个视频通道
+MEDIA_CLOUD -[VIDEO_COLOR]-> DETECT_REPORT : 实时视频帧 / 关键帧流
+
+' 5) 地面站 ↔ IVAS（加密）
+TASK_POLLER -[IVAS_COLOR]-> IVAS_SRVR : 周期性拉取任务\n统一解析与调度
+POS_REPORTER -[IVAS_COLOR]-> IVAS_SRVR : 周期性上报位置\n更新态势
+DETECT_REPORT -[IVAS_COLOR]-> IVAS_SRVR : 上报目标识别结果
+IVAS_SRVR -[IVAS_COLOR]-> TASK_POLLER : 任务下发\n任务状态回传\n策略参数下发
+
+' 6) IVAS ↔ 指挥端 / 其他系统
+OP_CONSOLE -[CONSOLE_COLOR]-> IVAS_SRVR : 态势展示 / 任务编排\n告警处置 / 回放分析
+
+' 7) 地面站内部连接
+TASK_POLLER -[NETWORK_COLOR]-> DRC_LINKS : 任务转化为控制指令
+DRC_LINKS -[CONTROL_COLOR]-> MQTT : 控制指令传输
+
+TASK_POLLER -[CONSOLE_COLOR]-> MISSION_STATE : 记录任务执行状态
+POS_REPORTER -[CONSOLE_COLOR]-> MISSION_STATE : 缓存轨迹数据
+DETECT_REPORT -[CONSOLE_COLOR]-> MISSION_STATE : 缓存目标记录
+
+note bottom of IVAS_SRVR
+  典型任务时序：
+  1. 指挥端在 IVAS 上创建任务
+  2. IVAS 将任务分配给绑定的 UAV
+  3. 地面站拉取任务并触发执行流程
+  4. 控制链路向 UAV 下发飞行指令
+  5. 持续上报位置和目标识别结果
+  6. 任务完成状态回传供分析
+end note
+
+@enduml

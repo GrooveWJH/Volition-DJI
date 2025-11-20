@@ -1,0 +1,74 @@
+@startuml Comm_Links
+title 无人机集群与地面站通讯链路拓扑
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+
+rectangle "公网 / 运营商 5G 网络" as INTERNET {
+  node "5G WiFi 路由器 A\n(无人机侧接入)" as R5G_A
+  node "5G 路由器 B\n(地面站侧接入)" as R5G_B
+}
+
+cloud "云服务器\n(同一公网 IP / 域名)\n- mediamtx 视频中转服务\n- MQTT 消息服务\n(均启用加密与鉴权)" as CLOUD
+
+folder "无人机与遥控器侧" as UAV_SIDE {
+  node "遥控器 1" as RC1
+  node "遥控器 2" as RC2
+  node "遥控器 3" as RC3
+}
+
+folder "无人机地面站所在机房" as GCS_SIDE {
+  node "无人机地面站\n(视频识别 + 任务协调)" as GCS
+  node "头戴式显示设备内网交换机\n(局域网)" as IVAS_SW
+}
+
+node "头戴式显示设备系统\n(态势感知 / 任务管理)" as IVAS
+
+' =====================
+' 接入与链路
+' =====================
+
+' 遥控器侧：通过 5G WiFi 接入公网
+RC1 -[#DarkGreen]-> R5G_A : WiFi 加密连接\n(本地局域网)
+RC2 -[#DarkGreen]-> R5G_A
+RC3 -[#DarkGreen]-> R5G_A
+
+R5G_A -[#DarkGreen]-> CLOUD : 5G 蜂窝上网\n加密隧道 / VPN 或 TLS
+
+' 地面站侧：通过独立 5G 路由器接入公网
+GCS -[#DarkGreen]-> R5G_B : 有线或 WiFi 接入\n本地局域网
+R5G_B -[#DarkGreen]-> CLOUD : 5G 蜂窝上网\n加密访问云服务器
+
+' 云端内部：视频与控制服务
+rectangle "云端服务实例" as CLOUD_SVC {
+  component "mediamtx 视频中转服务\n(RTMP/RTSP/HLS, TLS 加密)" as MEDIA
+  component "MQTT 消息服务\n(控制 / 状态, TLS 加密)" as MQTT
+}
+
+CLOUD -[hidden]- CLOUD_SVC
+
+RC1 -[#RoyalBlue]-> MQTT : 控制消息 / 遥控指令\n遥控器 1 对应无人机 1
+RC2 -[#RoyalBlue]-> MQTT : 控制消息 / 遥控指令\n遥控器 2 对应无人机 2
+RC3 -[#RoyalBlue]-> MQTT : 控制消息 / 遥控指令\n遥控器 3 对应无人机 3
+
+' 无人机与云端视频中转之间的链路概念化表示
+RC1 -[#DarkOrange]-> MEDIA : 通过无人机侧推流配置\n将机载视频经加密 RTMP\n上传至云端指定流地址
+RC2 -[#DarkOrange]-> MEDIA
+RC3 -[#DarkOrange]-> MEDIA
+
+' 地面站从云端拉流与 MQTT 通信
+GCS -[#DarkOrange]-> MEDIA : 按需选择和订阅\n多个视频通道\n拉流用于目标识别分析
+GCS -[#RoyalBlue]-> MQTT : 任务结果 / 状态上报\n任务指令转发到无人机
+
+' 地面站与 IVAS 内网
+GCS -[#Black]-> IVAS_SW : 网线接入\n独立网段
+IVAS_SW -[#Black]-> IVAS : 局域网通信\nIVAS 专用协议 / HTTP(S)
+
+' 数据方向说明
+GCS -[#FireBrick]-> IVAS : 上报无人机状态\n位置 / 姿态 / 目标识别结果
+IVAS -[#FireBrick]-> GCS : 下发任务计划\n指令与策略参数
+
+@enduml

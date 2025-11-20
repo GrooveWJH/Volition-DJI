@@ -1,0 +1,38 @@
+@startuml GCS_Server_Architecture
+title 无人机后端服务器核心模块关系
+left to right direction
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #333333
+skinparam ArrowThickness 1.0
+skinparam defaultFontName "PingFang SC"
+
+node "DJI 官方接口\n(MQTT + DRC SDK)" as DJI
+node "云端 MQTT/视频服务\n(mediamtx + MQTT Broker)" as CLOUD
+node "IVAS 系统" as IVAS
+node "Dashboard 客户端\n(Web)" as DASH
+
+package "地面站后端服务器" as GCS {
+  component "数据接入层\nDJI 控制适配器" as CTRL_ADAPTER
+  component "任务调度层\n(任务解析 / 状态追踪)" as TASK_SCHED
+  component "态势服务层\n(航点/轨迹/识别数据缓存)" as SIT_SERVICE
+  component "接口层\nREST + WebSocket" as API_LAYER
+  component "多线程内核\n事件总线 + 状态机" as CORE
+}
+
+DJI -[#RoyalBlue]-> CTRL_ADAPTER : 控制指令执行\n状态反馈
+CLOUD -[#DarkOrange]-> CTRL_ADAPTER : 视频拉流\n数据同步
+CTRL_ADAPTER -[#RoyalBlue]-> CORE : 规范化 OSD/状态事件
+
+IVAS -[#FireBrick]-> TASK_SCHED : 任务拉取\n策略同步
+TASK_SCHED -[#RoyalBlue]-> CTRL_ADAPTER : 生成控制命令
+TASK_SCHED -[#Black]-> SIT_SERVICE : 写入任务上下文
+
+SIT_SERVICE -[#FireBrick]-> API_LAYER : 提供态势查询\n航点动态数据
+API_LAYER -[#DarkGreen]-> DASH : HTTP/WS 推送
+
+CORE -[#Black]-> SIT_SERVICE : 事件分发\n轨迹缓存
+CORE -[#Black]-> TASK_SCHED : 调度策略\n状态机驱动
+
+@enduml
