@@ -1,7 +1,24 @@
 """
-DJI DRC Python SDK
+DJI Cloud API Python SDK
 
-简洁实用的 DJI 无人机远程控制工具包
+专业级 DJI 无人机云端控制 Python 库，支持远程控制 (DRC)、实时视频、飞行任务、多机编队等功能。
+采用模块化设计，从简单控制到复杂任务编排都能轻松应对。
+
+主要功能：
+- 完整的 DRC 控制：连接管理、控制权申请、DRC 模式、心跳维持
+- 专业视频直播：多镜头支持、画质控制、RTMP/RTSP 推流
+- 高级飞行任务：轨迹飞行、任务编排、并行执行
+- 智能数据管理：实时监控、状态追踪、频率监控
+
+快速开始：
+    >>> from djisdk import setup_drc_connection, fly_to_point, return_home
+    >>> mqtt, caller, heartbeat = setup_drc_connection(gateway_sn, mqtt_config)
+    >>> fly_to_point(caller, latitude=39.042751, longitude=117.723825, height=100.0)
+    >>> return_home(caller)
+
+详细文档：
+- README.md - 完整使用指南
+- API.md - API参考文档
 """
 from .core import MQTTClient, ServiceCaller
 from .services import (
