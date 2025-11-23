@@ -10,3 +10,12 @@ __pycache__/
 *.pyc
 .DS_Store
 venv/
+
+# Claude AI related files
+.claude/
+.claude*
+CLAUDE.md
+claude.md
+*claude*.log
+*claude*.txt
+.claude_history
