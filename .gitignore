@@ -102,3 +102,14 @@ COMMIT_PLAN.md
 data/
 
 videoStream/mediamtx/mediamtx
+
+# -----------------------------
+# Claude AI related files
+# -----------------------------
+.claude/
+.claude*
+CLAUDE.md
+claude.md
+*claude*.log
+*claude*.txt
+.claude_history
